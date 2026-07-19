@@ -1,0 +1,20 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: billage-mysql
+    ports:
+      - "3307:3306"
+    environment:
+      TZ: Asia/Seoul
+      MYSQL_DATABASE: billage
+      MYSQL_USER: billage
+      MYSQL_PASSWORD: billage
+      MYSQL_ROOT_PASSWORD: root
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mysql-data:/var/lib/mysql
+
+volumes:
+  mysql-data:
