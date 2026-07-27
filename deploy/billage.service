@@ -12,8 +12,9 @@ Group=billage
 WorkingDirectory=/opt/billage
 EnvironmentFile=/etc/billage/billage.env
 
-# t3.micro(1GB RAM) 기준 힙 상한. MySQL과 공존해야 하므로 넉넉히 잡지 않는다.
-ExecStart=/usr/bin/java -Xms256m -Xmx512m -XX:+UseSerialGC -jar /opt/billage/billage.jar
+# t3.micro(1GB RAM) 메모리 예산: JVM(힙384m+비힙/스택 여유) + MySQL(mem_limit 360m)
+# + Docker/Caddy/OS 를 1GB+스왑2G 안에 맞춘다. 힙을 384m 로 낮춰 호스트 여유 확보.
+ExecStart=/usr/bin/java -Xms128m -Xmx384m -XX:+UseSerialGC -jar /opt/billage/billage.jar
 
 SuccessExitStatus=143
 Restart=always

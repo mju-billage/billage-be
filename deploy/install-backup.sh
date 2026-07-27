@@ -17,7 +17,9 @@ cat > /etc/cron.d/billage-backup <<'EOF'
 # Billage MySQL 일일 백업. 로그: /var/log/billage-backup.log
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-30 18 * * * root /opt/billage/backup-db.sh >> /var/log/billage-backup.log 2>&1
+# 서버 TZ 와 무관하게 KST 03:30 을 보장한다.
+CRON_TZ=Asia/Seoul
+30 3 * * * root /opt/billage/backup-db.sh >> /var/log/billage-backup.log 2>&1
 EOF
 cat > /etc/cron.d/billage-health <<'EOF'
 # Billage 서버 자가 점검. 로그: /var/log/billage-health.log

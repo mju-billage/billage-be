@@ -8,15 +8,19 @@ set -uo pipefail
 LOG=/var/log/billage-health.log
 ts(){ date '+%F %T'; }
 
-# 1) 앱 헬스 (localhost)
-code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/actuator/health || echo 000)
+# 1) 앱 헬스 (localhost). 멈춘 요청이 cron 을 누적시키지 않도록 타임아웃 필수.
+code=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 5 http://127.0.0.1:8080/actuator/health || echo 000)
 case "$code" in 2*|3*|401|403) app="UP($code)";; *) app="DOWN($code)";; esac
 
-# 2) MySQL 컨테이너
+# 2) MySQL 컨테이너: 없으면 생성(up -d), 살아있는데 unhealthy 면 restart.
+#    (실행 중 컨테이너엔 up -d 로 재시작이 안 되므로 분기)
 mstate=$(docker inspect -f '{{.State.Health.Status}}' billage-mysql 2>/dev/null || echo missing)
-if [ "$mstate" != "healthy" ]; then
-  echo "$(ts) WARN mysql=$mstate → 재기동 시도" >> "$LOG"
+if [ "$mstate" = "missing" ]; then
+  echo "$(ts) WARN mysql 컨테이너 없음 → 생성" >> "$LOG"
   (cd /opt/billage && docker compose --env-file /etc/billage/mysql.env up -d) >> "$LOG" 2>&1
+elif [ "$mstate" != "healthy" ]; then
+  echo "$(ts) WARN mysql=$mstate → restart" >> "$LOG"
+  (cd /opt/billage && docker compose --env-file /etc/billage/mysql.env restart mysql) >> "$LOG" 2>&1
 fi
 
 # 3) 디스크 / 메모리

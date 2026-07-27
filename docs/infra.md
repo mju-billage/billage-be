@@ -15,8 +15,8 @@
 - **주소**: 탄력적 IP `52.78.148.114` 고정 → `https://52-78-148-114.nip.io` (Caddy 자동 Let's Encrypt). nip.io는 실도메인 생기면 `caddy.env`의 SITE_ADDRESS만 교체.
 - **배포**: `develop` push → Actions `deploy-dev.yml`(bootJar→scp→restart). 헬스체크 실패 시 **이전 jar 자동 롤백**. 시크릿 `EC2_HOST/EC2_USER/EC2_SSH_KEY`.
 - **백업**: 매일 03:30 KST mysqldump→gzip(로컬 14일) + S3 `billage-db-backup-442908904609`(SSE-S3, 30일). S3 인증은 EC2 인스턴스 역할(서버에 키 없음). 복구 `deploy/restore-db.sh`.
-- **하드닝**: 앱·MySQL 외부 미노출(localhost 바인딩+보안그룹 22/80/443만), JVM Xmx512m·MySQL mem_limit 360m·performance_schema OFF, journald 200M 상한, 자가점검 cron(`healthcheck.sh`) 5분.
-- **미완**: Spring Security(현재 401 가능), prod 환경, UptimeRobot 외부 알림 등록.
+- **하드닝**: 앱·MySQL 외부 미노출(localhost 바인딩+보안그룹 22/80/443만), JVM Xmx384m·MySQL mem_limit 360m·performance_schema OFF, journald 200M 상한, 자가점검 cron(`healthcheck.sh`) 5분.
+- **미완**: prod 환경, UptimeRobot 외부 알림 등록. **주의: 현재 `SecurityConfig` 가 `permitAll()` 이라 전 엔드포인트 공개(접근 제어 없음)** — auth 도메인 구현 시 적용.
 
 ## 개발 우선순위
 
