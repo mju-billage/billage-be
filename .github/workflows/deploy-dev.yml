@@ -55,15 +55,16 @@ jobs:
             sudo mv /tmp/billage/*.jar /opt/billage/billage.jar
             sudo systemctl restart billage
 
-            # 헬스 폴링 함수: 최대 40초(20회 x 2초), 각 curl 은 타임아웃으로 무한대기 방지.
+            # 헬스 폴링 함수: 전체 40초 데드라인(벽시계) 기준. 각 curl 도 타임아웃으로 무한대기 방지.
             #    2xx/3xx = 성공(현재 전 엔드포인트 permitAll 이라 200), 000(무응답)·5xx = 실패.
             wait_health() {
-              for i in $(seq 1 20); do
+              local deadline=$(( $(date +%s) + 40 ))
+              while [ "$(date +%s)" -lt "$deadline" ]; do
                 code=$(curl -s -o /dev/null -w '%{http_code}' \
                   --connect-timeout 3 --max-time 5 \
                   http://127.0.0.1:8080/actuator/health || true)
                 case "$code" in 2*|3*) return 0 ;; esac
-                sleep 2
+                [ "$(date +%s)" -lt "$deadline" ] && sleep 2
               done
               return 1
             }
