@@ -1,0 +1,28 @@
+# /etc/systemd/system/billage.service
+# Spring Boot 실행 유닛 (systemd). Docker 없이 JVM 직접 실행.
+
+[Unit]
+Description=Billage API Server
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+User=billage
+Group=billage
+WorkingDirectory=/opt/billage
+EnvironmentFile=/etc/billage/billage.env
+
+# t3.micro(1GB RAM) 기준 힙 상한. MySQL과 공존해야 하므로 넉넉히 잡지 않는다.
+ExecStart=/usr/bin/java -Xms256m -Xmx512m -XX:+UseSerialGC -jar /opt/billage/billage.jar
+
+SuccessExitStatus=143
+Restart=always
+RestartSec=5
+
+# 보안 하드닝
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

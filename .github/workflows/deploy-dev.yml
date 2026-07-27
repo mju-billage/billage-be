@@ -1,0 +1,63 @@
+name: Deploy to Dev
+
+# develop 브랜치 push 시 자동 배포 + 수동 실행 가능
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+
+      # 테스트는 Testcontainers(MySQL)가 필요해 별도 CI에서 돌린다.
+      # 배포 파이프라인은 실행 가능한 jar 생성까지만 책임진다.
+      - name: Build bootJar
+        run: ./gradlew clean bootJar --no-daemon
+
+      - name: Copy jar to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: build/libs/*-SNAPSHOT.jar
+          target: /tmp/billage
+          strip_components: 2
+
+      - name: Restart service
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            sudo mv /tmp/billage/*.jar /opt/billage/billage.jar
+            sudo systemctl restart billage
+            # 기동 확인 (최대 30초 대기).
+            # Security 설정 전이라 actuator 가 401 을 줄 수 있으므로,
+            # "HTTP 응답이 온다(=프로세스가 리슨한다)" 를 기동 성공으로 본다.
+            for i in $(seq 1 15); do
+              code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/actuator/health || true)
+              if [ "$code" != "000" ] && [ -n "$code" ]; then
+                echo "✅ billage responded (HTTP $code)"; exit 0
+              fi
+              sleep 2
+            done
+            echo "❌ health check failed (no response)"; sudo journalctl -u billage -n 50 --no-pager; exit 1
