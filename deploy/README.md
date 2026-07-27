@@ -152,6 +152,19 @@ sudo systemctl restart billage
 - 서버 `/etc/billage/backup.env` 에 `S3_BUCKET=billage-db-backup-442908904609` 설정됨 → `backup-db.sh` 가 자동 업로드
 - 복구 시 다운로드: `aws s3 cp s3://billage-db-backup-442908904609/mysql/<파일> .` 후 `restore-db.sh`
 
+## 운영 하드닝 (적용 완료)
+
+- **외부 접근 차단**: 앱은 `SERVER_ADDRESS=127.0.0.1` 로 로컬만 리슨(+보안그룹), MySQL 은 `127.0.0.1:3306` 바인딩. 8080/3306 외부 노출 없음.
+- **메모리 상한**: JVM `-Xmx512m`, MySQL 컨테이너 `mem_limit: 360m` + `innodb-buffer-pool 128M` + `performance-schema OFF`.
+- **배포 안전장치**: 헬스체크(2xx/3xx/401/403=성공) 실패 시 **이전 jar 로 자동 롤백**(`billage.jar.prev`).
+- **재시작/로그**: `Restart=always`, journald `SystemMaxUse=200M`, 자가점검 cron 5분(`/var/log/billage-health.log`).
+- **백업/복구**: 위 "DB 백업 / 복구" 참고. 복구 왕복 테스트 검증됨.
+
+### 최소 모니터링
+
+- 서버 자가점검: `/opt/billage/healthcheck.sh`(cron 5분) — 앱/DB/디스크/메모리 로깅, MySQL 이상 시 재기동.
+- **외부 알림(권장, 별도 작업)**: [UptimeRobot](https://uptimerobot.com) 무료 계정 → HTTP(s) 모니터로 `https://52-78-148-114.nip.io/actuator/health` 5분 감시 → 다운 시 이메일 알림. (서버 자체가 죽으면 내부 cron 은 못 알리므로 외부 감시가 필요)
+
 ## 도메인이 생기면
 
 `sudo nano /etc/caddy/caddy.env` 에서 `SITE_ADDRESS` 를 `dev-api.내도메인.com` 으로 바꾸고
@@ -160,7 +173,6 @@ DNS A 레코드를 EC2 IP 로 지정 → `sudo systemctl restart caddy`. 인증�
 ## 남은 이슈 (이후 별도 작업)
 
 - prod 서버·prod 배포 워크플로 (release tag 트리거) — 런칭 시점에 추가
-- 외부 헬스 모니터링/알림(예: UptimeRobot 무료) + journald `SystemMaxUse` 로그 상한
-- (완료) 탄력적 IP 고정: `52.78.148.114` (`eipalloc-0729d7cf8da598b2a`) — 인스턴스에서 분리해 방치 금지
-- (완료) S3 오프사이트 DB 백업
+- 외부 헬스 모니터링(UptimeRobot) 실제 등록 — 위 안내대로 계정 생성 필요
 - Spring Security 설정이 아직 없어 현재는 기본 인증(모든 요청 401)일 수 있음 → auth 도메인 구현 후 permitAll 범위 조정 필요
+- (완료) 탄력적 IP 고정 `52.78.148.114` / S3 오프사이트 백업 / 운영 하드닝

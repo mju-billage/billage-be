@@ -48,16 +48,35 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             set -e
+            # 1) 현재 jar 를 롤백용으로 보관 후 새 jar 배치
+            if [ -f /opt/billage/billage.jar ]; then
+              sudo cp /opt/billage/billage.jar /opt/billage/billage.jar.prev
+            fi
             sudo mv /tmp/billage/*.jar /opt/billage/billage.jar
             sudo systemctl restart billage
-            # 기동 확인 (최대 30초 대기).
-            # Security 설정 전이라 actuator 가 401 을 줄 수 있으므로,
-            # "HTTP 응답이 온다(=프로세스가 리슨한다)" 를 기동 성공으로 본다.
-            for i in $(seq 1 15); do
+
+            # 2) 기동 확인 (최대 40초). Security 미설정이라 401/403 도 "기동됨" 으로 인정,
+            #    2xx/3xx/401/403 = 성공, 000(무응답)·5xx = 실패로 본다.
+            up=0
+            for i in $(seq 1 20); do
               code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/actuator/health || true)
-              if [ "$code" != "000" ] && [ -n "$code" ]; then
-                echo "✅ billage responded (HTTP $code)"; exit 0
-              fi
+              case "$code" in
+                2*|3*|401|403) up=1; break ;;
+              esac
               sleep 2
             done
-            echo "❌ health check failed (no response)"; sudo journalctl -u billage -n 50 --no-pager; exit 1
+            if [ "$up" = 1 ]; then
+              echo "✅ billage up (HTTP $code)"; exit 0
+            fi
+
+            # 3) 실패 시 이전 jar 로 자동 롤백
+            echo "❌ health check 실패 (last HTTP='$code') — 이전 jar 로 롤백"
+            if [ -f /opt/billage/billage.jar.prev ]; then
+              sudo mv /opt/billage/billage.jar.prev /opt/billage/billage.jar
+              sudo systemctl restart billage
+              echo "↩️ 이전 jar 로 롤백 완료"
+            else
+              echo "⚠️ 롤백할 이전 jar 없음"
+            fi
+            sudo journalctl -u billage -n 50 --no-pager
+            exit 1

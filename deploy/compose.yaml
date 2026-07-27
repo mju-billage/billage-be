@@ -7,6 +7,8 @@ services:
     image: mysql:8.4
     container_name: billage-mysql
     restart: always
+    # 1GB RAM 서버에서 MySQL 이 부풀어 OOM 나지 않도록 상한을 건다.
+    mem_limit: 360m
     ports:
       - "127.0.0.1:3306:3306"
     environment:
@@ -20,6 +22,8 @@ services:
       - --collation-server=utf8mb4_unicode_ci
       # 1GB RAM 환경이라 버퍼풀을 작게 잡는다.
       - --innodb-buffer-pool-size=128M
+      # 메모리 절약: performance_schema 비활성화(수백 MB 절감)
+      - --performance-schema=OFF
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 10s
