@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # EC2(Ubuntu 24.04) 최초 1회 실행. 서버에 SSH 접속 후 아래처럼 실행:
-#   scp deploy/* ubuntu@52.79.226.129:/tmp/deploy/    (또는 git clone)
+#   scp deploy/* ubuntu@52.78.148.114:/tmp/deploy/    (또는 git clone)
 #   sudo bash /tmp/deploy/bootstrap.sh
 #
 # 하는 일: 스왑 생성, JRE21/Docker/Caddy 설치, billage 유저·디렉터리 생성,

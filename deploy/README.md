@@ -48,10 +48,10 @@ AWS 콘솔 → EC2 → **인스턴스 시작**
 
 ```bash
 # 로컬
-scp -i billage.pem -r deploy ubuntu@52.79.226.129:/tmp/
+scp -i billage.pem -r deploy ubuntu@52.78.148.114:/tmp/
 
 # 서버
-ssh -i billage.pem ubuntu@52.79.226.129
+ssh -i billage.pem ubuntu@52.78.148.114
 sudo bash /tmp/deploy/bootstrap.sh
 ```
 
@@ -60,7 +60,7 @@ sudo bash /tmp/deploy/bootstrap.sh
 ```bash
 sudo nano /etc/billage/mysql.env     # MYSQL_PASSWORD / MYSQL_ROOT_PASSWORD
 sudo nano /etc/billage/billage.env   # DB_PASSWORD = MYSQL_PASSWORD 와 동일하게
-sudo nano /etc/caddy/caddy.env       # SITE_ADDRESS = <IP의 .을 -로>.nip.io  예) 52-79-226-129.nip.io
+sudo nano /etc/caddy/caddy.env       # SITE_ADDRESS = <IP의 .을 -로>.nip.io  예) 52-78-148-114.nip.io
 
 # MySQL 기동
 cd /opt/billage && sudo docker compose --env-file /etc/billage/mysql.env up -d
@@ -146,11 +146,11 @@ sudo /opt/billage/restore-db.sh /var/backups/billage/billage-YYYYmmdd-HHMMSS.sql
 sudo systemctl restart billage
 ```
 
-**S3 오프사이트(권장)**: 로컬 백업은 인스턴스/볼륨 유실 시 함께 사라지므로 S3 로 내보낸다.
-1) S3 버킷 생성 (`ap-northeast-2`, 예: `billage-db-backup`, 퍼블릭 액세스 차단 유지)
-2) IAM 역할 생성 → `s3:PutObject` 를 `arn:aws:s3:::billage-db-backup/mysql/*` 에만 허용 → EC2 인스턴스에 연결
-3) 서버에 aws cli 설치 후 `/etc/billage/backup.env` 에 `S3_BUCKET=billage-db-backup` 추가.
-   `backup-db.sh` 가 S3_BUCKET 감지 시 자동 업로드. (버킷 수명주기로 30일 후 자동 삭제 권장)
+**S3 오프사이트(적용됨)**: 로컬 + S3 이중 보관.
+- 버킷: `s3://billage-db-backup-442908904609/mysql/` (`ap-northeast-2`, 퍼블릭 차단, SSE-S3, 수명주기 30일 자동삭제)
+- 인증: EC2 인스턴스 프로파일 `billage-backup-profile`(역할 `billage-backup-role`, 버킷에 `s3:PutObject`만) — **서버에 액세스 키 저장 없음**
+- 서버 `/etc/billage/backup.env` 에 `S3_BUCKET=billage-db-backup-442908904609` 설정됨 → `backup-db.sh` 가 자동 업로드
+- 복구 시 다운로드: `aws s3 cp s3://billage-db-backup-442908904609/mysql/<파일> .` 후 `restore-db.sh`
 
 ## 도메인이 생기면
 
@@ -160,6 +160,7 @@ DNS A 레코드를 EC2 IP 로 지정 → `sudo systemctl restart caddy`. 인증�
 ## 남은 이슈 (이후 별도 작업)
 
 - prod 서버·prod 배포 워크플로 (release tag 트리거) — 런칭 시점에 추가
-- 탄력적 IP(Elastic IP) 할당 — 재시작 시 IP 고정 (실행 중 인스턴스 연결 시 무료)
 - 외부 헬스 모니터링/알림(예: UptimeRobot 무료) + journald `SystemMaxUse` 로그 상한
+- (완료) 탄력적 IP 고정: `52.78.148.114` (`eipalloc-0729d7cf8da598b2a`) — 인스턴스에서 분리해 방치 금지
+- (완료) S3 오프사이트 DB 백업
 - Spring Security 설정이 아직 없어 현재는 기본 인증(모든 요청 401)일 수 있음 → auth 도메인 구현 후 permitAll 범위 조정 필요
