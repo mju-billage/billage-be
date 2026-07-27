@@ -1,0 +1,20 @@
+# Billage dev API - Caddy reverse proxy + 자동 HTTPS
+#
+# {$SITE_ADDRESS} 는 /etc/caddy/caddy.env 의 환경변수로 주입한다.
+# 예) SITE_ADDRESS=52-78-148-114.nip.io   (EC2 퍼블릭 IP의 . 을 - 로 바꾼 값)
+# 도메인이 생기면 이 값만 dev-api.내도메인.com 으로 바꾸면 된다.
+#
+# nip.io 는 IP로 자동 해석되므로 Let's Encrypt HTTP-01 챌린지가 통과된다.
+# (보안그룹에서 80/443 인바운드 열려 있어야 함)
+
+{$SITE_ADDRESS} {
+	encode gzip
+
+	# Spring Boot(systemd)로 프록시. 앱은 8080 로컬만 리슨.
+	reverse_proxy 127.0.0.1:8080
+
+	log {
+		output file /var/log/caddy/billage.log
+		format json
+	}
+}

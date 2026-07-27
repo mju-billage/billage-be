@@ -38,3 +38,7 @@ out/
 
 ### Claude Code ###
 .claude/settings.local.json
+
+### Billage deploy secrets ###
+deploy/*.env
+!deploy/*.env.example

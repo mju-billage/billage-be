@@ -1,0 +1,91 @@
+name: Deploy to Dev
+
+# develop 브랜치 push 시 자동 배포 + 수동 실행 가능
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+
+      # 테스트는 Testcontainers(MySQL)가 필요해 별도 CI에서 돌린다.
+      # 배포 파이프라인은 실행 가능한 jar 생성까지만 책임진다.
+      - name: Build bootJar
+        run: ./gradlew clean bootJar --no-daemon
+
+      - name: Copy jar to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: build/libs/*-SNAPSHOT.jar
+          target: /tmp/billage
+          strip_components: 2
+
+      - name: Restart service
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            # 1) 현재 jar 를 롤백용으로 보관 후 새 jar 배치
+            if [ -f /opt/billage/billage.jar ]; then
+              sudo cp /opt/billage/billage.jar /opt/billage/billage.jar.prev
+            fi
+            sudo mv /tmp/billage/*.jar /opt/billage/billage.jar
+            sudo systemctl restart billage
+
+            # 헬스 폴링 함수: 전체 40초 데드라인(벽시계) 기준. 각 curl 도 타임아웃으로 무한대기 방지.
+            #    2xx/3xx = 성공(현재 전 엔드포인트 permitAll 이라 200), 000(무응답)·5xx = 실패.
+            wait_health() {
+              local deadline=$(( $(date +%s) + 40 ))
+              while [ "$(date +%s)" -lt "$deadline" ]; do
+                code=$(curl -s -o /dev/null -w '%{http_code}' \
+                  --connect-timeout 3 --max-time 5 \
+                  http://127.0.0.1:8080/actuator/health || true)
+                case "$code" in 2*|3*) return 0 ;; esac
+                [ "$(date +%s)" -lt "$deadline" ] && sleep 2
+              done
+              return 1
+            }
+
+            # 2) 새 jar 기동 확인
+            if wait_health; then
+              echo "✅ billage up (HTTP $code)"; exit 0
+            fi
+
+            # 3) 실패 시 이전 jar 로 롤백 + 롤백본도 헬스 재확인
+            echo "❌ health check 실패 (last HTTP='$code') — 이전 jar 로 롤백"
+            if [ -f /opt/billage/billage.jar.prev ]; then
+              sudo mv /opt/billage/billage.jar.prev /opt/billage/billage.jar
+              sudo systemctl restart billage
+              if wait_health; then
+                echo "↩️ 이전 jar 로 롤백 완료 (HTTP $code)"
+              else
+                echo "🔥 롤백 후에도 비정상 (last HTTP='$code') — 수동 확인 필요"
+              fi
+            else
+              echo "⚠️ 롤백할 이전 jar 없음"
+            fi
+            sudo journalctl -u billage -n 50 --no-pager
+            exit 1
