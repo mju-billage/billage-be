@@ -129,6 +129,29 @@ sudo journalctl -u caddy -f
 sudo systemctl restart caddy
 ```
 
+## DB 백업 / 복구 (운영)
+
+매일 03:30 KST 에 `billage` DB 를 `mysqldump` → gzip → `/var/backups/billage/` 저장, 14일 로컬 보관.
+설치는 서버에서 1회: `sudo bash /tmp/deploy/install-backup.sh` (cron `/etc/cron.d/billage-backup` 등록).
+
+```bash
+# 수동 백업 즉시 실행
+sudo /opt/billage/backup-db.sh
+# 백업 로그 / 보관본
+sudo tail -f /var/log/billage-backup.log
+ls -lt /var/backups/billage/
+
+# 복구 (기존 데이터 덮어씀 — yes 확인 필요)
+sudo /opt/billage/restore-db.sh /var/backups/billage/billage-YYYYmmdd-HHMMSS.sql.gz
+sudo systemctl restart billage
+```
+
+**S3 오프사이트(권장)**: 로컬 백업은 인스턴스/볼륨 유실 시 함께 사라지므로 S3 로 내보낸다.
+1) S3 버킷 생성 (`ap-northeast-2`, 예: `billage-db-backup`, 퍼블릭 액세스 차단 유지)
+2) IAM 역할 생성 → `s3:PutObject` 를 `arn:aws:s3:::billage-db-backup/mysql/*` 에만 허용 → EC2 인스턴스에 연결
+3) 서버에 aws cli 설치 후 `/etc/billage/backup.env` 에 `S3_BUCKET=billage-db-backup` 추가.
+   `backup-db.sh` 가 S3_BUCKET 감지 시 자동 업로드. (버킷 수명주기로 30일 후 자동 삭제 권장)
+
 ## 도메인이 생기면
 
 `sudo nano /etc/caddy/caddy.env` 에서 `SITE_ADDRESS` 를 `dev-api.내도메인.com` 으로 바꾸고
@@ -137,5 +160,6 @@ DNS A 레코드를 EC2 IP 로 지정 → `sudo systemctl restart caddy`. 인증�
 ## 남은 이슈 (이후 별도 작업)
 
 - prod 서버·prod 배포 워크플로 (release tag 트리거) — 런칭 시점에 추가
-- MySQL 덤프 → S3 정기 백업 (cron) — file 도메인 붙일 때 같이
+- 탄력적 IP(Elastic IP) 할당 — 재시작 시 IP 고정 (실행 중 인스턴스 연결 시 무료)
+- 외부 헬스 모니터링/알림(예: UptimeRobot 무료) + journald `SystemMaxUse` 로그 상한
 - Spring Security 설정이 아직 없어 현재는 기본 인증(모든 요청 401)일 수 있음 → auth 도메인 구현 후 permitAll 범위 조정 필요
