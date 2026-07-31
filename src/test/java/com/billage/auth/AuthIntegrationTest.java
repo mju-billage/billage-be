@@ -107,6 +107,8 @@ class AuthIntegrationTest extends IntegrationTest {
 		Response response = http.get("/api/v1/auth/me", "not-a-real-jwt");
 
 		assertThat(response.status()).isEqualTo(401);
+		// 리소스 서버가 자체 EntryPoint 를 쓰더라도 공통 에러 형식이 유지되어야 한다
+		assertThat(response.at("code")).isEqualTo("UNAUTHORIZED");
 	}
 
 	// --- 재발급 ---

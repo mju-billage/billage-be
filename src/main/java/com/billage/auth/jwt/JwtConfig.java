@@ -35,8 +35,16 @@ public class JwtConfig {
 		this.properties = properties;
 	}
 
+	/** HS256은 최소 256비트(32바이트) 키를 요구한다. 짧은 키는 기동 시점에 명확히 실패시킨다. */
+	private static final int MIN_SECRET_BYTES = 32;
+
 	private SecretKey secretKey() {
 		byte[] keyBytes = properties.secret().getBytes(StandardCharsets.UTF_8);
+		if (keyBytes.length < MIN_SECRET_BYTES) {
+			throw new IllegalStateException(
+					"jwt.secret 은 HS256 서명을 위해 최소 " + MIN_SECRET_BYTES + "바이트여야 합니다. (현재 "
+							+ keyBytes.length + "바이트)");
+		}
 		return new SecretKeySpec(keyBytes, "HmacSHA256");
 	}
 

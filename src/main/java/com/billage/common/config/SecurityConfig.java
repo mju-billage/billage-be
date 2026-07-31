@@ -43,8 +43,12 @@ public class SecurityConfig {
 								"/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**",
 								"/actuator/health/**").permitAll()
 						.anyRequest().authenticated())
-				// Bearer JWT 리소스 서버 방식 인증
-				.oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.decoder(jwtDecoder)))
+				// Bearer JWT 리소스 서버 방식 인증.
+				// BearerTokenAuthenticationFilter 는 전역 exceptionHandling 과 별개로 자체 EntryPoint 를
+				// 사용하므로, 잘못된/만료 토큰도 공통 에러 형식으로 응답하도록 여기서 직접 지정한다.
+				.oauth2ResourceServer(oauth2 -> oauth2
+						.authenticationEntryPoint(authenticationEntryPoint)
+						.jwt(jwt -> jwt.decoder(jwtDecoder)))
 				// 401/403을 공통 에러 형식으로 통일
 				.exceptionHandling(handling -> handling
 						.authenticationEntryPoint(authenticationEntryPoint)

@@ -3,6 +3,11 @@ spring:
     name: billage-server
   profiles:
     default: local
+  datasource:
+    hikari:
+      # MySQL 은 jakarta.persistence.lock.timeout 힌트를 무시하므로 세션 수준에서 락 대기 시간을 제한한다.
+      # 비관적 락(재발급/로그아웃) 경합 시 기본 50초 동안 스레드를 점유해 풀이 고갈되는 것을 방지.
+      connection-init-sql: SET SESSION innodb_lock_wait_timeout = 5
   jpa:
     open-in-view: false
     hibernate:

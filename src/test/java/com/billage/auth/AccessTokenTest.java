@@ -39,7 +39,11 @@ class AccessTokenTest extends IntegrationTest {
 	@Test
 	void 위조된_토큰은_검증에_실패한다() {
 		String token = jwtTokenProvider.createAccessToken(1L);
-		String tampered = token.substring(0, token.length() - 2) + (token.endsWith("a") ? "b" : "a") + "c";
+		// header.payload.signature 중 payload 세그먼트를 한 글자 바꾼다 → 서명 불일치로 항상 검출
+		String[] parts = token.split("\\.");
+		char[] payload = parts[1].toCharArray();
+		payload[0] = payload[0] == 'A' ? 'B' : 'A';
+		String tampered = parts[0] + "." + new String(payload) + "." + parts[2];
 
 		assertThatThrownBy(() -> jwtDecoder.decode(tampered))
 				.isInstanceOf(JwtException.class);
