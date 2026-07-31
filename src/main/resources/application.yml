@@ -1,3 +1,7 @@
+server:
+  # HTTPS 리버스 프록시(Caddy) 뒤에서 X-Forwarded-* 헤더를 존중 → Swagger/링크가 https·정상 호스트로 생성
+  forward-headers-strategy: framework
+
 spring:
   application:
     name: billage-server
@@ -52,6 +56,13 @@ spring:
     url: ${DB_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
+
+# dev(배포) 서버에서 Swagger 노출 — 배포 서버 API 확인·테스트용
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
 
 ---
 spring:
