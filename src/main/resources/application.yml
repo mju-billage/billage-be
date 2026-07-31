@@ -17,6 +17,13 @@ springdoc:
   swagger-ui:
     path: /swagger-ui.html
 
+jwt:
+  issuer: billage-api
+  audience: billage-app
+  secret: ${JWT_SECRET}
+  access-token-validity: ${JWT_ACCESS_TOKEN_VALIDITY:30m}
+  refresh-token-validity: ${JWT_REFRESH_TOKEN_VALIDITY:14d}
+
 ---
 spring:
   config:
@@ -26,6 +33,10 @@ spring:
     url: jdbc:mysql://localhost:3307/billage?connectionTimeZone=Asia/Seoul&characterEncoding=UTF-8
     username: billage
     password: billage
+
+# 로컬 개발 전용 기본 비밀키(운영에서는 반드시 JWT_SECRET 환경변수로 주입). HS256 → 최소 32바이트.
+jwt:
+  secret: ${JWT_SECRET:local-dev-only-billage-jwt-secret-please-change-32bytes+}
 
 ---
 spring:
