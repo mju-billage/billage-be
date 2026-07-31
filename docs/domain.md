@@ -19,7 +19,10 @@ DuesPayment 0..1 ─ 1 LedgerEntry (납부 확인 → 장부 수입 연결)
 ## 엔티티
 
 ### User
-- 서비스 가입 계정. 이메일 로그인부터 구현. 비밀번호 BCrypt.
+- 서비스 가입 계정. 이메일/비밀번호(BCrypt) 또는 소셜 로그인(구글·카카오)으로 생성. 소셜 전용 계정은 비밀번호 없음.
+
+### SocialAccount
+- User와 소셜 Provider 연결. 한 User가 구글·카카오 모두 연결 가능. `(provider, providerUserId)` 유일.
 
 ### GroupSpace
 - 하나의 동아리/모임. `Group`은 Java/SQL 충돌 위험 → 엔티티명 `GroupSpace`, API는 `/groups`.
@@ -76,5 +79,16 @@ DuesPayment 0..1 ─ 1 LedgerEntry (납부 확인 → 장부 수입 연결)
 ## 인증
 
 - Access Token = JWT / Refresh Token = DB 저장, 재발급 시 회전 + 이전 토큰 폐기, 로그아웃 시 폐기.
-- 초기엔 이메일 회원가입·로그인만. 소셜 로그인은 정책 확정 후 Provider 추가.
 - 인증 기능을 다른 도메인 엔티티에 강하게 결합하지 않는다.
+
+### 간편 로그인(구글·카카오)
+
+- 클라이언트(RN 앱)가 각 Provider SDK로 로그인해 얻은 토큰(구글 ID Token, 카카오 Access Token)만 백엔드로 전달 —
+  백엔드는 OAuth Authorization Code Flow를 직접 처리하지 않는다.
+- `POST /api/v1/auth/social/login`: `(provider, providerUserId)`로 연결된 계정이 있으면 즉시 로그인.
+  없으면(최초 로그인) 토큰만 저장하지 않고 이메일만 응답해 클라이언트가 약관 동의·이름 입력 화면으로 이동하게 한다.
+- `POST /api/v1/auth/social/signup`: 약관 동의 + 이름을 받아 가입을 완료하고 즉시 로그인 처리.
+  Provider 토큰을 재검증하며(상태를 서버에 보관하지 않음), 같은 이메일의 계정이 이미 있으면 새로 만들지 않고 거기에 연결한다
+  (Provider가 이메일 소유를 검증했으므로 안전하다고 간주).
+- 약관 동의는 버전 이력 없이 `User.termsAgreedAt` 시각만 기록(초기 단순화, 약관 개정 이력 추적 필요해지면 별도 테이블로 분리).
+- 이메일/비밀번호 로그인은 당분간 함께 유지.
