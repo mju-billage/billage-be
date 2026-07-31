@@ -1,6 +1,7 @@
 package com.billage.auth.social;
 
 import java.util.Map;
+import java.util.Objects;
 
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -18,7 +19,7 @@ class GoogleTokenVerifier implements SocialTokenVerifier {
 
 	private static final String TOKENINFO_URL = "https://oauth2.googleapis.com/tokeninfo?id_token={idToken}";
 
-	private final RestClient restClient = RestClient.create();
+	private final RestClient restClient = SocialHttpClient.create();
 	private final SocialAuthProperties properties;
 
 	GoogleTokenVerifier(SocialAuthProperties properties) {
@@ -43,7 +44,7 @@ class GoogleTokenVerifier implements SocialTokenVerifier {
 			throw new BusinessException(ErrorCode.SOCIAL_TOKEN_INVALID);
 		}
 
-		if (payload == null || !properties.clientId().equals(payload.get("aud"))
+		if (payload == null || !Objects.equals(properties.clientId(), payload.get("aud"))
 				|| !"true".equals(String.valueOf(payload.get("email_verified")))) {
 			throw new BusinessException(ErrorCode.SOCIAL_TOKEN_INVALID);
 		}

@@ -17,7 +17,7 @@ class KakaoTokenVerifier implements SocialTokenVerifier {
 
 	private static final String USER_ME_URL = "https://kapi.kakao.com/v2/user/me";
 
-	private final RestClient restClient = RestClient.create();
+	private final RestClient restClient = SocialHttpClient.create();
 
 	private record KakaoAccount(String email, @JsonProperty("is_email_verified") boolean emailVerified) {
 	}

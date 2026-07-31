@@ -67,6 +67,16 @@ public class User {
 		return new User(email, null, name, termsAgreedAt);
 	}
 
+	/**
+	 * 약관 동의 시각을 기록한다. 이미 동의 기록이 있으면 유지한다
+	 * (예: 이메일로 먼저 가입한 계정에 소셜 계정을 처음 연결하는 시점에 최초 기록됨).
+	 */
+	public void agreeToTermsIfNeeded(LocalDateTime at) {
+		if (this.termsAgreedAt == null) {
+			this.termsAgreedAt = at;
+		}
+	}
+
 	@PrePersist
 	void onCreate() {
 		LocalDateTime now = LocalDateTime.now();

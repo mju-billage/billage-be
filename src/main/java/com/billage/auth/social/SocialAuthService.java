@@ -1,6 +1,5 @@
 package com.billage.auth.social;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.dao.DataIntegrityViolationException;
@@ -13,7 +12,6 @@ import com.billage.auth.dto.SocialLoginResponse;
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
 import com.billage.user.User;
-import com.billage.user.UserRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -28,7 +26,7 @@ public class SocialAuthService {
 
 	private final List<SocialTokenVerifier> verifiers;
 	private final SocialAccountRepository socialAccountRepository;
-	private final UserRepository userRepository;
+	private final SocialAccountRegistrar registrar;
 	private final AuthService authService;
 
 	@Transactional
@@ -55,13 +53,13 @@ public class SocialAuthService {
 
 	/**
 	 * 동시에 들어온 중복 요청이 먼저 계정을 만들면 UNIQUE 제약(social_accounts, users.email)에 걸린다.
-	 * 이때 새로 만들지 않고 그 계정으로 로그인 처리해 idempotent하게 응답한다.
+	 * 계정 생성은 {@link SocialAccountRegistrar}의 별도 트랜잭션에서 수행하므로, 여기서 충돌을 잡아도
+	 * 이 메서드의 트랜잭션은 rollback-only로 오염되지 않는다. 새로 만들지 않고 먼저 생성된 계정으로
+	 * 로그인 처리해 idempotent하게 응답한다.
 	 */
 	private LoginResponse createAccountAndLogin(SocialProvider provider, OAuthUserInfo info, String name) {
 		try {
-			User user = userRepository.findByEmail(info.email())
-					.orElseGet(() -> userRepository.save(User.createSocial(info.email(), name, LocalDateTime.now())));
-			socialAccountRepository.save(SocialAccount.link(user, provider, info.providerUserId(), info.email()));
+			User user = registrar.register(provider, info, name);
 			return authService.issueLoginTokens(user);
 		} catch (DataIntegrityViolationException e) {
 			return socialAccountRepository.findByProviderAndProviderUserId(provider, info.providerUserId())
