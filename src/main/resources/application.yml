@@ -1,8 +1,17 @@
+server:
+  # HTTPS 리버스 프록시(Caddy) 뒤에서 X-Forwarded-* 헤더를 존중 → Swagger/링크가 https·정상 호스트로 생성
+  forward-headers-strategy: framework
+
 spring:
   application:
     name: billage-server
   profiles:
     default: local
+  datasource:
+    hikari:
+      # MySQL 은 jakarta.persistence.lock.timeout 힌트를 무시하므로 세션 수준에서 락 대기 시간을 제한한다.
+      # 비관적 락(재발급/로그아웃) 경합 시 기본 50초 동안 스레드를 점유해 풀이 고갈되는 것을 방지.
+      connection-init-sql: SET SESSION innodb_lock_wait_timeout = 5
   jpa:
     open-in-view: false
     hibernate:
@@ -17,6 +26,13 @@ springdoc:
   swagger-ui:
     path: /swagger-ui.html
 
+jwt:
+  issuer: billage-api
+  audience: billage-app
+  secret: ${JWT_SECRET}
+  access-token-validity: ${JWT_ACCESS_TOKEN_VALIDITY:30m}
+  refresh-token-validity: ${JWT_REFRESH_TOKEN_VALIDITY:14d}
+
 ---
 spring:
   config:
@@ -27,6 +43,10 @@ spring:
     username: billage
     password: billage
 
+# 로컬 개발 전용 기본 비밀키(운영에서는 반드시 JWT_SECRET 환경변수로 주입). HS256 → 최소 32바이트.
+jwt:
+  secret: ${JWT_SECRET:local-dev-only-billage-jwt-secret-please-change-32bytes+}
+
 ---
 spring:
   config:
@@ -36,6 +56,13 @@ spring:
     url: ${DB_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
+
+# dev(배포) 서버에서 Swagger 노출 — 배포 서버 API 확인·테스트용
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
 
 ---
 spring:

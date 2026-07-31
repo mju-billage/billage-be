@@ -1,10 +1,10 @@
 package com.billage;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootTest
-class BillageApplicationTests {
+import com.billage.support.IntegrationTest;
+
+class BillageApplicationTests extends IntegrationTest {
 
 	@Test
 	void contextLoads() {
