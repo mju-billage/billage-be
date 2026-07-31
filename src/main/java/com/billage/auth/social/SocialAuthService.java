@@ -54,18 +54,27 @@ public class SocialAuthService {
 	/**
 	 * 동시에 들어온 중복 요청이 먼저 계정을 만들면 UNIQUE 제약(social_accounts, users.email)에 걸린다.
 	 * 계정 생성은 {@link SocialAccountRegistrar}의 별도 트랜잭션에서 수행하므로, 여기서 충돌을 잡아도
-	 * 이 메서드의 트랜잭션은 rollback-only로 오염되지 않는다. 새로 만들지 않고 먼저 생성된 계정으로
-	 * 로그인 처리해 idempotent하게 응답한다.
+	 * 이 메서드의 트랜잭션은 rollback-only로 오염되지 않는다.
 	 */
 	private LoginResponse createAccountAndLogin(SocialProvider provider, OAuthUserInfo info, String name) {
 		try {
 			User user = registrar.register(provider, info, name);
 			return authService.issueLoginTokens(user);
 		} catch (DataIntegrityViolationException e) {
-			return socialAccountRepository.findByProviderAndProviderUserId(provider, info.providerUserId())
-					.map(account -> authService.issueLoginTokens(account.getUser()))
-					.orElseThrow(() -> e);
+			return recoverFromConflict(provider, info, name);
 		}
+	}
+
+	/**
+	 * 충돌 원인이 두 가지라 복구 방법이 다르다.
+	 * - 같은 (provider, providerUserId) 중복 요청 → 먼저 커밋된 그 계정으로 로그인.
+	 * - 다른 Provider가 같은 이메일로 먼저 User를 만든 경우(users.email 충돌) → User는 이미 커밋되어 있으므로
+	 *   {@link SocialAccountRegistrar#register}를 재시도하면 이번 Provider 연결만 추가로 만들어진다.
+	 */
+	private LoginResponse recoverFromConflict(SocialProvider provider, OAuthUserInfo info, String name) {
+		return socialAccountRepository.findByProviderAndProviderUserId(provider, info.providerUserId())
+				.map(account -> authService.issueLoginTokens(account.getUser()))
+				.orElseGet(() -> authService.issueLoginTokens(registrar.register(provider, info, name)));
 	}
 
 	private OAuthUserInfo verify(SocialProvider provider, String token) {
