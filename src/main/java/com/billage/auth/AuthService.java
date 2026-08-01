@@ -45,10 +45,19 @@ public class AuthService {
 	public LoginResponse login(String email, String rawPassword) {
 		User user = userRepository.findByEmail(email)
 				.orElseThrow(() -> new BusinessException(ErrorCode.INVALID_CREDENTIALS));
-		if (!passwordEncoder.matches(rawPassword, user.getPassword())) {
+		// 소셜 전용 계정은 비밀번호가 없다 — matches()에 null을 넘기면 예외가 나므로 먼저 걸러낸다.
+		if (user.getPassword() == null || !passwordEncoder.matches(rawPassword, user.getPassword())) {
 			throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
 		}
 
+		return issueLoginTokens(user);
+	}
+
+	/**
+	 * 새 로그인 세션의 토큰 쌍을 발급한다. 이메일 로그인·소셜 로그인이 공통으로 사용한다.
+	 */
+	@Transactional
+	public LoginResponse issueLoginTokens(User user) {
 		String familyId = UUID.randomUUID().toString();
 		IssuedRefreshToken issued = issueRefreshToken(user, familyId, null, LocalDateTime.now());
 		String accessToken = jwtTokenProvider.createAccessToken(user.getId());
