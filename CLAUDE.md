@@ -18,14 +18,15 @@ Java 21 · Spring Boot 4.1.0 · Gradle Groovy · Spring MVC/Data JPA/Security ·
 ## 아키텍처
 
 모듈형 모놀리스, 기능 중심 패키지: `com.billage` 아래
-`common / auth / user / group / member / ledger / entry / budget / dues / report / file`
+`common / auth / user / group / member / ledger / entry / fee / report / file`
+(`group` = Group·GroupManager·초대코드·권한, `member` = GroupMember, `ledger` = Ledger·Folder, `entry` = Transaction, `fee` = Fee·FeeMember. 이전의 `budget`/`dues`는 런칭 범위에서 제외/개명됨.)
 
 각 도메인은 Controller → Service → Repository + Entity/DTO 단순 계층. 인터페이스 분리는 외부 저장소나 복잡한 정책이 있을 때만. 엔티티를 Controller 응답으로 직접 반환 금지.
 
 ## 절대 규칙 (모든 작업에 적용)
 
-1. **소유권 검증**: 모든 모임 리소스 접근 시 리소스 ID 조회만으로 반환하지 말고, 요청자의 GroupMember 소속·역할(OWNER/TREASURER/MEMBER)을 Service 계층에서 반드시 확인.
-2. **재무 데이터 불변성**: 승인(APPROVED)된 내역은 직접 수정·물리 삭제 금지 — 취소(CANCELED) 처리 또는 새 버전 생성. 잔액은 저장하지 않고 `승인된 수입 합계 - 승인된 지출 합계`로 계산.
+1. **소유권 검증**: 모든 모임 리소스 접근 시 리소스 ID 조회만으로 반환하지 말고, 요청자의 **GroupManager 소속·역할(OWNER/GENERAL)**을 Service 계층에서 반드시 확인. 권한 주체는 로그인 사용자↔모임 관계인 `GroupManager`이며, `GroupMember`(모임원 명단)는 권한과 무관하다.
+2. **재무 데이터 불변성**: 승인(APPROVED)된 내역도 물리 삭제 금지 — 소프트 삭제(`deletedAt`) 후 복원 가능하게 처리한다. 잔액은 저장하지 않고 `승인된 수입 합계 - 승인된 지출 합계`로 계산(삭제된 내역 제외).
 3. **스키마는 Flyway로만** 변경. `ddl-auto=validate` 고정.
 4. `open-in-view=false`, 연관관계 기본 LAZY, DTO는 Service 트랜잭션 안에서 완성.
 5. 금액은 원화 `BIGINT`, 항상 양수, `type`(INCOME/EXPENSE)으로 구분.

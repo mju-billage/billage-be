@@ -4,6 +4,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.List;
 import java.util.Map;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -33,20 +34,45 @@ public class HttpTestClient {
 		}
 	}
 
+	/** JSON 배열을 반환하는 목록 API용 응답. */
+	public record ListResponse(int status, List<Map<String, Object>> body) {
+	}
+
 	public Response postJson(String path, Map<String, ?> body) {
-		return send(request(path).POST(jsonBody(body)).header("Content-Type", "application/json"));
+		return postJson(path, body, null);
+	}
+
+	public Response postJson(String path, Map<String, ?> body, String bearerToken) {
+		return send(authorize(request(path), bearerToken)
+				.POST(jsonBody(body)).header("Content-Type", "application/json"));
 	}
 
 	public Response get(String path, String bearerToken) {
-		HttpRequest.Builder builder = request(path).GET();
-		if (bearerToken != null) {
-			builder.header("Authorization", "Bearer " + bearerToken);
+		return send(authorize(request(path), bearerToken).GET());
+	}
+
+	/** 목록 API 조회. 응답 본문이 JSON 배열이라 {@link #get}의 Map 파싱을 쓸 수 없다. */
+	@SuppressWarnings("unchecked")
+	public ListResponse getList(String path, String bearerToken) {
+		try {
+			HttpResponse<String> response = client.send(
+					authorize(request(path), bearerToken).GET().build(),
+					HttpResponse.BodyHandlers.ofString());
+			List<Map<String, Object>> body = (response.body() == null || response.body().isBlank())
+					? List.of()
+					: objectMapper.readValue(response.body(), List.class);
+			return new ListResponse(response.statusCode(), body);
+		} catch (Exception e) {
+			throw new RuntimeException(e);
 		}
-		return send(builder);
 	}
 
 	private HttpRequest.Builder request(String path) {
 		return HttpRequest.newBuilder(URI.create(baseUrl + path)).header("Accept", "application/json");
+	}
+
+	private HttpRequest.Builder authorize(HttpRequest.Builder builder, String bearerToken) {
+		return bearerToken == null ? builder : builder.header("Authorization", "Bearer " + bearerToken);
 	}
 
 	private HttpRequest.BodyPublisher jsonBody(Map<String, ?> body) {
