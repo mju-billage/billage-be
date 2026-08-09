@@ -1,10 +1,16 @@
 package com.billage.support;
 
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -50,20 +56,56 @@ public abstract class IntegrationTest {
 	 * 각 테스트 클래스가 삭제 순서를 직접 관리하면 도메인이 늘 때마다 FK 위반이 생기므로
 	 * (예: group_managers가 users를 참조) 여기서 한 번에 정리한다.
 	 * JUnit 5는 상위 클래스의 {@code @BeforeEach}를 먼저 실행하므로 하위 클래스 픽스처 생성보다 앞선다.
+	 * <p>
+	 * 테이블 조회, FK 체크 비활성화, truncate, FK 체크 재활성화를 단일 연결에서 수행하여
+	 * 커넥션 풀 환경에서도 일관성을 보장한다.
 	 */
 	@BeforeEach
 	void cleanDatabase() {
-		List<String> tables = jdbcTemplate.queryForList(
-				"select table_name from information_schema.tables"
-						+ " where table_schema = database() and table_type = 'BASE TABLE'",
-				String.class);
-		jdbcTemplate.execute("set foreign_key_checks = 0");
-		try {
-			tables.stream()
-					.filter(table -> !FLYWAY_HISTORY_TABLE.equals(table))
-					.forEach(table -> jdbcTemplate.execute("truncate table `" + table + "`"));
-		} finally {
-			jdbcTemplate.execute("set foreign_key_checks = 1");
+		jdbcTemplate.execute((ConnectionCallback<Void>) connection -> {
+			List<String> tables = readTableNames(connection);
+			try {
+				disableForeignKeyChecks(connection);
+				truncateTables(connection, tables);
+			} finally {
+				enableForeignKeyChecks(connection);
+			}
+			return null;
+		});
+	}
+
+	private List<String> readTableNames(Connection connection) throws SQLException {
+		List<String> tables = new ArrayList<>();
+		try (Statement stmt = connection.createStatement();
+			 ResultSet rs = stmt.executeQuery(
+					 "select table_name from information_schema.tables"
+							 + " where table_schema = database() and table_type = 'BASE TABLE'")) {
+			while (rs.next()) {
+				tables.add(rs.getString(1));
+			}
+		}
+		return tables;
+	}
+
+	private void disableForeignKeyChecks(Connection connection) throws SQLException {
+		try (Statement stmt = connection.createStatement()) {
+			stmt.execute("set foreign_key_checks = 0");
+		}
+	}
+
+	private void truncateTables(Connection connection, List<String> tables) throws SQLException {
+		try (Statement stmt = connection.createStatement()) {
+			for (String table : tables) {
+				if (!FLYWAY_HISTORY_TABLE.equals(table)) {
+					stmt.execute("truncate table `" + table + "`");
+				}
+			}
+		}
+	}
+
+	private void enableForeignKeyChecks(Connection connection) throws SQLException {
+		try (Statement stmt = connection.createStatement()) {
+			stmt.execute("set foreign_key_checks = 1");
 		}
 	}
 }

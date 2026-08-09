@@ -31,18 +31,28 @@ public class GroupService {
 	private final GroupRepository groupRepository;
 	private final GroupManagerRepository groupManagerRepository;
 	private final GroupAccessGuard groupAccessGuard;
-	private final InviteCodeGenerator inviteCodeGenerator;
+	private final GroupInviteCodeIssuer inviteCodeIssuer;
 	private final UserRepository userRepository;
 
 	/**
 	 * 모임 생성. 생성자는 OWNER 관리자로 등록된다.
 	 * 모임원(GroupMember)은 자동 생성하지 않는다 — 총무가 [모임원 추가]로 별도 등록한다.
+	 * <p>
+	 * 초대 코드 UNIQUE 제약 위반 시 별도 트랜잭션({@link GroupInviteCodeIssuer})에서 재시도한다.
 	 */
-	@Transactional
 	public GroupResponse createGroup(Long userId, String name) {
-		Group group = groupRepository.save(Group.create(name, generateUniqueInviteCode()));
-		groupManagerRepository.save(GroupManager.owner(group, userId));
-		return GroupResponse.of(group, ManagerRole.OWNER);
+		for (int attempt = 0; attempt < INVITE_CODE_MAX_ATTEMPTS; attempt++) {
+			try {
+				Group group = inviteCodeIssuer.createGroupWithOwner(name, userId);
+				return GroupResponse.of(group, ManagerRole.OWNER);
+			} catch (DataIntegrityViolationException e) {
+				// 초대 코드 중복 — 새 트랜잭션에서 재시도한다
+				if (attempt == INVITE_CODE_MAX_ATTEMPTS - 1) {
+					throw new BusinessException(ErrorCode.INTERNAL_ERROR, "초대 코드 생성에 실패했습니다. 다시 시도해 주세요.");
+				}
+			}
+		}
+		throw new BusinessException(ErrorCode.INTERNAL_ERROR, "초대 코드 생성에 실패했습니다. 다시 시도해 주세요.");
 	}
 
 	/** "내 모임" 목록. GroupManager로 연결된 모임만 조회한다. */
@@ -66,13 +76,18 @@ public class GroupService {
 	 */
 	@Transactional
 	public GroupResponse joinByInviteCode(Long userId, String rawInviteCode) {
-		Group group = groupRepository.findByInviteCode(normalizeInviteCode(rawInviteCode))
+		String normalizedCode = normalizeInviteCode(rawInviteCode);
+		Group group = groupRepository.findByInviteCodeWithLock(normalizedCode)
 				.orElseThrow(() -> new BusinessException(ErrorCode.INVITE_CODE_INVALID));
 		if (!group.isActive()) {
 			throw new BusinessException(ErrorCode.GROUP_NOT_ACTIVE);
 		}
 		if (groupManagerRepository.existsByGroupIdAndUserId(group.getId(), userId)) {
 			throw new BusinessException(ErrorCode.ALREADY_GROUP_MANAGER);
+		}
+		// 락을 보유한 상태에서 초대 코드를 재검증한다 — 참여와 재발급 사이의 경쟁 조건을 막는다
+		if (!normalizedCode.equals(group.getInviteCode())) {
+			throw new BusinessException(ErrorCode.INVITE_CODE_INVALID);
 		}
 		try {
 			groupManagerRepository.saveAndFlush(GroupManager.general(group, userId));
@@ -89,12 +104,25 @@ public class GroupService {
 		return InviteCodeResponse.of(groupAccessGuard.requireManager(userId, groupId).getGroup());
 	}
 
-	/** 초대 코드 재발급. 총무(OWNER)만 가능하며 이전 코드는 즉시 무효가 된다. */
-	@Transactional
+	/**
+	 * 초대 코드 재발급. 총무(OWNER)만 가능하며 이전 코드는 즉시 무효가 된다.
+	 * <p>
+	 * 초대 코드 UNIQUE 제약 위반 시 별도 트랜잭션({@link GroupInviteCodeIssuer})에서 재시도한다.
+	 */
 	public InviteCodeResponse regenerateInviteCode(Long userId, Long groupId) {
-		Group group = groupAccessGuard.requireOwner(userId, groupId).getGroup();
-		group.changeInviteCode(generateUniqueInviteCode());
-		return InviteCodeResponse.of(group);
+		groupAccessGuard.requireOwner(userId, groupId);
+		for (int attempt = 0; attempt < INVITE_CODE_MAX_ATTEMPTS; attempt++) {
+			try {
+				Group group = inviteCodeIssuer.regenerateInviteCode(groupId);
+				return InviteCodeResponse.of(group);
+			} catch (DataIntegrityViolationException e) {
+				// 초대 코드 중복 — 새 트랜잭션에서 재시도한다
+				if (attempt == INVITE_CODE_MAX_ATTEMPTS - 1) {
+					throw new BusinessException(ErrorCode.INTERNAL_ERROR, "초대 코드 생성에 실패했습니다. 다시 시도해 주세요.");
+				}
+			}
+		}
+		throw new BusinessException(ErrorCode.INTERNAL_ERROR, "초대 코드 생성에 실패했습니다. 다시 시도해 주세요.");
 	}
 
 	/** 모임 관리자 목록. 모임원 명단이 아니라 권한 보유자 목록이다. */
@@ -113,15 +141,5 @@ public class GroupService {
 	/** 사용자가 소문자·공백을 섞어 입력해도 받아들인다. 생성되는 코드는 항상 대문자·숫자다. */
 	private String normalizeInviteCode(String inviteCode) {
 		return inviteCode.strip().toUpperCase(Locale.ROOT);
-	}
-
-	private String generateUniqueInviteCode() {
-		for (int attempt = 0; attempt < INVITE_CODE_MAX_ATTEMPTS; attempt++) {
-			String code = inviteCodeGenerator.generate();
-			if (!groupRepository.existsByInviteCode(code)) {
-				return code;
-			}
-		}
-		throw new BusinessException(ErrorCode.INTERNAL_ERROR, "초대 코드 생성에 실패했습니다. 다시 시도해 주세요.");
 	}
 }

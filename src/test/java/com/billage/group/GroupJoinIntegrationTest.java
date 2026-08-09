@@ -3,6 +3,10 @@ package com.billage.group;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -153,6 +157,67 @@ class GroupJoinIntegrationTest extends IntegrationTest {
 
 		assertThat(response.status()).isEqualTo(403);
 		assertThat(response.at("code")).isEqualTo("NOT_GROUP_OWNER");
+	}
+
+	@Test
+	void 초대코드_재발급과_참여가_동시에_일어나면_이전_코드로_참여할_수_없다() throws Exception {
+		// 참여와 재발급을 동시에 수행해 경쟁 조건을 검증한다
+		CountDownLatch startLatch = new CountDownLatch(1);
+		CountDownLatch doneLatch = new CountDownLatch(2);
+		AtomicReference<Response> joinResponse = new AtomicReference<>();
+		AtomicReference<Response> regenerateResponse = new AtomicReference<>();
+
+		ExecutorService executor = Executors.newFixedThreadPool(2);
+		try {
+			// 스레드 1: 초대 코드로 참여
+			executor.submit(() -> {
+				try {
+					startLatch.await();
+					joinResponse.set(join(joinerToken, inviteCode));
+				} catch (Exception e) {
+					throw new RuntimeException(e);
+				} finally {
+					doneLatch.countDown();
+				}
+			});
+
+			// 스레드 2: 초대 코드 재발급
+			executor.submit(() -> {
+				try {
+					startLatch.await();
+					regenerateResponse.set(http.postJson("/api/v1/groups/" + groupId + "/invite-code", Map.of(), ownerToken));
+				} catch (Exception e) {
+					throw new RuntimeException(e);
+				} finally {
+					doneLatch.countDown();
+				}
+			});
+
+			startLatch.countDown();
+			doneLatch.await();
+
+			// 재발급은 성공해야 한다
+			assertThat(regenerateResponse.get().status()).isEqualTo(200);
+			String newCode = (String) regenerateResponse.get().at("inviteCode");
+			assertThat(newCode).isNotEqualTo(inviteCode);
+
+			// 참여 결과: 성공(새 코드로 참여됨) 또는 실패(이전 코드 무효)
+			// 경쟁에 따라 둘 중 하나. 중요한 것은 이전 코드로는 더 이상 참여할 수 없다는 점이다
+			if (joinResponse.get().status() == 200) {
+				// 락을 먼저 획득해 참여가 성공한 경우, 재발급이 나중에 적용됨
+				assertThat(groupManagerRepository.existsByGroupIdAndUserId(groupId, joiner.getId())).isTrue();
+			} else {
+				// 재발급이 먼저 적용돼 이전 코드가 무효가 된 경우
+				assertThat(joinResponse.get().status()).isEqualTo(404);
+				assertThat(joinResponse.get().at("code")).isEqualTo("INVITE_CODE_INVALID");
+			}
+
+			// 어떤 경우든 이전 코드로는 더 이상 참여할 수 없다
+			Response oldCodeJoin = join(joinerToken, inviteCode);
+			assertThat(oldCodeJoin.status()).isIn(404, 409); // 무효 코드 또는 이미 참여됨
+		} finally {
+			executor.shutdownNow();
+		}
 	}
 
 	@Test
