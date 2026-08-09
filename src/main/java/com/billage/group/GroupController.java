@@ -14,8 +14,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.billage.group.dto.CreateGroupRequest;
+import com.billage.group.dto.GroupManagerResponse;
 import com.billage.group.dto.GroupResponse;
 import com.billage.group.dto.GroupSummaryResponse;
+import com.billage.group.dto.InviteCodeResponse;
+import com.billage.group.dto.JoinGroupRequest;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -46,5 +49,35 @@ public class GroupController {
 			@PathVariable Long groupId) {
 		Long userId = Long.valueOf(jwt.getSubject());
 		return ResponseEntity.ok(groupService.getGroup(userId, groupId));
+	}
+
+	/** 초대 코드로 참여. 참여자는 GENERAL 관리자가 되며 모임원 명단에는 등록되지 않는다. */
+	@PostMapping("/join")
+	public ResponseEntity<GroupResponse> join(@AuthenticationPrincipal Jwt jwt,
+			@Valid @RequestBody JoinGroupRequest request) {
+		Long userId = Long.valueOf(jwt.getSubject());
+		return ResponseEntity.ok(groupService.joinByInviteCode(userId, request.inviteCode()));
+	}
+
+	@GetMapping("/{groupId}/invite-code")
+	public ResponseEntity<InviteCodeResponse> inviteCode(@AuthenticationPrincipal Jwt jwt,
+			@PathVariable Long groupId) {
+		Long userId = Long.valueOf(jwt.getSubject());
+		return ResponseEntity.ok(groupService.getInviteCode(userId, groupId));
+	}
+
+	/** 초대 코드 재발급 — OWNER만. */
+	@PostMapping("/{groupId}/invite-code")
+	public ResponseEntity<InviteCodeResponse> regenerateInviteCode(@AuthenticationPrincipal Jwt jwt,
+			@PathVariable Long groupId) {
+		Long userId = Long.valueOf(jwt.getSubject());
+		return ResponseEntity.ok(groupService.regenerateInviteCode(userId, groupId));
+	}
+
+	@GetMapping("/{groupId}/managers")
+	public ResponseEntity<List<GroupManagerResponse>> managers(@AuthenticationPrincipal Jwt jwt,
+			@PathVariable Long groupId) {
+		Long userId = Long.valueOf(jwt.getSubject());
+		return ResponseEntity.ok(groupService.getManagers(userId, groupId));
 	}
 }

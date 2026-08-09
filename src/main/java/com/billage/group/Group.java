@@ -60,9 +60,14 @@ public class Group {
 		return new Group(name, inviteCode);
 	}
 
-	/** 초대 코드 재발급(step 3에서 사용). */
+	/** 초대 코드 재발급. 이전 코드는 즉시 무효가 된다. */
 	public void changeInviteCode(String inviteCode) {
 		this.inviteCode = inviteCode;
+	}
+
+	/** 보관(ARCHIVED)된 모임에는 새로 참여할 수 없다. */
+	public boolean isActive() {
+		return status == GroupStatus.ACTIVE;
 	}
 
 	@PrePersist

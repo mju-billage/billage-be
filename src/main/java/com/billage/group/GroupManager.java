@@ -63,7 +63,7 @@ public class GroupManager {
 		return new GroupManager(group, userId, ManagerRole.OWNER);
 	}
 
-	/** 초대 코드로 참여한 사용자를 GENERAL로 등록한다(step 3에서 사용). */
+	/** 초대 코드로 참여한 사용자를 GENERAL로 등록한다. */
 	public static GroupManager general(Group group, Long userId) {
 		return new GroupManager(group, userId, ManagerRole.GENERAL);
 	}

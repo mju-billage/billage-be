@@ -26,7 +26,10 @@ public enum ErrorCode {
 	// 모임
 	GROUP_NOT_FOUND("GROUP_NOT_FOUND", HttpStatus.NOT_FOUND, "모임을 찾을 수 없습니다."),
 	NOT_GROUP_MANAGER("NOT_GROUP_MANAGER", HttpStatus.FORBIDDEN, "해당 모임의 관리자가 아닙니다."),
-	NOT_GROUP_OWNER("NOT_GROUP_OWNER", HttpStatus.FORBIDDEN, "총무(OWNER) 권한이 필요합니다.");
+	NOT_GROUP_OWNER("NOT_GROUP_OWNER", HttpStatus.FORBIDDEN, "총무(OWNER) 권한이 필요합니다."),
+	INVITE_CODE_INVALID("INVITE_CODE_INVALID", HttpStatus.NOT_FOUND, "초대 코드가 올바르지 않습니다."),
+	ALREADY_GROUP_MANAGER("ALREADY_GROUP_MANAGER", HttpStatus.CONFLICT, "이미 참여한 모임입니다."),
+	GROUP_NOT_ACTIVE("GROUP_NOT_ACTIVE", HttpStatus.BAD_REQUEST, "보관된 모임입니다.");
 
 	private final String code;
 	private final HttpStatus status;

@@ -9,6 +9,7 @@
 /api/v1/users
 /api/v1/groups
 /api/v1/groups/join                       # 초대 코드 참여
+/api/v1/groups/{groupId}/invite-code      # 초대 코드 조회(GET) · 재발급(POST, OWNER만)
 /api/v1/groups/{groupId}/managers         # 관리자(권한) 목록
 /api/v1/groups/{groupId}/members          # 모임원 명단
 /api/v1/groups/{groupId}/ledgers
