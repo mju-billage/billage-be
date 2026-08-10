@@ -26,7 +26,7 @@ Java 21 · Spring Boot 4.1.0 · Gradle Groovy · Spring MVC/Data JPA/Security ·
 ## 절대 규칙 (모든 작업에 적용)
 
 1. **소유권 검증**: 모든 모임 리소스 접근 시 리소스 ID 조회만으로 반환하지 말고, 요청자의 **GroupManager 소속·역할(OWNER/GENERAL)**을 Service 계층에서 반드시 확인. 권한 주체는 로그인 사용자↔모임 관계인 `GroupManager`이며, `GroupMember`(모임원 명단)는 권한과 무관하다.
-2. **재무 데이터 불변성**: 승인(APPROVED)된 내역도 물리 삭제 금지 — 소프트 삭제(`deletedAt`) 후 복원 가능하게 처리한다. 잔액은 저장하지 않고 `승인된 수입 합계 - 승인된 지출 합계`로 계산(삭제된 내역 제외).
+2. **재무 데이터 불변성**: 승인(APPROVED)된 내역도 물리 삭제 금지 — `deletedAt` 소프트 삭제로 남기고 모든 조회·집계에서 제외한다. 단 **앱에는 복구 동선이 없다**(화면명세: "삭제한 내역은 다시 복구할 수 없어요") — 복원 API를 만들지 말 것. 잔액은 저장하지 않고 `승인된 수입 합계 - 승인된 지출 합계`로 계산(삭제된 내역 제외).
 3. **스키마는 Flyway로만** 변경. `ddl-auto=validate` 고정.
 4. `open-in-view=false`, 연관관계 기본 LAZY, DTO는 Service 트랜잭션 안에서 완성.
 5. 금액은 원화 `BIGINT`, 항상 양수, `type`(INCOME/EXPENSE)으로 구분.

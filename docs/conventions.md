@@ -13,10 +13,10 @@
 /api/v1/groups/{groupId}/managers         # 관리자(권한) 목록
 /api/v1/groups/{groupId}/members          # 모임원 명단
 /api/v1/groups/{groupId}/ledgers
-/api/v1/ledgers/{ledgerId}/folders
-/api/v1/ledgers/{ledgerId}/transactions
+/api/v1/groups/{groupId}/transactions      # 내역 목록·생성 (장부는 필터 조건)
+/api/v1/groups/{groupId}/transactions/summary  # 기간 합계(수입·지출·합계) + 총 건수
+/api/v1/transactions/{transactionId}
 /api/v1/transactions/{transactionId}/approval
-/api/v1/transactions/{transactionId}/restore
 /api/v1/groups/{groupId}/fees
 /api/v1/fees/{feeId}/close
 /api/v1/groups/{groupId}/dashboard
@@ -27,7 +27,8 @@
 
 - 성공 응답: 공통 래퍼 없이 HTTP 상태 코드 + 응답 DTO.
 - 오류 응답: 공통 형식으로 통일, 오류 코드는 문자열 상수 관리. JPA/SQL/내부 오류를 그대로 노출 금지.
-- 목록 API는 무한 스크롤 전제. 내역 목록은 `occurredDate + id` cursor pagination 우선.
+- 목록 API는 무한 스크롤 전제. 내역 목록은 `occurredDate + id` cursor pagination 우선(최초 20건, 이후 10건씩).
+- 내역 목록 정렬은 최신순·과거순 양방향 — cursor 비교 방향이 뒤집혀도 동작하게 설계.
 - 중복 요청 위험이 큰 생성 API(내역 생성, 납부 확인)는 idempotency 고려.
 
 ## JPA
@@ -52,7 +53,9 @@
 - 모임 권한처럼 **다른 요청 경로로는 검증할 수 없는 보안/정합성 규칙**만 예외적으로 RestAssured 통합 테스트로 확인한다(단순 성공 응답 확인 목적의 API 테스트는 지양).
 - 필수 테스트 대상:
   - 모임 권한(GroupManager OWNER/GENERAL), 다른 모임 데이터 접근 차단
-  - 내역 승인·반려, 승인 내역의 잔액 반영, 소프트 삭제 내역의 잔액 제외 및 복원
+  - 내역 승인, 승인 내역의 잔액 반영, 삭제 내역이 잔액·목록·집계에서 제외되는지
   - GENERAL 등록 내역이 PENDING으로 저장되는지, OWNER 등록이 즉시 APPROVED인지
+  - 내역 목록 필터(기간×장부×구분 AND 결합)와 정렬 양방향 cursor pagination
+  - FEE_CLOSING 내역이 삭제되지 않는지
   - 중복 요청 방지
   - 회비 마감의 단일 트랜잭션 처리(FEE_CLOSING 내역 생성·연결)와 중복 마감 방지
