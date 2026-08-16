@@ -1,5 +1,7 @@
 package com.billage.entry;
 
+import java.util.Map;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -13,6 +15,7 @@ import com.billage.entry.dto.EntryCreateRequest;
 import com.billage.entry.dto.EntryCreateResponse;
 import com.billage.entry.dto.EntryDetailResponse;
 import com.billage.entry.dto.EntrySummaryResponse;
+import com.billage.file.FileService;
 import com.billage.ledger.Ledger;
 import com.billage.ledger.LedgerRepository;
 import com.billage.membership.GroupAccessGuard;
@@ -32,6 +35,7 @@ public class EntryService {
 	private final EntryRepository entryRepository;
 	private final LedgerRepository ledgerRepository;
 	private final UserRepository userRepository;
+	private final FileService fileService;
 	private final GroupAccessGuard guard;
 
 	@Transactional(readOnly = true)
@@ -42,8 +46,11 @@ public class EntryService {
 
 		String normalizedKeyword = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
 		Page<Entry> entries = entryRepository.search(ledgerId, type, status, normalizedKeyword, pageable);
+		Map<Long, Long> receiptCounts = fileService.countReceipts(
+				entries.getContent().stream().map(Entry::getId).toList());
 
-		return PageResponse.of(entries, EntrySummaryResponse::from);
+		return PageResponse.of(entries,
+				entry -> EntrySummaryResponse.of(entry, receiptCounts.getOrDefault(entry.getId(), 0L)));
 	}
 
 	/**
@@ -55,10 +62,11 @@ public class EntryService {
 		GroupMembership author = guard.requireMembership(ledger.getGroup().getId(), userId);
 		String authorName = userName(userId);
 
-		Entry entry = Entry.create(ledger, author, authorName, request.type(), request.title().trim(),
-				request.amount(), request.occurredOn(), request.memo());
+		Entry entry = entryRepository.save(Entry.create(ledger, author, authorName, request.type(),
+				request.title().trim(), request.amount(), request.occurredOn(), request.memo()));
+		fileService.linkReceipts(entry, request.receiptFileIds(), userId);
 
-		return EntryCreateResponse.from(entryRepository.save(entry));
+		return EntryCreateResponse.of(entry, fileService.getReceipts(entry.getId()));
 	}
 
 	@Transactional(readOnly = true)
@@ -66,7 +74,7 @@ public class EntryService {
 		Entry entry = findEntry(entryId);
 		guard.requireMembership(entry.getGroupId(), userId);
 
-		return EntryDetailResponse.from(entry);
+		return EntryDetailResponse.of(entry, fileService.getReceipts(entryId));
 	}
 
 	/**

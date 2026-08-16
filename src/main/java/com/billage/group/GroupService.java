@@ -12,6 +12,7 @@ import com.billage.group.dto.GroupSummaryResponse;
 import com.billage.group.dto.GroupUpdateRequest;
 import com.billage.group.dto.GroupUpdateResponse;
 import com.billage.entry.EntryRepository;
+import com.billage.file.FileService;
 import com.billage.folder.FolderRepository;
 import com.billage.ledger.LedgerRepository;
 import com.billage.member.MemberRepository;
@@ -32,6 +33,7 @@ public class GroupService {
 	private final GroupInvitationRepository groupInvitationRepository;
 	private final MemberRepository memberRepository;
 	private final EntryRepository entryRepository;
+	private final FileService fileService;
 	private final LedgerRepository ledgerRepository;
 	private final FolderRepository folderRepository;
 	private final GroupAccessGuard guard;
@@ -74,7 +76,7 @@ public class GroupService {
 	}
 
 	/**
-	 * 모임 완전 삭제. 종속 데이터(관리자 관계·납부 명단·초대 코드·폴더·장부·내역)를 함께 물리 삭제하며
+	 * 모임 완전 삭제. 종속 데이터(관리자 관계·납부 명단·초대 코드·폴더·장부·내역·증빙)를 함께 물리 삭제하며
 	 * 복구용 이력은 남기지 않는다. 회비·보고서 도메인 구현 시 이 메서드에 삭제 대상을 추가해야 한다.
 	 */
 	@Transactional
@@ -83,7 +85,8 @@ public class GroupService {
 
 		groupInvitationRepository.deleteByGroupId(groupId);
 		memberRepository.deleteByGroupId(groupId);
-		// 내역 → 장부 → 폴더 순으로 참조를 따라 지운다.
+		// 증빙 → 내역 → 장부 → 폴더 순으로 참조를 따라 지운다.
+		fileService.deleteByGroup(groupId);
 		entryRepository.deleteAllByGroupId(groupId);
 		ledgerRepository.deleteAllByGroupId(groupId);
 		folderRepository.deleteDeepestFirst(folderRepository.findAllByGroupId(groupId));
