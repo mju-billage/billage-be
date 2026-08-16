@@ -2,24 +2,34 @@
 
 ## API
 
+**API 스펙의 기준은 노션 API 명세**다(프론트 합의본). 구현 전 해당 도메인 페이지를 읽고, 구현이 달라지면 노션도 함께 고친다.
+- 최상위: https://grand-addition-420.notion.site/API-3a5f756d01c881d1a1eed079f33d663c
+- 공통 규칙 page id `3a3f756d01c8819e901acbee8505ae6c` / 도메인별 명세 DB `collection://551cd41d-394f-4374-9c51-73f8748f60a3`
+
 - 기본 경로 `/api/v1`, REST 리소스 중심:
 
 ```text
 /api/v1/auth
 /api/v1/users
 /api/v1/groups
-/api/v1/groups/{groupId}/members
-/api/v1/groups/{groupId}/ledgers
+/api/v1/groups/{groupId}/memberships     ← 관리자 권한
+/api/v1/groups/{groupId}/members         ← 납부 명단
+/api/v1/groups/{groupId}/invitations
+/api/v1/groups/{groupId}/folders
+/api/v1/folders/{folderId}/ledgers
 /api/v1/ledgers/{ledgerId}/entries
-/api/v1/entries/{entryId}/approval
+/api/v1/entries/{entryId}/approve
 /api/v1/groups/{groupId}/dashboard
 /api/v1/groups/{groupId}/dues
 /api/v1/groups/{groupId}/reports
 ```
 
-- 성공 응답: 공통 래퍼 없이 HTTP 상태 코드 + 응답 DTO.
-- 오류 응답: 공통 형식으로 통일, 오류 코드는 문자열 상수 관리. JPA/SQL/내부 오류를 그대로 노출 금지.
-- 목록 API는 무한 스크롤 전제. 내역 목록은 `occurredDate + id` cursor pagination 우선.
+- 성공 응답: `com.billage.common.response.ApiResponse` 로 `{ "data": ..., "message": "..." }` 래핑(프론트 합의). 목록은 비어 있어도 `[]`.
+  본문이 없는 삭제·탈퇴는 래퍼 없이 `204 No Content`.
+- 오류 응답: 공통 형식(`{ code, message, fieldErrors }`)으로 통일 — **오류는 래핑하지 않는다**. 오류 코드는 `ErrorCode` enum 으로 관리하고, 프론트는 `message` 가 아닌 `code` 로 분기한다. JPA/SQL/내부 오류를 그대로 노출 금지.
+- 날짜·시각은 ISO 8601. 시각은 오프셋 포함(`2026-07-20T18:00:00+09:00`) — `KoreanTime.toOffset` 사용. 날짜는 `2026-07-20`.
+- 인증된 사용자 ID는 컨트롤러에서 `@CurrentUserId Long userId` 로 받는다.
+- 목록 API는 노션 명세를 따른다 — 내역은 `page/size/sort` 기반 페이지네이션(기본 20건), 모임원·관리자·폴더 목록은 전체 반환.
 - 중복 요청 위험이 큰 생성 API(내역 생성, 납부 확인)는 idempotency 고려.
 
 ## JPA
@@ -31,7 +41,7 @@
 
 ## 보안
 
-- 모든 모임 리소스: 리소스 ID 조회 후 바로 반환 금지 — 요청자 GroupMember 소속 + 역할 검증을 Service 계층에서 보장.
+- 모든 모임 리소스: 리소스 ID 조회 후 바로 반환 금지 — 요청자 GroupMembership 소속 + 역할 검증을 Service 계층에서 보장(`GroupAccessGuard`).
 - 파일: 크기·Content-Type 검증, 원본 파일명을 storage key로 직접 사용 금지, 내역·파일의 모임 소유권 검증.
 
 ## 테스트
@@ -44,7 +54,7 @@
 - 모임 권한처럼 **다른 요청 경로로는 검증할 수 없는 보안/정합성 규칙**만 예외적으로 RestAssured 통합 테스트로 확인한다(단순 성공 응답 확인 목적의 API 테스트는 지양).
 - 필수 테스트 대상:
   - 모임 권한, 다른 모임 데이터 접근 차단
-  - 내역 승인·반려, 승인 내역의 잔액 반영, 취소 내역의 잔액 제외
+  - 내역 승인, 승인 내역만 잔액·통계에 반영
   - 중복 요청 방지
-  - 비회원 모임원 ↔ 회원 계정 연결
-  - 회비 분할 납부, 납부와 장부 수입의 중복 연결 방지
+  - 관리자 권한(GroupMembership)과 납부 명단(Member)의 분리 — 참여/탈퇴가 명단에 영향을 주지 않을 것
+  - 납부와 장부 수입의 중복 연결 방지
