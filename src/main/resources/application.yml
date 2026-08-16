@@ -30,9 +30,15 @@ spring:
 
 billage:
   file:
-    # 업로드 파일 저장 위치. Object Storage 도입 전까지 서버 디스크를 사용한다.
+    # LOCAL(서버 디스크) | S3. 로컬 개발은 LOCAL, dev·prod 는 S3.
+    storage: ${BILLAGE_FILE_STORAGE:LOCAL}
     storage-path: ${FILE_STORAGE_PATH:./data/files}
     max-size: 10MB
+    s3:
+      bucket: ${BILLAGE_FILE_S3_BUCKET:}
+      # 한 버킷을 dev·prod 가 공유하므로 환경 프리픽스로 구분한다.
+      prefix: ${BILLAGE_FILE_S3_PREFIX:dev}
+      presign-expiry: 5m
 
 springdoc:
   swagger-ui:
@@ -78,9 +84,15 @@ spring:
 # dev(배포) 서버에서 Swagger 노출 — 배포 서버 API 확인·테스트용
 billage:
   file:
-    # 업로드 파일 저장 위치. Object Storage 도입 전까지 서버 디스크를 사용한다.
+    # LOCAL(서버 디스크) | S3. 로컬 개발은 LOCAL, dev·prod 는 S3.
+    storage: ${BILLAGE_FILE_STORAGE:LOCAL}
     storage-path: ${FILE_STORAGE_PATH:./data/files}
     max-size: 10MB
+    s3:
+      bucket: ${BILLAGE_FILE_S3_BUCKET:}
+      # 한 버킷을 dev·prod 가 공유하므로 환경 프리픽스로 구분한다.
+      prefix: ${BILLAGE_FILE_S3_PREFIX:dev}
+      presign-expiry: 5m
 
 springdoc:
   api-docs:
@@ -100,9 +112,15 @@ spring:
 
 billage:
   file:
-    # 업로드 파일 저장 위치. Object Storage 도입 전까지 서버 디스크를 사용한다.
+    # LOCAL(서버 디스크) | S3. 로컬 개발은 LOCAL, dev·prod 는 S3.
+    storage: ${BILLAGE_FILE_STORAGE:LOCAL}
     storage-path: ${FILE_STORAGE_PATH:./data/files}
     max-size: 10MB
+    s3:
+      bucket: ${BILLAGE_FILE_S3_BUCKET:}
+      # 한 버킷을 dev·prod 가 공유하므로 환경 프리픽스로 구분한다.
+      prefix: ${BILLAGE_FILE_S3_PREFIX:dev}
+      presign-expiry: 5m
 
 springdoc:
   api-docs:

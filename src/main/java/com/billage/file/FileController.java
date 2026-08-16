@@ -1,5 +1,8 @@
 package com.billage.file;
 
+import java.net.URI;
+import java.util.Optional;
+
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -38,19 +41,27 @@ public class FileController {
 	}
 
 	/**
-	 * 파일 내려받기. 인증된 요청만 허용하므로 응답을 캐시하지 않는다.
+	 * 파일 내려받기. 권한을 확인한 뒤, 저장소가 임시 URL 을 지원하면(S3) 그쪽으로 302 리다이렉트하고
+	 * 아니면(로컬 디스크) 파일을 직접 흘려보낸다. 인증된 요청만 허용하므로 응답을 캐시하지 않는다.
 	 */
 	@GetMapping("/{fileId}/content")
 	public ResponseEntity<Resource> download(@CurrentUserId Long userId, @PathVariable Long fileId) {
 		UploadedFile file = fileService.getAccessibleFile(fileId, userId);
-		Resource resource = fileService.loadContent(file);
+
+		Optional<URI> presignedUrl = fileService.presignedUrl(file);
+		if (presignedUrl.isPresent()) {
+			return ResponseEntity.status(HttpStatus.FOUND)
+					.location(presignedUrl.get())
+					.header(HttpHeaders.CACHE_CONTROL, "no-store")
+					.build();
+		}
 
 		return ResponseEntity.ok()
 				.contentType(MediaType.parseMediaType(file.getContentType()))
 				.header(HttpHeaders.CACHE_CONTROL, "no-store")
 				.header(HttpHeaders.CONTENT_DISPOSITION,
 						"inline; filename=\"" + file.getOriginalFileName() + "\"")
-				.body(resource);
+				.body(fileService.loadContent(file));
 	}
 
 	@DeleteMapping("/{fileId}")
