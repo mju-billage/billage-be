@@ -11,11 +11,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
-import com.billage.auth.social.SocialAccountRepository;
-import com.billage.auth.token.RefreshTokenRepository;
-import com.billage.member.MemberRepository;
-import com.billage.membership.GroupInvitationRepository;
-import com.billage.membership.GroupMembershipRepository;
 import com.billage.support.HttpTestClient;
 import com.billage.support.HttpTestClient.Response;
 import com.billage.support.IntegrationTest;
@@ -35,18 +30,6 @@ class GroupAccessIntegrationTest extends IntegrationTest {
 	@Autowired
 	UserRepository userRepository;
 	@Autowired
-	GroupMembershipRepository groupMembershipRepository;
-	@Autowired
-	GroupInvitationRepository groupInvitationRepository;
-	@Autowired
-	MemberRepository memberRepository;
-	@Autowired
-	GroupSpaceRepository groupSpaceRepository;
-	@Autowired
-	RefreshTokenRepository refreshTokenRepository;
-	@Autowired
-	SocialAccountRepository socialAccountRepository;
-	@Autowired
 	PasswordEncoder passwordEncoder;
 
 	private HttpTestClient http;
@@ -58,13 +41,6 @@ class GroupAccessIntegrationTest extends IntegrationTest {
 	@BeforeEach
 	void setUp() {
 		http = new HttpTestClient(port);
-		groupInvitationRepository.deleteAll();
-		memberRepository.deleteAll();
-		groupMembershipRepository.deleteAll();
-		groupSpaceRepository.deleteAll();
-		socialAccountRepository.deleteAll();
-		refreshTokenRepository.deleteAll();
-		userRepository.deleteAll();
 
 		ownerToken = tokenOf("owner@example.com", "총무");
 		adminToken = tokenOf("admin@example.com", "일반관리자");
