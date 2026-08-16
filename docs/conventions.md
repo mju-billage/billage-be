@@ -29,7 +29,7 @@
 - 오류 응답: 공통 형식(`{ code, message, fieldErrors }`)으로 통일 — **오류는 래핑하지 않는다**. 오류 코드는 `ErrorCode` enum 으로 관리하고, 프론트는 `message` 가 아닌 `code` 로 분기한다. JPA/SQL/내부 오류를 그대로 노출 금지.
 - 날짜·시각은 ISO 8601. 시각은 오프셋 포함(`2026-07-20T18:00:00+09:00`) — `KoreanTime.toOffset` 사용. 날짜는 `2026-07-20`.
 - 인증된 사용자 ID는 컨트롤러에서 `@CurrentUserId Long userId` 로 받는다.
-- 목록 API는 노션 명세를 따른다 — 내역은 `page/size/sort` 기반 페이지네이션(기본 20건), 모임원·관리자·폴더 목록은 전체 반환.
+- 목록 API는 노션 명세를 따른다 — 내역은 `page/size/sort` 기반 페이지네이션(`PageResponse`, 기본 20건·`occurredOn,id desc`), 모임원·관리자·폴더·장부 목록은 전체 반환.
 - 중복 요청 위험이 큰 생성 API(내역 생성, 납부 확인)는 idempotency 고려.
 
 ## JPA

@@ -1,0 +1,37 @@
+package com.billage.entry.dto;
+
+import java.time.LocalDate;
+
+import com.billage.entry.Entry;
+import com.billage.entry.EntryType;
+
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
+
+/**
+ * 내역 등록 요청.
+ * {@code receiptFileIds}(증빙 파일)는 File 도메인 구현 전까지 받지 않는다 — 추가 시 사전 공유.
+ */
+public record EntryCreateRequest(
+		@NotNull(message = "내역 유형은 필수입니다.")
+		EntryType type,
+
+		@NotBlank(message = "내역명은 필수입니다.")
+		@Size(max = 20, message = "내역명은 20자 이하여야 합니다.")
+		String title,
+
+		@NotNull(message = "금액은 필수입니다.")
+		@Positive(message = "금액은 0보다 커야 합니다.")
+		@Max(value = Entry.MAX_AMOUNT, message = "금액은 999,999,999원 이하여야 합니다.")
+		Long amount,
+
+		@NotNull(message = "발생일은 필수입니다.")
+		LocalDate occurredOn,
+
+		@Size(max = 30, message = "메모는 30자 이하여야 합니다.")
+		String memo
+) {
+}
