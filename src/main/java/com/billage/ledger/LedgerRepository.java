@@ -18,6 +18,9 @@ public interface LedgerRepository extends JpaRepository<Ledger, Long> {
 	@org.springframework.data.jpa.repository.Modifying(clearAutomatically = true, flushAutomatically = true)
 	void deleteAllByGroupId(@Param("groupId") Long groupId);
 
+	@Query("select count(l.id) from Ledger l where l.group.id = :groupId")
+	long countByGroupId(@Param("groupId") Long groupId);
+
 	@Query("select l.folder.id, count(l.id) from Ledger l where l.group.id = :groupId and l.folder is not null group by l.folder.id")
 	List<Object[]> countByFolderRaw(@Param("groupId") Long groupId);
 
