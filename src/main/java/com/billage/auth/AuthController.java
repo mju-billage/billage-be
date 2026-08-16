@@ -2,8 +2,6 @@ package com.billage.auth;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -20,7 +18,9 @@ import com.billage.auth.dto.SocialLoginResponse;
 import com.billage.auth.dto.SocialSignupRequest;
 import com.billage.auth.dto.TokenResponse;
 import com.billage.auth.dto.UserResponse;
+import com.billage.auth.security.CurrentUserId;
 import com.billage.auth.social.SocialAuthService;
+import com.billage.common.response.ApiResponse;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -34,8 +34,9 @@ public class AuthController {
 	private final SocialAuthService socialAuthService;
 
 	@PostMapping("/login")
-	public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
-		return ResponseEntity.ok(authService.login(request.email(), request.password()));
+	public ResponseEntity<ApiResponse<LoginResponse>> login(@Valid @RequestBody LoginRequest request) {
+		LoginResponse response = authService.login(request.email(), request.password());
+		return ResponseEntity.ok(ApiResponse.of(response, "로그인에 성공했습니다."));
 	}
 
 	/**
@@ -43,28 +44,32 @@ public class AuthController {
 	 * {@code SIGNUP_REQUIRED}와 이메일만 반환해 클라이언트가 약관 동의·이름 입력 화면으로 안내하게 한다.
 	 */
 	@PostMapping("/social/login")
-	public ResponseEntity<SocialLoginResponse> socialLogin(@Valid @RequestBody SocialLoginRequest request) {
-		return ResponseEntity.ok(socialAuthService.login(request.provider(), request.token()));
+	public ResponseEntity<ApiResponse<SocialLoginResponse>> socialLogin(
+			@Valid @RequestBody SocialLoginRequest request) {
+		SocialLoginResponse response = socialAuthService.login(request.provider(), request.token());
+		String message = response.login() == null ? "회원가입이 필요합니다." : "로그인에 성공했습니다.";
+		return ResponseEntity.ok(ApiResponse.of(response, message));
 	}
 
 	/**
 	 * 간편 회원가입. 약관 동의 후 이름을 입력받아 가입을 완료하고 즉시 로그인 처리한다.
 	 */
 	@PostMapping("/social/signup")
-	public ResponseEntity<LoginResponse> socialSignup(@Valid @RequestBody SocialSignupRequest request) {
+	public ResponseEntity<ApiResponse<LoginResponse>> socialSignup(@Valid @RequestBody SocialSignupRequest request) {
 		LoginResponse response = socialAuthService.signup(request.provider(), request.token(), request.name());
-		return ResponseEntity.status(HttpStatus.CREATED).body(response);
+		return ResponseEntity.status(HttpStatus.CREATED)
+				.body(ApiResponse.of(response, "회원가입에 성공했습니다."));
 	}
 
 	@PostMapping("/refresh")
-	public ResponseEntity<TokenResponse> refresh(@Valid @RequestBody RefreshRequest request) {
-		return ResponseEntity.ok(authService.refresh(request.refreshToken()));
+	public ResponseEntity<ApiResponse<TokenResponse>> refresh(@Valid @RequestBody RefreshRequest request) {
+		TokenResponse response = authService.refresh(request.refreshToken());
+		return ResponseEntity.ok(ApiResponse.of(response, "토큰 재발급에 성공했습니다."));
 	}
 
 	@GetMapping("/me")
-	public ResponseEntity<UserResponse> me(@AuthenticationPrincipal Jwt jwt) {
-		Long userId = Long.valueOf(jwt.getSubject());
-		return ResponseEntity.ok(authService.getCurrentUser(userId));
+	public ResponseEntity<ApiResponse<UserResponse>> me(@CurrentUserId Long userId) {
+		return ResponseEntity.ok(ApiResponse.of(authService.getCurrentUser(userId), "내 정보 조회에 성공했습니다."));
 	}
 
 	@PostMapping("/logout")
