@@ -5,6 +5,8 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.billage.common.exception.BusinessException;
+import com.billage.common.exception.ErrorCode;
 import com.billage.group.dto.GroupCreateRequest;
 import com.billage.group.dto.GroupCreateResponse;
 import com.billage.group.dto.GroupDetailResponse;
@@ -59,10 +61,18 @@ public class GroupService {
 		return GroupDetailResponse.of(me.getGroup(), me.getRole(), memberCount, ownerCount);
 	}
 
+	/**
+	 * 모임 수정(부분 수정). 전달되지 않은(null) 필드는 그대로 둔다.
+	 * 공백 전용 이름은 `@Size(min = 1)` 을 통과해 trim 후 빈 이름이 되므로 여기서 막는다.
+	 */
 	@Transactional
 	public GroupUpdateResponse update(Long groupId, Long userId, GroupUpdateRequest request) {
 		GroupSpace group = guard.requireOwner(groupId, userId).getGroup();
-		group.update(request.name() == null ? null : request.name().trim(), request.description());
+		String name = request.name() == null ? null : request.name().trim();
+		if (name != null && name.isEmpty()) {
+			throw new BusinessException(ErrorCode.INVALID_REQUEST, "모임 이름은 공백일 수 없습니다.");
+		}
+		group.update(name, request.description());
 
 		return GroupUpdateResponse.from(group);
 	}
