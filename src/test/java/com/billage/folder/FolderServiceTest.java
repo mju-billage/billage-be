@@ -243,6 +243,32 @@ class FolderServiceTest extends IntegrationTest {
 		assertThat(ledgerService.getDetail(ledgerId, ownerId).remainingBudget()).isNull();
 	}
 
+	// --- 부분 수정 시 공백 이름 차단 ---
+
+	@Test
+	void 폴더와_장부_이름을_공백만으로_수정할_수_없다() {
+		Long folderId = createFolder("정기공연", null);
+		Long ledgerId = ledgerService.create(folderId, ownerId,
+				new LedgerCreateRequest("운영 장부", null)).ledgerId();
+
+		assertThatThrownBy(() -> folderService.update(folderId, ownerId,
+				new FolderUpdateRequest("   ", null)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.INVALID_REQUEST);
+
+		assertThatThrownBy(() -> ledgerService.update(ledgerId, ownerId,
+				new LedgerUpdateRequest("   ", null)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.INVALID_REQUEST);
+
+		// 이름을 생략한 부분 수정은 그대로 동작해야 한다.
+		ledgerService.update(ledgerId, ownerId, new LedgerUpdateRequest(null, folderId));
+		assertThat(ledgerRepository.findById(ledgerId).orElseThrow().getName()).isEqualTo("운영 장부");
+		assertThat(folderRepository.findById(folderId).orElseThrow().getName()).isEqualTo("정기공연");
+	}
+
 	private Long createFolder(String name, Long parentId) {
 		return folderService.create(groupId, ownerId, new FolderCreateRequest(name, parentId)).folderId();
 	}

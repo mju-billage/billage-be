@@ -66,7 +66,12 @@ public class LedgerService {
 		guard.requireOwner(ledger.getGroup().getId(), userId);
 
 		if (request.name() != null) {
-			ledger.rename(request.name().trim());
+			// `@Size(min = 1)` 은 " " 를 통과시켜 trim 후 빈 이름이 되므로 여기서 막는다.
+			String name = request.name().trim();
+			if (name.isEmpty()) {
+				throw new BusinessException(ErrorCode.INVALID_REQUEST, "장부 이름은 공백일 수 없습니다.");
+			}
+			ledger.rename(name);
 		}
 		if (request.folderId() != null) {
 			Folder folder = findFolder(request.folderId());

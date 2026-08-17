@@ -77,7 +77,7 @@ public class FolderService {
 		guard.requireOwner(folder.getGroup().getId(), userId);
 
 		if (request.name() != null) {
-			folder.rename(request.name().trim());
+			folder.rename(requireNonBlank(request.name(), "폴더 이름은 공백일 수 없습니다."));
 		}
 		if (request.moveRequested()) {
 			folder.moveTo(resolveNewParent(folder, request.targetParentId()));
@@ -143,6 +143,17 @@ public class FolderService {
 			}
 		}
 		return false;
+	}
+
+	/**
+	 * 공백 전용 이름 차단. `@Size(min = 1)` 은 " " 를 통과시켜 trim 후 빈 이름이 된다.
+	 */
+	private String requireNonBlank(String name, String message) {
+		String trimmed = name.trim();
+		if (trimmed.isEmpty()) {
+			throw new BusinessException(ErrorCode.INVALID_REQUEST, message);
+		}
+		return trimmed;
 	}
 
 	private Folder findFolder(Long folderId) {
