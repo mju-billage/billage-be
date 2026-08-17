@@ -91,8 +91,12 @@ public class EntryService {
 		Entry entry = findEntry(entryId);
 		guard.requireOwner(entry.getGroupId(), userId);
 
-		entry.update(request.title() == null ? null : request.title().trim(), request.amount(),
-				request.occurredOn(), request.memo());
+		String title = request.title() == null ? null : request.title().trim();
+		if (title != null && title.isEmpty()) {
+			// `@Size(min = 1)` 은 " " 를 통과시켜 trim 후 빈 내역명이 되므로 여기서 막는다.
+			throw new BusinessException(ErrorCode.INVALID_REQUEST, "내역명은 공백일 수 없습니다.");
+		}
+		entry.update(title, request.amount(), request.occurredOn(), request.memo());
 		fileService.replaceReceipts(entry, request.receiptFileIds(), userId);
 
 		return EntryUpdateResponse.from(entry);

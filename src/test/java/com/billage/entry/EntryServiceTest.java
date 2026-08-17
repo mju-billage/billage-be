@@ -163,6 +163,19 @@ class EntryServiceTest extends IntegrationTest {
 	}
 
 	@Test
+	void 내역명을_공백만으로_수정할_수_없다() {
+		Long entryId = createExpense(ownerId, "대관료", 500_000L);
+
+		assertThatThrownBy(() -> entryService.update(entryId, ownerId,
+				new EntryUpdateRequest("   ", null, null, null, null)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.INVALID_REQUEST);
+
+		assertThat(entryRepository.findById(entryId).orElseThrow().getTitle()).isEqualTo("대관료");
+	}
+
+	@Test
 	void 일반_관리자는_본인이_등록한_승인_대기_내역도_수정_삭제할_수_없다() {
 		Long entryId = createExpense(adminId, "간식비", 30_000L);
 

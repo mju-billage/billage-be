@@ -12,6 +12,9 @@ import jakarta.validation.constraints.Size;
 /**
  * 내역 수정 요청. 전달된 필드만 수정하며 null 은 "변경 없음"이다.
  * 유형(type)과 승인 상태는 수정할 수 없다.
+ *
+ * <p>공백 전용 내역명(" ")은 {@code @Size(min = 1)} 을 통과하므로 Service 에서 막는다.
+ * {@code @NotBlank} 는 null 까지 거부해 부분 수정 규칙을 깨뜨리므로 쓰지 않는다.
  */
 public record EntryUpdateRequest(
 		@Size(min = 1, max = 20, message = "내역명은 1자 이상 20자 이하여야 합니다.")
