@@ -15,6 +15,8 @@ import com.billage.entry.dto.EntryCreateRequest;
 import com.billage.entry.dto.EntryCreateResponse;
 import com.billage.entry.dto.EntryDetailResponse;
 import com.billage.entry.dto.EntrySummaryResponse;
+import com.billage.entry.dto.EntryUpdateRequest;
+import com.billage.entry.dto.EntryUpdateResponse;
 import com.billage.file.FileService;
 import com.billage.ledger.Ledger;
 import com.billage.ledger.LedgerRepository;
@@ -26,7 +28,10 @@ import com.billage.user.UserRepository;
 import lombok.RequiredArgsConstructor;
 
 /**
- * 수입·지출 내역. 수정·삭제는 권한 정책 확정 전이라 구현하지 않는다.
+ * 수입·지출 내역.
+ *
+ * <p>수정·삭제는 <b>총무(OWNER) 전용</b>이다 — 기획 「일반 권한 모임 관리자」 문서에서
+ * "상세 내역 수정 및 삭제 금지"로 확정(2026-08-17). 일반 관리자는 본인이 등록한 승인 대기 내역도 고칠 수 없다.
  */
 @Service
 @RequiredArgsConstructor
@@ -75,6 +80,34 @@ public class EntryService {
 		guard.requireMembership(entry.getGroupId(), userId);
 
 		return EntryDetailResponse.of(entry, fileService.getReceipts(entryId));
+	}
+
+	/**
+	 * 내역 수정(총무 전용). 승인 완료 내역도 그대로 수정하며 재승인을 요구하지 않는다.
+	 * 유형(type)은 바꿀 수 없고, 작성자·승인자 기록은 등록·승인 시점 값을 유지한다.
+	 */
+	@Transactional
+	public EntryUpdateResponse update(Long entryId, Long userId, EntryUpdateRequest request) {
+		Entry entry = findEntry(entryId);
+		guard.requireOwner(entry.getGroupId(), userId);
+
+		entry.update(request.title() == null ? null : request.title().trim(), request.amount(),
+				request.occurredOn(), request.memo());
+		fileService.replaceReceipts(entry, request.receiptFileIds(), userId);
+
+		return EntryUpdateResponse.from(entry);
+	}
+
+	/**
+	 * 내역 삭제(총무 전용). 승인 상태와 무관하게 연결된 증빙까지 완전 삭제하며 이력을 남기지 않는다.
+	 */
+	@Transactional
+	public void delete(Long entryId, Long userId) {
+		Entry entry = findEntry(entryId);
+		guard.requireOwner(entry.getGroupId(), userId);
+
+		fileService.deleteByEntry(entryId);
+		entryRepository.delete(entry);
 	}
 
 	/**
