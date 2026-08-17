@@ -34,19 +34,35 @@ public class HttpTestClient {
 	}
 
 	public Response postJson(String path, Map<String, ?> body) {
-		return send(request(path).POST(jsonBody(body)).header("Content-Type", "application/json"));
+		return postJson(path, body, null);
+	}
+
+	public Response postJson(String path, Map<String, ?> body, String bearerToken) {
+		return send(authorized(request(path), bearerToken)
+				.POST(jsonBody(body))
+				.header("Content-Type", "application/json"));
+	}
+
+	public Response patchJson(String path, Map<String, ?> body, String bearerToken) {
+		return send(authorized(request(path), bearerToken)
+				.method("PATCH", jsonBody(body))
+				.header("Content-Type", "application/json"));
+	}
+
+	public Response delete(String path, String bearerToken) {
+		return send(authorized(request(path), bearerToken).DELETE());
 	}
 
 	public Response get(String path, String bearerToken) {
-		HttpRequest.Builder builder = request(path).GET();
-		if (bearerToken != null) {
-			builder.header("Authorization", "Bearer " + bearerToken);
-		}
-		return send(builder);
+		return send(authorized(request(path), bearerToken).GET());
 	}
 
 	private HttpRequest.Builder request(String path) {
 		return HttpRequest.newBuilder(URI.create(baseUrl + path)).header("Accept", "application/json");
+	}
+
+	private HttpRequest.Builder authorized(HttpRequest.Builder builder, String bearerToken) {
+		return bearerToken == null ? builder : builder.header("Authorization", "Bearer " + bearerToken);
 	}
 
 	private HttpRequest.BodyPublisher jsonBody(Map<String, ?> body) {

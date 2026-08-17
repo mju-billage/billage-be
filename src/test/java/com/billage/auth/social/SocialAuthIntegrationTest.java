@@ -55,9 +55,9 @@ class SocialAuthIntegrationTest extends IntegrationTest {
 		Response response = socialLogin("valid-google-id-token");
 
 		assertThat(response.status()).isEqualTo(200);
-		assertThat(response.at("status")).isEqualTo("SIGNUP_REQUIRED");
-		assertThat(response.at("email")).isEqualTo(EMAIL);
-		assertThat(response.at("login")).isNull();
+		assertThat(response.at("data.status")).isEqualTo("SIGNUP_REQUIRED");
+		assertThat(response.at("data.email")).isEqualTo(EMAIL);
+		assertThat(response.at("data.login")).isNull();
 	}
 
 	@Test
@@ -67,10 +67,10 @@ class SocialAuthIntegrationTest extends IntegrationTest {
 		Response response = socialSignup("valid-google-id-token", "홍길동");
 
 		assertThat(response.status()).isEqualTo(201);
-		assertThat(response.at("user.email")).isEqualTo(EMAIL);
-		assertThat(response.at("user.name")).isEqualTo("홍길동");
-		assertThat(response.at("accessToken")).isNotNull();
-		assertThat(response.at("refreshToken")).isNotNull();
+		assertThat(response.at("data.user.email")).isEqualTo(EMAIL);
+		assertThat(response.at("data.user.name")).isEqualTo("홍길동");
+		assertThat(response.at("data.accessToken")).isNotNull();
+		assertThat(response.at("data.refreshToken")).isNotNull();
 
 		User created = userRepository.findByEmail(EMAIL).orElseThrow();
 		assertThat(created.getTermsAgreedAt()).isNotNull();
@@ -86,9 +86,9 @@ class SocialAuthIntegrationTest extends IntegrationTest {
 		Response response = socialLogin("valid-google-id-token");
 
 		assertThat(response.status()).isEqualTo(200);
-		assertThat(response.at("status")).isEqualTo("LOGIN");
-		assertThat(response.at("login.user.email")).isEqualTo(EMAIL);
-		assertThat(response.at("login.accessToken")).isNotNull();
+		assertThat(response.at("data.status")).isEqualTo("LOGIN");
+		assertThat(response.at("data.login.user.email")).isEqualTo(EMAIL);
+		assertThat(response.at("data.login.accessToken")).isNotNull();
 	}
 
 	@Test

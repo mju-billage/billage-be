@@ -2,9 +2,11 @@ package com.billage.common.exception;
 
 import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import com.billage.common.response.ErrorResponse;
 
@@ -26,6 +28,14 @@ public class GlobalExceptionHandler {
 		ErrorCode errorCode = ErrorCode.INVALID_REQUEST;
 		return ResponseEntity.status(errorCode.getStatus())
 				.body(ErrorResponse.of(errorCode, e.getBindingResult()));
+	}
+
+	/** 본문·파라미터 파싱 실패(JSON 형식 오류, enum·타입 변환 실패 등)는 내부 오류가 아니라 요청 오류다. */
+	@ExceptionHandler({ HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class })
+	public ResponseEntity<ErrorResponse> handleUnreadableRequest(Exception e) {
+		ErrorCode errorCode = ErrorCode.INVALID_REQUEST;
+		return ResponseEntity.status(errorCode.getStatus())
+				.body(ErrorResponse.of(errorCode));
 	}
 
 	@ExceptionHandler(PessimisticLockingFailureException.class)
