@@ -21,6 +21,7 @@ import com.billage.membership.GroupInvitationRepository;
 import com.billage.membership.GroupMembership;
 import com.billage.membership.GroupMembershipRepository;
 import com.billage.membership.GroupRole;
+import com.billage.report.ReportRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -36,6 +37,7 @@ public class GroupService {
 	private final FileService fileService;
 	private final LedgerRepository ledgerRepository;
 	private final FolderRepository folderRepository;
+	private final ReportRepository reportRepository;
 	private final GroupAccessGuard guard;
 
 	@Transactional(readOnly = true)
@@ -76,8 +78,8 @@ public class GroupService {
 	}
 
 	/**
-	 * 모임 완전 삭제. 종속 데이터(관리자 관계·납부 명단·초대 코드·폴더·장부·내역·증빙)를 함께 물리 삭제하며
-	 * 복구용 이력은 남기지 않는다. 회비·보고서 도메인 구현 시 이 메서드에 삭제 대상을 추가해야 한다.
+	 * 모임 완전 삭제. 종속 데이터(관리자 관계·납부 명단·초대 코드·폴더·장부·내역·증빙·보고서)를 함께 물리 삭제하며
+	 * 복구용 이력은 남기지 않는다. 회비 도메인 구현 시 이 메서드에 삭제 대상을 추가해야 한다.
 	 */
 	@Transactional
 	public void delete(Long groupId, Long userId) {
@@ -85,6 +87,8 @@ public class GroupService {
 
 		groupInvitationRepository.deleteByGroupId(groupId);
 		memberRepository.deleteByGroupId(groupId);
+		// 보고서는 스냅샷이라 장부·내역과 독립적이다. 자식 스냅샷은 cascade 로 함께 지워진다.
+		reportRepository.deleteAll(reportRepository.findAllByGroupId(groupId));
 		// 증빙 → 내역 → 장부 → 폴더 순으로 참조를 따라 지운다.
 		fileService.deleteByGroup(groupId);
 		entryRepository.deleteAllByGroupId(groupId);
