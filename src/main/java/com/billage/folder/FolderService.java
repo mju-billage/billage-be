@@ -63,8 +63,8 @@ public class FolderService {
 		GroupSpace group = guard.requireOwner(groupId, userId).getGroup();
 		Folder parent = request.parentFolderId() == null ? null : findFolderInGroup(request.parentFolderId(), groupId);
 
-		return FolderCreateResponse.from(
-				folderRepository.save(Folder.create(group, parent, request.name().trim())));
+		return FolderCreateResponse.from(folderRepository.save(
+				Folder.create(group, parent, requireNonBlank(request.name(), "폴더 이름은 공백일 수 없습니다."))));
 	}
 
 	/**

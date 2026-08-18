@@ -197,7 +197,9 @@ class FolderServiceTest extends IntegrationTest {
 		groupService.delete(groupId, ownerId);
 
 		assertThat(folderRepository.findAllByGroupId(groupId)).isEmpty();
-		assertThat(ledgerRepository.findAll()).noneMatch(l -> l.getGroup().getId().equals(groupId));
+		// getGroup() 을 건드리면 open-in-view=false + LAZY 라 지연 로딩에서 터질 수 있어
+		// 연관을 타지 않고 단언한다(이 테스트에서 장부는 이 모임에만 있다).
+		assertThat(ledgerRepository.findAll()).isEmpty();
 	}
 
 	// --- 장부 ---
@@ -232,6 +234,12 @@ class FolderServiceTest extends IntegrationTest {
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
 				.isEqualTo(ErrorCode.INVALID_BUDGET);
+
+		// 허용 경계도 함께 고정한다. 0 은 "예산 0원", 미설정은 null 로 구분한다.
+		assertThat(ledgerService.create(folderId, ownerId,
+				new LedgerCreateRequest("0원 장부", 0L)).ledgerId()).isNotNull();
+		assertThat(ledgerService.create(folderId, ownerId,
+				new LedgerCreateRequest("상한 장부", Ledger.MAX_BUDGET)).ledgerId()).isNotNull();
 	}
 
 	@Test

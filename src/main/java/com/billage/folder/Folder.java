@@ -1,6 +1,8 @@
 package com.billage.folder;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
 
 import com.billage.group.GroupSpace;
 
@@ -79,9 +81,21 @@ public class Folder {
 	}
 
 	/** 최상위부터의 깊이. 자기 참조 FK 때문에 삭제 순서를 정할 때 쓴다. */
+	/**
+	 * 최상위까지의 깊이. 삭제 순서(자식 먼저)를 정하는 데 쓴다.
+	 *
+	 * <p>이동 검증(`FolderService.resolveNewParent`)이 순환을 막지만, 동시 이동 요청이 서로 엇갈리면
+	 * 데이터에 순환이 남을 수 있다. 그때 이 메서드가 무한 루프에 빠져 요청 스레드를 멈추지 않도록
+	 * 방문한 폴더를 만나면 순회를 끊는다.
+	 */
 	public int depth() {
 		int depth = 0;
+		Set<Long> visited = new HashSet<>();
+		visited.add(this.id);
 		for (Folder current = this.parent; current != null; current = current.getParent()) {
+			if (!visited.add(current.getId())) {
+				break;
+			}
 			depth++;
 		}
 		return depth;
