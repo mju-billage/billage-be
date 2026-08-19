@@ -48,6 +48,32 @@ public interface EntryRepository extends JpaRepository<Entry, Long> {
 	@Query("select count(e.id) from Entry e where e.ledger.id = :ledgerId")
 	long countByLedgerId(@Param("ledgerId") Long ledgerId);
 
+	/** 모임 전체의 승인된 내역 유형별 합계(대시보드용). */
+	@Query("""
+			select e.type, coalesce(sum(e.amount), 0)
+			from Entry e
+			where e.groupId = :groupId and e.approvalStatus = com.billage.entry.ApprovalStatus.APPROVED
+			group by e.type
+			""")
+	List<Object[]> sumApprovedByTypeForGroupRaw(@Param("groupId") Long groupId);
+
+	default Map<EntryType, Long> sumApprovedByTypeForGroup(Long groupId) {
+		return sumApprovedByTypeForGroupRaw(groupId).stream()
+				.collect(Collectors.toMap(row -> (EntryType) row[0], row -> (Long) row[1]));
+	}
+
+	@Query("select count(e.id) from Entry e where e.groupId = :groupId and e.approvalStatus = :status")
+	long countByGroupIdAndStatus(@Param("groupId") Long groupId, @Param("status") ApprovalStatus status);
+
+	/** 모임 최근 내역. 장부명을 함께 쓰므로 fetch join 으로 N+1 을 피한다. */
+	@Query("""
+			select e from Entry e
+			join fetch e.ledger
+			where e.groupId = :groupId
+			order by e.occurredOn desc, e.id desc
+			""")
+	List<Entry> findRecentByGroupId(@Param("groupId") Long groupId, Pageable pageable);
+
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
 	@Query("delete from Entry e where e.ledger.id = :ledgerId")
 	void deleteAllByLedgerId(@Param("ledgerId") Long ledgerId);

@@ -23,7 +23,7 @@ Java 21 · Spring Boot 4.1.0 · Gradle Groovy · Spring MVC/Data JPA/Security ·
 ## 아키텍처
 
 모듈형 모놀리스, 기능 중심 패키지: `com.billage` 아래
-`common / auth / user / group / membership / member / folder / ledger / entry / dues / report / file`
+`common / auth / user / group / membership / member / folder / ledger / entry / dashboard / dues / report / file`
 
 **`membership` ≠ `member`**: `membership`(GroupMembership)은 가입 사용자의 모임 관리자 권한(OWNER/MEMBER),
 `member`(Member)는 회비 납부 대상 명단(이름만, 권한 없음). 둘은 자동 연결하지 않는다.
