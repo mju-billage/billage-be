@@ -10,7 +10,7 @@ import com.billage.entry.EntryType;
 /**
  * 대시보드 통합 응답. 총무·일반 권한 관리자에게 동일한 데이터를 내려준다.
  *
- * <p>{@code dues} 는 회비(Dues) 도메인 구현 전까지 모두 0이다.
+ * <p>{@code dues} 는 진행 중(OPEN)인 회비만 집계한다 — 마감분은 이미 장부 내역에 반영돼 있다.
  */
 public record DashboardResponse(
 		Long groupId,
