@@ -63,7 +63,7 @@ public class EntryService {
 		String authorName = userName(userId);
 
 		Entry entry = entryRepository.save(Entry.create(ledger, author, authorName, request.type(),
-				request.title().trim(), request.amount(), request.occurredOn(), request.memo()));
+				requireNonBlank(request.title()), request.amount(), request.occurredOn(), request.memo()));
 		fileService.linkReceipts(entry, request.receiptFileIds(), userId);
 
 		return EntryCreateResponse.of(entry, fileService.getReceipts(entry.getId()));
@@ -98,6 +98,17 @@ public class EntryService {
 	private Ledger findLedger(Long ledgerId) {
 		return ledgerRepository.findById(ledgerId)
 				.orElseThrow(() -> new BusinessException(ErrorCode.LEDGER_NOT_FOUND));
+	}
+
+	/**
+	 * 공백 전용 내역명 차단. `@NotBlank` 는 컨트롤러 경로에만 적용되므로 Service 에서도 막는다.
+	 */
+	private String requireNonBlank(String title) {
+		// 컨트롤러의 @NotBlank 를 거치지 않는 직접 호출도 500 이 아니라 INVALID_REQUEST 로 응답하게 한다.
+		if (title == null || title.isBlank()) {
+			throw new BusinessException(ErrorCode.INVALID_REQUEST, "내역명은 공백일 수 없습니다.");
+		}
+		return title.trim();
 	}
 
 	private Entry findEntry(Long entryId) {

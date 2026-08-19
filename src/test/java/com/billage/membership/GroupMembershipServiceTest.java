@@ -15,6 +15,7 @@ import com.billage.group.GroupService;
 import com.billage.group.GroupSpace;
 import com.billage.group.GroupSpaceRepository;
 import com.billage.group.dto.GroupCreateRequest;
+import com.billage.group.dto.GroupUpdateRequest;
 import com.billage.member.MemberRepository;
 import com.billage.member.MemberService;
 import com.billage.member.dto.MemberCreateRequest;
@@ -156,6 +157,39 @@ class GroupMembershipServiceTest extends IntegrationTest {
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
 				.isEqualTo(ErrorCode.INVALID_INVITATION_CODE);
+	}
+
+	// --- 내 모임 목록(JPQL 생성자 프로젝션) ---
+
+	@Test
+	void 내_모임_목록은_내_역할과_명단_인원수를_함께_준다() {
+		joinWithInvitation(adminId);
+		memberService.addMember(groupId, ownerId, new MemberCreateRequest("김모임원"));
+		memberService.addMember(groupId, ownerId, new MemberCreateRequest("이모임원"));
+
+		var mine = groupService.getMyGroups(ownerId);
+		var admins = groupService.getMyGroups(adminId);
+
+		// memberCount 는 관리자 수가 아니라 납부 명단 수다.
+		assertThat(mine).singleElement().satisfies(group -> {
+			assertThat(group.groupId()).isEqualTo(groupId);
+			assertThat(group.myRole()).isEqualTo(GroupRole.OWNER);
+			assertThat(group.memberCount()).isEqualTo(2);
+		});
+		assertThat(admins).singleElement()
+				.satisfies(group -> assertThat(group.myRole()).isEqualTo(GroupRole.MEMBER));
+	}
+
+	@Test
+	void 모임_이름을_공백만으로_수정할_수_없다() {
+		assertThatThrownBy(() -> groupService.update(groupId, ownerId, new GroupUpdateRequest("   ", null)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.INVALID_REQUEST);
+
+		// 이름을 생략한 부분 수정은 그대로 동작해야 한다.
+		groupService.update(groupId, ownerId, new GroupUpdateRequest(null, "설명만 변경"));
+		assertThat(groupSpaceRepository.findById(groupId).orElseThrow().getName()).isEqualTo("주리랑");
 	}
 
 	// --- 모임 삭제 ---

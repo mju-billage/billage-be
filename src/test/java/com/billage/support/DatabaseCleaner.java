@@ -1,7 +1,9 @@
 package com.billage.support;
 
+import java.sql.Statement;
 import java.util.List;
 
+import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -25,8 +27,20 @@ public class DatabaseCleaner {
 				  and table_name <> 'flyway_schema_history'
 				""", String.class);
 
-		jdbcTemplate.execute("SET FOREIGN_KEY_CHECKS = 0");
-		tables.forEach(table -> jdbcTemplate.execute("TRUNCATE TABLE `" + table + "`"));
-		jdbcTemplate.execute("SET FOREIGN_KEY_CHECKS = 1");
+		// execute() 는 호출마다 커넥션을 새로 얻으므로, 풀이 다른 커넥션을 주면
+		// FOREIGN_KEY_CHECKS = 0 이 TRUNCATE 에 적용되지 않는다. 한 커넥션에서 처리하고 반드시 복구한다.
+		jdbcTemplate.execute((ConnectionCallback<Void>) connection -> {
+			try (Statement statement = connection.createStatement()) {
+				statement.execute("SET FOREIGN_KEY_CHECKS = 0");
+				try {
+					for (String table : tables) {
+						statement.execute("TRUNCATE TABLE `" + table + "`");
+					}
+				} finally {
+					statement.execute("SET FOREIGN_KEY_CHECKS = 1");
+				}
+			}
+			return null;
+		});
 	}
 }
