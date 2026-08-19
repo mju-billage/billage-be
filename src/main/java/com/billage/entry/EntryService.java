@@ -96,11 +96,11 @@ public class EntryService {
 	 * 공백 전용 내역명 차단. `@NotBlank` 는 컨트롤러 경로에만 적용되므로 Service 에서도 막는다.
 	 */
 	private String requireNonBlank(String title) {
-		String trimmed = title.trim();
-		if (trimmed.isEmpty()) {
+		// 컨트롤러의 @NotBlank 를 거치지 않는 직접 호출도 500 이 아니라 INVALID_REQUEST 로 응답하게 한다.
+		if (title == null || title.isBlank()) {
 			throw new BusinessException(ErrorCode.INVALID_REQUEST, "내역명은 공백일 수 없습니다.");
 		}
-		return trimmed;
+		return title.trim();
 	}
 
 	private Entry findEntry(Long entryId) {
