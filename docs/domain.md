@@ -21,6 +21,8 @@
 
 ### User
 - 서비스 가입 계정. 이메일/비밀번호(BCrypt) 또는 소셜 로그인(구글·카카오)으로 생성. 소셜 전용 계정은 비밀번호 없음.
+- **이름 최대 10자**(기획 글로벌 정책). `entry.created_by_name` · `approved_by_name` 스냅샷이 10자라
+  이 값을 넘기면 내역 저장이 깨지므로 가입 단계에서 막고 컬럼도 10자로 맞춘다(V9).
 
 ### SocialAccount
 - User와 소셜 Provider 연결. 한 User가 구글·카카오 모두 연결 가능. `(provider, providerUserId)` 유일.
