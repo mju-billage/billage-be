@@ -10,6 +10,10 @@ import org.springframework.transaction.annotation.Transactional;
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
 import com.billage.dashboard.dto.DashboardResponse;
+import com.billage.dues.DuesMemberRepository;
+import com.billage.dues.DuesRepository;
+import com.billage.dues.DuesStatus;
+import com.billage.dues.PaymentStatus;
 import com.billage.entry.ApprovalStatus;
 import com.billage.entry.EntryRepository;
 import com.billage.entry.EntryType;
@@ -29,6 +33,8 @@ public class DashboardService {
 	static final int MAX_RECENT_ENTRY_SIZE = 20;
 
 	private final EntryRepository entryRepository;
+	private final DuesRepository duesRepository;
+	private final DuesMemberRepository duesMemberRepository;
 	private final LedgerRepository ledgerRepository;
 	private final GroupAccessGuard guard;
 
@@ -53,8 +59,15 @@ public class DashboardService {
 						.map(DashboardResponse.RecentEntry::from)
 						.toList();
 
-		// 회비(Dues) 도메인 구현 시 이 부분을 실제 집계로 교체한다.
-		return new DashboardResponse(groupId, summary, approval, DashboardResponse.Dues.EMPTY, recentEntries);
+		// 진행 중(OPEN)인 회비만 집계한다 — 마감된 회비는 이미 장부 내역으로 반영돼 있다.
+		Map<PaymentStatus, Long> duesCounts = duesMemberRepository.countOpenTargetsByGroup(groupId);
+		long paid = duesCounts.getOrDefault(PaymentStatus.PAID, 0L);
+		long unpaid = duesCounts.getOrDefault(PaymentStatus.UNPAID, 0L);
+		DashboardResponse.Dues dues = new DashboardResponse.Dues(
+				duesRepository.countByGroupIdAndStatus(groupId, DuesStatus.OPEN),
+				paid + unpaid, paid, unpaid);
+
+		return new DashboardResponse(groupId, summary, approval, dues, recentEntries);
 	}
 
 	private void validateRecentEntrySize(int size) {

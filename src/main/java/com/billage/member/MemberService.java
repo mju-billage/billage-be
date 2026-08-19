@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
+import com.billage.dues.DuesService;
 import com.billage.group.GroupSpace;
 import com.billage.member.dto.MemberCreateRequest;
 import com.billage.member.dto.MemberResponse;
@@ -22,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 public class MemberService {
 
 	private final MemberRepository memberRepository;
+	private final DuesService duesService;
 	private final GroupAccessGuard guard;
 
 	@Transactional(readOnly = true)
@@ -51,6 +53,8 @@ public class MemberService {
 
 		Member member = memberRepository.findByIdAndGroupId(memberId, groupId)
 				.orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_NOT_FOUND));
+		// 명단에서 지우면 그 사람의 회비 참여 데이터도 완전 삭제한다(기획 확정).
+		duesService.deleteByMember(memberId);
 		memberRepository.delete(member);
 	}
 }

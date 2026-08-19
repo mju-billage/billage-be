@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
+import com.billage.dues.DuesService;
 import com.billage.group.dto.GroupCreateRequest;
 import com.billage.group.dto.GroupCreateResponse;
 import com.billage.group.dto.GroupDetailResponse;
@@ -35,6 +36,7 @@ public class GroupService {
 	private final GroupMembershipRepository groupMembershipRepository;
 	private final GroupInvitationRepository groupInvitationRepository;
 	private final MemberRepository memberRepository;
+	private final DuesService duesService;
 	private final EntryRepository entryRepository;
 	private final FileService fileService;
 	private final LedgerRepository ledgerRepository;
@@ -88,14 +90,16 @@ public class GroupService {
 	}
 
 	/**
-	 * 모임 완전 삭제. 종속 데이터(관리자 관계·납부 명단·초대 코드·폴더·장부·내역·증빙·보고서)를 함께 물리 삭제하며
-	 * 복구용 이력은 남기지 않는다. 회비 도메인 구현 시 이 메서드에 삭제 대상을 추가해야 한다.
+	 * 모임 완전 삭제. 종속 데이터(관리자 관계·납부 명단·초대 코드·폴더·장부·내역·증빙·보고서·회비)를 함께 물리 삭제하며
+	 * 복구용 이력은 남기지 않는다.
 	 */
 	@Transactional
 	public void delete(Long groupId, Long userId) {
 		guard.requireOwner(groupId, userId);
 
 		groupInvitationRepository.deleteByGroupId(groupId);
+		// 회비가 납부 명단을 참조하므로 명단보다 먼저 지운다.
+		duesService.deleteByGroup(groupId);
 		memberRepository.deleteByGroupId(groupId);
 		// 보고서는 스냅샷이라 장부·내역과 독립적이다. 자식 스냅샷은 cascade 로 함께 지워진다.
 		reportRepository.deleteAll(reportRepository.findAllByGroupId(groupId));
