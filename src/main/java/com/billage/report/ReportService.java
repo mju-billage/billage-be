@@ -69,7 +69,7 @@ public class ReportService {
 			throw new BusinessException(ErrorCode.REPORT_RANGE_EMPTY);
 		}
 
-		Report report = reportRepository.save(Report.create(groupId, request.title().trim(),
+		Report report = reportRepository.save(Report.create(groupId, requireNonBlank(request.title()),
 				request.startDate(), request.endDate(), snapshots));
 
 		return ReportCreateResponse.from(report);
@@ -82,6 +82,17 @@ public class ReportService {
 		guard.requireMembership(report.getGroupId(), userId);
 
 		return ReportDetailResponse.of(report, reportLedgerRepository.findAllByReportIdWithEntries(reportId));
+	}
+
+	/**
+	 * 공백 전용 보고서 제목 차단. `@NotBlank` 는 컨트롤러 경로에만 적용되므로 Service 에서도 막는다.
+	 */
+	private String requireNonBlank(String title) {
+		String trimmed = title.trim();
+		if (trimmed.isEmpty()) {
+			throw new BusinessException(ErrorCode.INVALID_REQUEST, "보고서 제목은 공백일 수 없습니다.");
+		}
+		return trimmed;
 	}
 
 	/** 요청한 장부를 요청 순서대로 조회한다. 없는 장부·다른 모임 장부는 각각 다른 코드로 구분해 응답한다. */
