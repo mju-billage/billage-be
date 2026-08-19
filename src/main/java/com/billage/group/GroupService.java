@@ -13,6 +13,8 @@ import com.billage.group.dto.GroupDetailResponse;
 import com.billage.group.dto.GroupSummaryResponse;
 import com.billage.group.dto.GroupUpdateRequest;
 import com.billage.group.dto.GroupUpdateResponse;
+import com.billage.folder.FolderRepository;
+import com.billage.ledger.LedgerRepository;
 import com.billage.member.MemberRepository;
 import com.billage.membership.GroupAccessGuard;
 import com.billage.membership.GroupInvitationRepository;
@@ -30,6 +32,8 @@ public class GroupService {
 	private final GroupMembershipRepository groupMembershipRepository;
 	private final GroupInvitationRepository groupInvitationRepository;
 	private final MemberRepository memberRepository;
+	private final LedgerRepository ledgerRepository;
+	private final FolderRepository folderRepository;
 	private final GroupAccessGuard guard;
 
 	@Transactional(readOnly = true)
@@ -78,8 +82,8 @@ public class GroupService {
 	}
 
 	/**
-	 * 모임 완전 삭제. 종속 데이터(관리자 관계·납부 명단·초대 코드)를 함께 물리 삭제하며 복구용 이력은 남기지 않는다.
-	 * 폴더·장부·내역·회비·보고서 도메인 구현 시 이 메서드에 삭제 대상을 추가해야 한다.
+	 * 모임 완전 삭제. 종속 데이터(관리자 관계·납부 명단·초대 코드·폴더·장부)를 함께 물리 삭제하며
+	 * 복구용 이력은 남기지 않는다. 내역·회비·보고서 도메인 구현 시 이 메서드에 삭제 대상을 추가해야 한다.
 	 */
 	@Transactional
 	public void delete(Long groupId, Long userId) {
@@ -87,6 +91,9 @@ public class GroupService {
 
 		groupInvitationRepository.deleteByGroupId(groupId);
 		memberRepository.deleteByGroupId(groupId);
+		// 장부가 폴더를 참조하므로 장부부터 지운다.
+		ledgerRepository.deleteAllByGroupId(groupId);
+		folderRepository.deleteDeepestFirst(folderRepository.findAllByGroupId(groupId));
 		groupMembershipRepository.deleteByGroupId(groupId);
 		groupSpaceRepository.deleteById(groupId);
 	}

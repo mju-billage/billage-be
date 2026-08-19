@@ -45,8 +45,6 @@ class AuthIntegrationTest extends IntegrationTest {
 	@BeforeEach
 	void setUp() {
 		http = new HttpTestClient(port);
-		refreshTokenRepository.deleteAll();
-		userRepository.deleteAll();
 		user = userRepository.save(User.create(EMAIL, passwordEncoder.encode(PASSWORD), "홍길동"));
 	}
 

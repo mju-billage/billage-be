@@ -9,8 +9,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
-import com.billage.auth.social.SocialAccountRepository;
-import com.billage.auth.token.RefreshTokenRepository;
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
 import com.billage.group.GroupService;
@@ -48,10 +46,6 @@ class GroupMembershipServiceTest extends IntegrationTest {
 	GroupSpaceRepository groupSpaceRepository;
 	@Autowired
 	UserRepository userRepository;
-	@Autowired
-	RefreshTokenRepository refreshTokenRepository;
-	@Autowired
-	SocialAccountRepository socialAccountRepository;
 
 	private Long ownerId;
 	private Long adminId;
@@ -59,14 +53,6 @@ class GroupMembershipServiceTest extends IntegrationTest {
 
 	@BeforeEach
 	void setUp() {
-		groupInvitationRepository.deleteAll();
-		memberRepository.deleteAll();
-		groupMembershipRepository.deleteAll();
-		groupSpaceRepository.deleteAll();
-		// 다른 테스트 클래스가 남긴 사용자 종속 데이터부터 정리해야 users 삭제가 FK에 걸리지 않는다.
-		socialAccountRepository.deleteAll();
-		refreshTokenRepository.deleteAll();
-		userRepository.deleteAll();
 
 		ownerId = userRepository.save(User.create("owner@example.com", "encoded", "총무")).getId();
 		adminId = userRepository.save(User.create("admin@example.com", "encoded", "일반관리자")).getId();

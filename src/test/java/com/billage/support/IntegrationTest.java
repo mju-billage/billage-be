@@ -1,5 +1,7 @@
 package com.billage.support;
 
+import org.junit.jupiter.api.BeforeEach;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -14,6 +16,15 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @ActiveProfiles("test")
 @Testcontainers
 public abstract class IntegrationTest {
+
+	@Autowired
+	private DatabaseCleaner databaseCleaner;
+
+	/** 테스트 클래스 간 데이터가 섞이지 않도록 각 테스트 전에 전체 테이블을 비운다. */
+	@BeforeEach
+	void clearDatabase() {
+		databaseCleaner.clear();
+	}
 
 	static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4")
 			.withDatabaseName("billage")

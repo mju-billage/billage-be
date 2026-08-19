@@ -14,7 +14,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.billage.auth.dto.LoginResponse;
-import com.billage.auth.token.RefreshTokenRepository;
 import com.billage.support.IntegrationTest;
 import com.billage.user.User;
 import com.billage.user.UserRepository;
@@ -26,14 +25,10 @@ class RefreshConcurrencyTest extends IntegrationTest {
 	@Autowired
 	UserRepository userRepository;
 	@Autowired
-	RefreshTokenRepository refreshTokenRepository;
-	@Autowired
 	PasswordEncoder passwordEncoder;
 
 	@BeforeEach
 	void setUp() {
-		refreshTokenRepository.deleteAll();
-		userRepository.deleteAll();
 		userRepository.save(User.create("member@example.com", passwordEncoder.encode("password123!"), "홍길동"));
 	}
 

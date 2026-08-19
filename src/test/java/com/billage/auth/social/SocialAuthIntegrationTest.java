@@ -12,7 +12,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
-import com.billage.auth.token.RefreshTokenRepository;
 import com.billage.support.HttpTestClient;
 import com.billage.support.HttpTestClient.Response;
 import com.billage.support.IntegrationTest;
@@ -31,8 +30,6 @@ class SocialAuthIntegrationTest extends IntegrationTest {
 	UserRepository userRepository;
 	@Autowired
 	SocialAccountRepository socialAccountRepository;
-	@Autowired
-	RefreshTokenRepository refreshTokenRepository;
 
 	@MockitoBean
 	GoogleTokenVerifier googleTokenVerifier;
@@ -42,9 +39,6 @@ class SocialAuthIntegrationTest extends IntegrationTest {
 	@BeforeEach
 	void setUp() {
 		http = new HttpTestClient(port);
-		refreshTokenRepository.deleteAll();
-		socialAccountRepository.deleteAll();
-		userRepository.deleteAll();
 		when(googleTokenVerifier.provider()).thenReturn(SocialProvider.GOOGLE);
 	}
 
