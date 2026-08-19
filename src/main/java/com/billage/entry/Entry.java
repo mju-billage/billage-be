@@ -133,6 +133,26 @@ public class Entry {
 	}
 
 	/**
+	 * 내역 수정(총무 전용). null 인 필드는 그대로 둔다.
+	 * 유형(type)은 바꿀 수 없고, 승인 상태와 작성자·승인자 기록도 건드리지 않는다
+	 * — 승인 완료 내역을 수정해도 승인 대기로 되돌아가지 않는다(기획 확정).
+	 */
+	public void update(String title, Long amount, LocalDate occurredOn, String memo) {
+		if (title != null) {
+			this.title = title;
+		}
+		if (amount != null) {
+			this.amount = amount;
+		}
+		if (occurredOn != null) {
+			this.occurredOn = occurredOn;
+		}
+		if (memo != null) {
+			this.memo = memo;
+		}
+	}
+
+	/**
 	 * 총무 승인. 이미 승인된 내역은 다시 승인할 수 없다.
 	 * 승인 후에는 수정·삭제해도 승인 대기로 되돌아가지 않는다.
 	 */

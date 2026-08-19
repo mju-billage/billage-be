@@ -119,6 +119,30 @@ public class FileService {
 		}
 	}
 
+	/**
+	 * 내역 수정 시 증빙 전체 교체. 전달된 목록이 최종 상태가 된다.
+	 * 이미 연결된 파일은 그대로 두고, 목록에서 빠진 증빙은 완전 삭제하며, 새로 들어온 것만 연결 검증을 거친다.
+	 * {@code fileIds} 가 null 이면 "변경 없음"이라 아무것도 하지 않는다.
+	 */
+	@Transactional
+	public void replaceReceipts(Entry entry, List<Long> fileIds, Long userId) {
+		if (fileIds == null) {
+			return;
+		}
+		List<UploadedFile> linked = fileRepository.findByEntryId(entry.getId());
+
+		deleteAll(linked.stream().filter(file -> !fileIds.contains(file.getId())).toList());
+		linkReceipts(entry, fileIds.stream()
+				.filter(fileId -> linked.stream().noneMatch(file -> file.getId().equals(fileId)))
+				.toList(), userId);
+	}
+
+	/** 내역 삭제 시 그 내역에 연결된 증빙을 함께 지운다. */
+	@Transactional
+	public void deleteByEntry(Long entryId) {
+		deleteAll(fileRepository.findByEntryId(entryId));
+	}
+
 	@Transactional(readOnly = true)
 	public List<ReceiptFileResponse> getReceipts(Long entryId) {
 		return fileRepository.findByEntryId(entryId).stream()

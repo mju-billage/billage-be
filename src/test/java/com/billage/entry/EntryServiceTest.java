@@ -14,6 +14,7 @@ import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
 import com.billage.entry.dto.EntryCreateRequest;
 import com.billage.entry.dto.EntryDetailResponse;
+import com.billage.entry.dto.EntryUpdateRequest;
 import com.billage.folder.FolderService;
 import com.billage.folder.dto.FolderCreateRequest;
 import com.billage.group.GroupService;
@@ -27,7 +28,7 @@ import com.billage.user.User;
 import com.billage.user.UserRepository;
 
 /**
- * 내역 등록 시 승인 상태 전환, 승인 처리, 승인분만 잔액에 반영되는 규칙 검증.
+ * 내역 등록 시 승인 상태 전환, 승인 처리, 승인분만 잔액에 반영되는 규칙, 수정·삭제 권한(총무 전용) 검증.
  */
 class EntryServiceTest extends IntegrationTest {
 
@@ -131,6 +132,92 @@ class EntryServiceTest extends IntegrationTest {
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
 				.isEqualTo(ErrorCode.ENTRY_ALREADY_APPROVED);
+	}
+
+	// --- 수정·삭제 (총무 전용) ---
+
+	@Test
+	void 총무가_승인_완료_내역을_수정해도_승인_상태는_유지된다() {
+		Long entryId = createExpense(ownerId, "대관료", 500_000L);
+
+		entryService.update(entryId, ownerId, new EntryUpdateRequest("대관료 정정", 520_000L,
+				LocalDate.of(2026, 7, 21), "금액 정정", null));
+
+		Entry entry = entryRepository.findById(entryId).orElseThrow();
+		assertThat(entry.getTitle()).isEqualTo("대관료 정정");
+		assertThat(entry.getAmount()).isEqualTo(520_000L);
+		assertThat(entry.getOccurredOn()).isEqualTo(LocalDate.of(2026, 7, 21));
+		assertThat(entry.getApprovalStatus()).isEqualTo(ApprovalStatus.APPROVED);
+	}
+
+	@Test
+	void 전달하지_않은_필드는_수정되지_않는다() {
+		Long entryId = createExpense(ownerId, "대관료", 500_000L);
+
+		entryService.update(entryId, ownerId, new EntryUpdateRequest(null, 520_000L, null, null, null));
+
+		Entry entry = entryRepository.findById(entryId).orElseThrow();
+		assertThat(entry.getAmount()).isEqualTo(520_000L);
+		assertThat(entry.getTitle()).isEqualTo("대관료");
+		assertThat(entry.getOccurredOn()).isEqualTo(LocalDate.of(2026, 7, 20));
+	}
+
+	@Test
+	void 내역명을_공백만으로_수정할_수_없다() {
+		Long entryId = createExpense(ownerId, "대관료", 500_000L);
+
+		assertThatThrownBy(() -> entryService.update(entryId, ownerId,
+				new EntryUpdateRequest("   ", null, null, null, null)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.INVALID_REQUEST);
+
+		assertThat(entryRepository.findById(entryId).orElseThrow().getTitle()).isEqualTo("대관료");
+	}
+
+	@Test
+	void 일반_관리자는_본인이_등록한_승인_대기_내역도_수정_삭제할_수_없다() {
+		Long entryId = createExpense(adminId, "간식비", 30_000L);
+
+		assertThatThrownBy(() -> entryService.update(entryId, adminId,
+				new EntryUpdateRequest("간식비 정정", null, null, null, null)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.ACCESS_DENIED);
+
+		assertThatThrownBy(() -> entryService.delete(entryId, adminId))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.ACCESS_DENIED);
+	}
+
+	@Test
+	void 총무가_삭제하면_잔액에서도_빠진다() {
+		createIncome(ownerId, "회비 수입", 1_000_000L);
+		Long entryId = createExpense(ownerId, "대관료", 400_000L);
+
+		entryService.delete(entryId, ownerId);
+
+		assertThat(entryRepository.findById(entryId)).isEmpty();
+		LedgerDetailResponse ledger = ledgerService.getDetail(ledgerId, ownerId);
+		assertThat(ledger.totalExpense()).isZero();
+		assertThat(ledger.balance()).isEqualTo(1_000_000L);
+	}
+
+	@Test
+	void 다른_모임_사람은_내역을_수정하거나_삭제할_수_없다() {
+		Long entryId = createExpense(ownerId, "대관료", 500_000L);
+
+		assertThatThrownBy(() -> entryService.update(entryId, outsiderId,
+				new EntryUpdateRequest("몰래 수정", null, null, null, null)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.ACCESS_DENIED);
+
+		assertThatThrownBy(() -> entryService.delete(entryId, outsiderId))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.ACCESS_DENIED);
 	}
 
 	// --- 잔액 집계 ---

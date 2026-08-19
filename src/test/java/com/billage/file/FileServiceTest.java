@@ -16,6 +16,7 @@ import com.billage.common.exception.ErrorCode;
 import com.billage.entry.EntryService;
 import com.billage.entry.EntryType;
 import com.billage.entry.dto.EntryCreateRequest;
+import com.billage.entry.dto.EntryUpdateRequest;
 import com.billage.folder.FolderService;
 import com.billage.folder.dto.FolderCreateRequest;
 import com.billage.group.GroupService;
@@ -209,6 +210,41 @@ class FileServiceTest extends IntegrationTest {
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
 				.isEqualTo(ErrorCode.FILE_IN_USE);
+	}
+
+	@Test
+	void 증빙을_교체하면_목록에서_빠진_파일은_삭제된다() {
+		Long oldFileId = upload(ownerId, "old.jpg");
+		Long entryId = createEntryWithReceipts(ownerId, List.of(oldFileId));
+		Long newFileId = upload(ownerId, "new.jpg");
+
+		entryService.update(entryId, ownerId, new EntryUpdateRequest(null, null, null, null, List.of(newFileId)));
+
+		assertThat(fileRepository.findById(oldFileId)).isEmpty();
+		assertThat(entryService.getDetail(entryId, ownerId).receiptFiles()).singleElement()
+				.satisfies(receipt -> assertThat(receipt.fileId()).isEqualTo(newFileId));
+	}
+
+	@Test
+	void 이미_연결된_증빙을_그대로_다시_보내면_유지된다() {
+		Long fileId = upload(ownerId, "receipt.jpg");
+		Long entryId = createEntryWithReceipts(ownerId, List.of(fileId));
+		Long extraFileId = upload(ownerId, "extra.jpg");
+
+		entryService.update(entryId, ownerId,
+				new EntryUpdateRequest(null, null, null, null, List.of(fileId, extraFileId)));
+
+		assertThat(entryService.getDetail(entryId, ownerId).receiptFiles()).hasSize(2);
+	}
+
+	@Test
+	void 내역을_지우면_증빙도_함께_사라진다() {
+		Long fileId = upload(ownerId, "receipt.jpg");
+		Long entryId = createEntryWithReceipts(ownerId, List.of(fileId));
+
+		entryService.delete(entryId, ownerId);
+
+		assertThat(fileRepository.findById(fileId)).isEmpty();
 	}
 
 	@Test
