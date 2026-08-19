@@ -46,6 +46,10 @@ public enum ErrorCode {
 	ENTRY_ALREADY_APPROVED("ENTRY_ALREADY_APPROVED", HttpStatus.CONFLICT, "이미 승인된 내역입니다."),
 	INVALID_QUERY_PARAMETER("INVALID_QUERY_PARAMETER", HttpStatus.BAD_REQUEST, "조회 조건이 올바르지 않습니다."),
 
+	// 보고서
+	REPORT_NOT_FOUND("REPORT_NOT_FOUND", HttpStatus.NOT_FOUND, "보고서를 찾을 수 없습니다."),
+	REPORT_RANGE_EMPTY("REPORT_RANGE_EMPTY", HttpStatus.UNPROCESSABLE_ENTITY, "선택한 기간에 보고서로 만들 내역이 없습니다."),
+
 	// 파일
 	INVALID_FILE("INVALID_FILE", HttpStatus.BAD_REQUEST, "파일이 비어 있거나 올바르지 않습니다."),
 	INVALID_FILE_PURPOSE("INVALID_FILE_PURPOSE", HttpStatus.BAD_REQUEST, "허용되지 않은 파일 용도입니다."),

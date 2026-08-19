@@ -1,5 +1,7 @@
 package com.billage.entry;
 
+import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -73,6 +75,20 @@ public interface EntryRepository extends JpaRepository<Entry, Long> {
 			order by e.occurredOn desc, e.id desc
 			""")
 	List<Entry> findRecentByGroupId(@Param("groupId") Long groupId, Pageable pageable);
+
+	/**
+	 * 보고서 스냅샷용. 여러 장부의 기간 내 <b>승인된</b> 내역을 한 번에 읽는다(장부 수만큼 쿼리하지 않는다).
+	 */
+	@Query("""
+			select e from Entry e
+			where e.ledger.id in :ledgerIds
+			  and e.approvalStatus = com.billage.entry.ApprovalStatus.APPROVED
+			  and e.occurredOn between :startDate and :endDate
+			order by e.occurredOn asc, e.id asc
+			""")
+	List<Entry> findApprovedInRange(@Param("ledgerIds") Collection<Long> ledgerIds,
+			@Param("startDate") LocalDate startDate,
+			@Param("endDate") LocalDate endDate);
 
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
 	@Query("delete from Entry e where e.ledger.id = :ledgerId")
