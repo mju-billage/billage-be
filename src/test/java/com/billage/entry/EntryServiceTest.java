@@ -134,6 +134,23 @@ class EntryServiceTest extends IntegrationTest {
 				.isEqualTo(ErrorCode.ENTRY_ALREADY_APPROVED);
 	}
 
+	@Test
+	void 이름_상한_10자_사용자도_내역을_등록할_수_있다() {
+		// users.name 과 entry.created_by_name 이 모두 10자로 정렬되어 있어야 한다.
+		// 예전에는 가입이 100자까지 허용돼 10자 넘는 이름이면 내역 저장이 깨졌다.
+		Long longNameUserId = userRepository.save(
+				User.create("long@example.com", "encoded", "가나다라마바사아자차")).getId();
+		String code = groupMembershipService.createInvitation(groupId, ownerId).invitationCode();
+		groupMembershipService.join(longNameUserId, code);
+
+		Long entryId = entryService.create(ledgerId, longNameUserId,
+				new EntryCreateRequest(EntryType.EXPENSE, "간식비", 30_000L,
+						LocalDate.of(2026, 7, 20), null, null)).entryId();
+
+		assertThat(entryRepository.findById(entryId).orElseThrow().getCreatedByName())
+				.isEqualTo("가나다라마바사아자차");
+	}
+
 	// --- 수정·삭제 (총무 전용) ---
 
 	@Test

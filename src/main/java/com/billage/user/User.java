@@ -36,7 +36,7 @@ public class User {
 	/** 소셜 전용 계정은 비밀번호가 없다({@link #createSocial}). */
 	private String password;
 
-	@Column(nullable = false, length = 100)
+	@Column(nullable = false, length = 10)
 	private String name;
 
 	@Column(name = "terms_agreed_at")

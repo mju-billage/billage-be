@@ -16,7 +16,7 @@ import jakarta.validation.constraints.Size;
 public record SocialSignupRequest(
 		@NotNull SocialProvider provider,
 		@NotBlank String token,
-		@NotBlank @Size(max = 100) String name,
+		@NotBlank @Size(max = 10, message = "이름은 10자 이하여야 합니다.") String name,
 		@AssertTrue(message = "약관 동의가 필요합니다.") boolean termsAgreed
 ) {
 }
