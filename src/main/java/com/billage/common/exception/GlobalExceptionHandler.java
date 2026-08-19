@@ -1,6 +1,7 @@
 package com.billage.common.exception;
 
 import org.springframework.dao.PessimisticLockingFailureException;
+import org.springframework.data.core.PropertyReferenceException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -34,6 +35,14 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler({ HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class })
 	public ResponseEntity<ErrorResponse> handleUnreadableRequest(Exception e) {
 		ErrorCode errorCode = ErrorCode.INVALID_REQUEST;
+		return ResponseEntity.status(errorCode.getStatus())
+				.body(ErrorResponse.of(errorCode));
+	}
+
+	/** 존재하지 않는 정렬 필드 등 조회 조건 오류. */
+	@ExceptionHandler(PropertyReferenceException.class)
+	public ResponseEntity<ErrorResponse> handleInvalidQueryParameter(PropertyReferenceException e) {
+		ErrorCode errorCode = ErrorCode.INVALID_QUERY_PARAMETER;
 		return ResponseEntity.status(errorCode.getStatus())
 				.body(ErrorResponse.of(errorCode));
 	}

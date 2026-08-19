@@ -39,7 +39,12 @@ public enum ErrorCode {
 	LEDGER_NOT_FOUND("LEDGER_NOT_FOUND", HttpStatus.NOT_FOUND, "장부를 찾을 수 없습니다."),
 	INVALID_PARENT_FOLDER("INVALID_PARENT_FOLDER", HttpStatus.CONFLICT, "상위 폴더로 지정할 수 없는 폴더입니다."),
 	GROUP_MISMATCH("GROUP_MISMATCH", HttpStatus.CONFLICT, "다른 모임의 리소스는 사용할 수 없습니다."),
-	INVALID_BUDGET("INVALID_BUDGET", HttpStatus.BAD_REQUEST, "예산은 0 이상 999,999,999 이하의 정수여야 합니다.");
+	INVALID_BUDGET("INVALID_BUDGET", HttpStatus.BAD_REQUEST, "예산은 0 이상 999,999,999 이하의 정수여야 합니다."),
+
+	// 내역
+	ENTRY_NOT_FOUND("ENTRY_NOT_FOUND", HttpStatus.NOT_FOUND, "내역을 찾을 수 없습니다."),
+	ENTRY_ALREADY_APPROVED("ENTRY_ALREADY_APPROVED", HttpStatus.CONFLICT, "이미 승인된 내역입니다."),
+	INVALID_QUERY_PARAMETER("INVALID_QUERY_PARAMETER", HttpStatus.BAD_REQUEST, "조회 조건이 올바르지 않습니다.");
 
 	private final String code;
 	private final HttpStatus status;

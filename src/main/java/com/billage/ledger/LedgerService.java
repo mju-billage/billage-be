@@ -1,12 +1,15 @@
 package com.billage.ledger;
 
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
+import com.billage.entry.EntryRepository;
+import com.billage.entry.EntryType;
 import com.billage.folder.Folder;
 import com.billage.folder.FolderRepository;
 import com.billage.ledger.dto.BudgetUpdateRequest;
@@ -27,6 +30,7 @@ public class LedgerService {
 
 	private final LedgerRepository ledgerRepository;
 	private final FolderRepository folderRepository;
+	private final EntryRepository entryRepository;
 	private final GroupAccessGuard guard;
 
 	@Transactional(readOnly = true)
@@ -97,21 +101,27 @@ public class LedgerService {
 
 	/**
 	 * 장부 삭제. 장부와 종속 내역을 완전히 삭제한다.
-	 * 내역(Entry) 도메인 구현 시 이 메서드에 내역 삭제를 추가해야 한다.
 	 */
 	@Transactional
 	public void delete(Long ledgerId, Long userId) {
 		Ledger ledger = findLedger(ledgerId);
 		guard.requireOwner(ledger.getGroup().getId(), userId);
 
+		entryRepository.deleteAllByLedgerId(ledgerId);
 		ledgerRepository.delete(ledger);
 	}
 
 	/**
-	 * 장부 집계. 내역 도메인 구현 전까지는 0을 반환한다 — 실제 집계 쿼리를 붙일 단일 지점.
+	 * 장부 집계. 승인된 내역만 합산하며 잔액은 저장하지 않고 매번 계산한다.
+	 * {@code entryCount} 는 승인 여부와 관계없는 전체 내역 수다.
 	 */
 	private LedgerStats statsOf(Ledger ledger) {
-		return LedgerStats.EMPTY;
+		Map<EntryType, Long> approvedSums = entryRepository.sumApprovedByType(ledger.getId());
+
+		return new LedgerStats(
+				approvedSums.getOrDefault(EntryType.INCOME, 0L),
+				approvedSums.getOrDefault(EntryType.EXPENSE, 0L),
+				entryRepository.countByLedgerId(ledger.getId()));
 	}
 
 	private void validateBudget(Long budget) {
