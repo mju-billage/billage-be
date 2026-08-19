@@ -44,7 +44,17 @@ public enum ErrorCode {
 	// 내역
 	ENTRY_NOT_FOUND("ENTRY_NOT_FOUND", HttpStatus.NOT_FOUND, "내역을 찾을 수 없습니다."),
 	ENTRY_ALREADY_APPROVED("ENTRY_ALREADY_APPROVED", HttpStatus.CONFLICT, "이미 승인된 내역입니다."),
-	INVALID_QUERY_PARAMETER("INVALID_QUERY_PARAMETER", HttpStatus.BAD_REQUEST, "조회 조건이 올바르지 않습니다.");
+	INVALID_QUERY_PARAMETER("INVALID_QUERY_PARAMETER", HttpStatus.BAD_REQUEST, "조회 조건이 올바르지 않습니다."),
+
+	// 파일
+	INVALID_FILE("INVALID_FILE", HttpStatus.BAD_REQUEST, "파일이 비어 있거나 올바르지 않습니다."),
+	INVALID_FILE_PURPOSE("INVALID_FILE_PURPOSE", HttpStatus.BAD_REQUEST, "허용되지 않은 파일 용도입니다."),
+	FILE_NOT_FOUND("FILE_NOT_FOUND", HttpStatus.NOT_FOUND, "파일을 찾을 수 없습니다."),
+	UNSUPPORTED_FILE_TYPE("UNSUPPORTED_FILE_TYPE", HttpStatus.UNSUPPORTED_MEDIA_TYPE, "지원하지 않는 파일 형식입니다."),
+	FILE_SIZE_EXCEEDED("FILE_SIZE_EXCEEDED", HttpStatus.PAYLOAD_TOO_LARGE, "파일 용량이 허용 범위를 초과했습니다."),
+	FILE_IN_USE("FILE_IN_USE", HttpStatus.CONFLICT, "다른 곳에 연결된 파일은 삭제할 수 없습니다."),
+	FILE_UPLOAD_FAILED("FILE_UPLOAD_FAILED", HttpStatus.INTERNAL_SERVER_ERROR, "파일 저장에 실패했습니다."),
+	FILE_DELETE_FAILED("FILE_DELETE_FAILED", HttpStatus.INTERNAL_SERVER_ERROR, "파일 삭제에 실패했습니다.");
 
 	private final String code;
 	private final HttpStatus status;

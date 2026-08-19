@@ -72,8 +72,14 @@
 - **APPROVED만** 잔액·통계·보고서에 반영.
 - 회계 이력의 행위자는 Member 명단이 아니라 **User 기준**으로 기록하고, 작성자·승인자 이름은 그 시점 값을 함께 보존해 탈퇴 후에도 표시가 깨지지 않게 한다.
 
-### EvidenceFile
-- 증빙(영수증) 메타데이터만 DB에 저장 (storage key, 파일명, 타입, 크기). 바이너리는 Object Storage.
+### UploadedFile (파일)
+- 메타데이터만 DB에 저장 (용도, storage key, 원본 파일명, 타입, 크기, 업로더). 바이너리는 저장소에 둔다.
+- 용도: `RECEIPT`(증빙) / `PROFILE_IMAGE` / `GROUP_IMAGE`. 현재 내역 연결은 RECEIPT 만 구현.
+- 허용 형식 jpg·jpeg·png·webp, 최대 10MB (`billage.file.*` 설정, 기획 확정 시 조정).
+- 원본 파일명을 storage key 로 쓰지 않는다(`{용도}/{yyyy/MM/dd}/{UUID}.{확장자}`).
+- 접근: 연결 전에는 업로더만, 내역에 연결되면 그 모임 관리자면 조회 가능. 삭제는 업로더만, 연결된 파일은 `FILE_IN_USE`.
+- 저장소는 `FileStorage` 인터페이스 뒤에 있다 — 로컬 개발은 디스크, dev·prod 는 S3.
+- 다운로드(`GET /files/{id}/content`)는 권한 검사 후 **presigned URL 로 302 리다이렉트**한다(로컬 디스크는 직접 전송).
 
 ## 내역 승인 정책
 

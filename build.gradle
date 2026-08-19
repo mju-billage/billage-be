@@ -32,6 +32,10 @@ dependencies {
 
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
 
+	// 파일 저장소(S3). Boot 4 가 버전을 관리하지 않으므로 BOM 으로 고정한다.
+	implementation platform('software.amazon.awssdk:bom:2.46.7')
+	implementation 'software.amazon.awssdk:s3'
+
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'
 	developmentOnly 'org.springframework.boot:spring-boot-devtools'

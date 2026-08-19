@@ -6,7 +6,7 @@ import com.billage.entry.ApprovalStatus;
 import com.billage.entry.Entry;
 import com.billage.entry.EntryType;
 
-/** 내역 목록 항목. {@code receiptCount} 는 File 도메인 구현 전까지 항상 0. */
+/** 내역 목록 항목. {@code receiptCount} 는 연결된 증빙 파일 수. */
 public record EntrySummaryResponse(
 		Long entryId,
 		EntryType type,
@@ -16,12 +16,12 @@ public record EntrySummaryResponse(
 		ApprovalStatus approvalStatus,
 		Long createdByUserId,
 		String createdByName,
-		int receiptCount
+		long receiptCount
 ) {
 
-	public static EntrySummaryResponse from(Entry entry) {
+	public static EntrySummaryResponse of(Entry entry, long receiptCount) {
 		return new EntrySummaryResponse(entry.getId(), entry.getType(), entry.getTitle(), entry.getAmount(),
 				entry.getOccurredOn(), entry.getApprovalStatus(), entry.getCreatedByUserId(),
-				entry.getCreatedByName(), 0);
+				entry.getCreatedByName(), receiptCount);
 	}
 }

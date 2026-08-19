@@ -10,6 +10,7 @@ import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
 import com.billage.entry.EntryRepository;
 import com.billage.entry.EntryType;
+import com.billage.file.FileService;
 import com.billage.folder.Folder;
 import com.billage.folder.FolderRepository;
 import com.billage.ledger.dto.BudgetUpdateRequest;
@@ -31,6 +32,7 @@ public class LedgerService {
 	private final LedgerRepository ledgerRepository;
 	private final FolderRepository folderRepository;
 	private final EntryRepository entryRepository;
+	private final FileService fileService;
 	private final GroupAccessGuard guard;
 
 	@Transactional(readOnly = true)
@@ -100,13 +102,14 @@ public class LedgerService {
 	}
 
 	/**
-	 * 장부 삭제. 장부와 종속 내역을 완전히 삭제한다.
+	 * 장부 삭제. 장부와 종속 내역·증빙 파일을 완전히 삭제한다.
 	 */
 	@Transactional
 	public void delete(Long ledgerId, Long userId) {
 		Ledger ledger = findLedger(ledgerId);
 		guard.requireOwner(ledger.getGroup().getId(), userId);
 
+		fileService.deleteByLedger(ledgerId);
 		entryRepository.deleteAllByLedgerId(ledgerId);
 		ledgerRepository.delete(ledger);
 	}

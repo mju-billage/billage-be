@@ -1,6 +1,7 @@
 package com.billage.entry.dto;
 
 import java.time.LocalDate;
+import java.util.List;
 
 import com.billage.entry.Entry;
 import com.billage.entry.EntryType;
@@ -11,10 +12,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 
-/**
- * 내역 등록 요청.
- * {@code receiptFileIds}(증빙 파일)는 File 도메인 구현 전까지 받지 않는다 — 추가 시 사전 공유.
- */
+/** 내역 등록 요청. */
 public record EntryCreateRequest(
 		@NotNull(message = "내역 유형은 필수입니다.")
 		EntryType type,
@@ -32,6 +30,9 @@ public record EntryCreateRequest(
 		LocalDate occurredOn,
 
 		@Size(max = 30, message = "메모는 30자 이하여야 합니다.")
-		String memo
+		String memo,
+
+		/** 미리 업로드한 증빙 파일 ID. 본인이 올린 RECEIPT 파일 중 아직 연결되지 않은 것만 허용된다. */
+		List<Long> receiptFileIds
 ) {
 }

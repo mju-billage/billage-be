@@ -173,7 +173,7 @@ class EntryServiceTest extends IntegrationTest {
 				.isEqualTo(ErrorCode.ACCESS_DENIED);
 
 		assertThatThrownBy(() -> entryService.create(ledgerId, outsiderId,
-				new EntryCreateRequest(EntryType.EXPENSE, "몰래 등록", 1_000L, LocalDate.now(), null)))
+				new EntryCreateRequest(EntryType.EXPENSE, "몰래 등록", 1_000L, LocalDate.now(), null, null)))
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
 				.isEqualTo(ErrorCode.ACCESS_DENIED);
@@ -211,11 +211,11 @@ class EntryServiceTest extends IntegrationTest {
 
 	private Long createExpense(Long userId, String title, long amount) {
 		return entryService.create(ledgerId, userId,
-				new EntryCreateRequest(EntryType.EXPENSE, title, amount, LocalDate.of(2026, 7, 20), null)).entryId();
+				new EntryCreateRequest(EntryType.EXPENSE, title, amount, LocalDate.of(2026, 7, 20), null, null)).entryId();
 	}
 
 	private Long createIncome(Long userId, String title, long amount) {
 		return entryService.create(ledgerId, userId,
-				new EntryCreateRequest(EntryType.INCOME, title, amount, LocalDate.of(2026, 7, 20), null)).entryId();
+				new EntryCreateRequest(EntryType.INCOME, title, amount, LocalDate.of(2026, 7, 20), null, null)).entryId();
 	}
 }

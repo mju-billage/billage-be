@@ -146,6 +146,11 @@ sudo /opt/billage/restore-db.sh /var/backups/billage/billage-YYYYmmdd-HHMMSS.sql
 sudo systemctl restart billage
 ```
 
+**업로드 파일 S3**: 버킷 `s3://billage-files-442908904609/` (`ap-northeast-2`, 퍼블릭 차단, SSE-S3, 미완료 멀티파트 7일 정리).
+- 환경 구분은 프리픽스 — dev 는 `dev/`, prod 는 `prod/`. 앱 설정 `BILLAGE_FILE_STORAGE=S3`, `BILLAGE_FILE_S3_BUCKET`, `BILLAGE_FILE_S3_PREFIX`.
+- 인증은 EC2 인스턴스 역할 `billage-backup-role` 에 `billage-files-access` 정책(해당 버킷 객체에 Put/Get/Delete)을 추가해 사용 — **서버에 액세스 키 없음**.
+- 다운로드는 앱이 권한 확인 후 presigned URL(5분)로 302 리다이렉트하므로 파일 트래픽이 서버를 통과하지 않는다.
+
 **S3 오프사이트(적용됨)**: 로컬 + S3 이중 보관.
 - 버킷: `s3://billage-db-backup-442908904609/mysql/` (`ap-northeast-2`, 퍼블릭 차단, SSE-S3, 수명주기 30일 자동삭제)
 - 인증: EC2 인스턴스 프로파일 `billage-backup-profile`(역할 `billage-backup-role`, 버킷에 `s3:PutObject`만) — **서버에 액세스 키 저장 없음**

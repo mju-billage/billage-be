@@ -5,6 +5,12 @@ server:
 spring:
   application:
     name: billage-server
+  servlet:
+    multipart:
+      # 개별 파일 상한은 billage.file.max-size 로 검증해 FILE_SIZE_EXCEEDED 로 응답한다.
+      # 여기 값은 컨테이너 차원의 방어선이라 조금 넉넉하게 둔다.
+      max-file-size: 12MB
+      max-request-size: 24MB
   profiles:
     default: local
   datasource:
@@ -27,6 +33,18 @@ spring:
       # 끄면 Jackson 3 기본값상 미전달도 Optional.empty() 로 바인딩되어,
       # 폴더 수정에서 이름만 보내도 상위 폴더가 최상위로 이동해버린다(FolderUpdateRequest).
       use-null-for-missing-reference-values: true
+
+billage:
+  file:
+    # LOCAL(서버 디스크) | S3. 로컬 개발은 LOCAL, dev·prod 는 S3.
+    storage: ${BILLAGE_FILE_STORAGE:LOCAL}
+    storage-path: ${FILE_STORAGE_PATH:./data/files}
+    max-size: 10MB
+    s3:
+      bucket: ${BILLAGE_FILE_S3_BUCKET:}
+      # 한 버킷을 dev·prod 가 공유하므로 환경 프리픽스로 구분한다.
+      prefix: ${BILLAGE_FILE_S3_PREFIX:dev}
+      presign-expiry: 5m
 
 springdoc:
   swagger-ui:
@@ -70,6 +88,18 @@ spring:
     password: ${DB_PASSWORD}
 
 # dev(배포) 서버에서 Swagger 노출 — 배포 서버 API 확인·테스트용
+billage:
+  file:
+    # LOCAL(서버 디스크) | S3. 로컬 개발은 LOCAL, dev·prod 는 S3.
+    storage: ${BILLAGE_FILE_STORAGE:LOCAL}
+    storage-path: ${FILE_STORAGE_PATH:./data/files}
+    max-size: 10MB
+    s3:
+      bucket: ${BILLAGE_FILE_S3_BUCKET:}
+      # 한 버킷을 dev·prod 가 공유하므로 환경 프리픽스로 구분한다.
+      prefix: ${BILLAGE_FILE_S3_PREFIX:dev}
+      presign-expiry: 5m
+
 springdoc:
   api-docs:
     enabled: true
@@ -85,6 +115,18 @@ spring:
     url: ${DB_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
+
+billage:
+  file:
+    # LOCAL(서버 디스크) | S3. 로컬 개발은 LOCAL, dev·prod 는 S3.
+    storage: ${BILLAGE_FILE_STORAGE:LOCAL}
+    storage-path: ${FILE_STORAGE_PATH:./data/files}
+    max-size: 10MB
+    s3:
+      bucket: ${BILLAGE_FILE_S3_BUCKET:}
+      # 한 버킷을 dev·prod 가 공유하므로 환경 프리픽스로 구분한다.
+      prefix: ${BILLAGE_FILE_S3_PREFIX:dev}
+      presign-expiry: 5m
 
 springdoc:
   api-docs:
