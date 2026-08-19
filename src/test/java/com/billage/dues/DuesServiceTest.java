@@ -281,6 +281,25 @@ class DuesServiceTest extends IntegrationTest {
 	}
 
 	@Test
+	void 모임원_이름을_고쳐도_회비_납부_기록은_유지된다() {
+		Long duesId = createDues(List.of(member1, member2));
+		pay(duesId, member1);
+
+		memberService.updateMember(groupId, ownerId, member1,
+				new com.billage.member.dto.MemberUpdateRequest("김모임원정정"));
+
+		// 지우고 다시 만들면 납부 기록이 사라진다 — 그래서 수정 API 가 필요하다.
+		assertThat(duesService.getTargets(duesId, ownerId, null, null))
+				.filteredOn(target -> target.memberId().equals(member1))
+				.singleElement()
+				.satisfies(target -> {
+					assertThat(target.name()).isEqualTo("김모임원정정");
+					assertThat(target.status()).isEqualTo(PaymentStatus.PAID);
+					assertThat(target.paidAt()).isNotNull();
+				});
+	}
+
+	@Test
 	void 모임을_삭제하면_회비도_함께_사라진다() {
 		createDues(List.of(member1));
 

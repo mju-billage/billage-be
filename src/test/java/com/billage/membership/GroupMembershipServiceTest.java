@@ -19,6 +19,7 @@ import com.billage.group.dto.GroupUpdateRequest;
 import com.billage.member.MemberRepository;
 import com.billage.member.MemberService;
 import com.billage.member.dto.MemberCreateRequest;
+import com.billage.member.dto.MemberUpdateRequest;
 import com.billage.membership.dto.RoleUpdateRequest;
 import com.billage.support.IntegrationTest;
 import com.billage.user.User;
@@ -190,6 +191,36 @@ class GroupMembershipServiceTest extends IntegrationTest {
 		// 이름을 생략한 부분 수정은 그대로 동작해야 한다.
 		groupService.update(groupId, ownerId, new GroupUpdateRequest(null, "설명만 변경"));
 		assertThat(groupSpaceRepository.findById(groupId).orElseThrow().getName()).isEqualTo("주리랑");
+	}
+
+	// --- 모임원 수정 ---
+
+	@Test
+	void 총무는_모임원_이름을_고칠_수_있고_일반_관리자는_못_고친다() {
+		joinWithInvitation(adminId);
+		Long memberId = memberService.addMember(groupId, ownerId, new MemberCreateRequest("김모임원")).memberId();
+
+		assertThat(memberService.updateMember(groupId, ownerId, memberId,
+				new MemberUpdateRequest("김모임원정정")).name()).isEqualTo("김모임원정정");
+
+		assertThatThrownBy(() -> memberService.updateMember(groupId, adminId, memberId,
+				new MemberUpdateRequest("몰래 변경")))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.ACCESS_DENIED);
+	}
+
+	@Test
+	void 다른_모임의_모임원은_수정할_수_없다() {
+		Long otherGroupId = groupService.create(adminId, new GroupCreateRequest("남의모임", null)).groupId();
+		Long otherMemberId = memberService.addMember(otherGroupId, adminId,
+				new MemberCreateRequest("남의모임원")).memberId();
+
+		assertThatThrownBy(() -> memberService.updateMember(groupId, ownerId, otherMemberId,
+				new MemberUpdateRequest("탈취")))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.MEMBER_NOT_FOUND);
 	}
 
 	// --- 모임 삭제 ---

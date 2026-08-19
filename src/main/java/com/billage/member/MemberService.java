@@ -11,6 +11,7 @@ import com.billage.dues.DuesService;
 import com.billage.group.GroupSpace;
 import com.billage.member.dto.MemberCreateRequest;
 import com.billage.member.dto.MemberResponse;
+import com.billage.member.dto.MemberUpdateRequest;
 import com.billage.membership.GroupAccessGuard;
 
 import lombok.RequiredArgsConstructor;
@@ -44,8 +45,25 @@ public class MemberService {
 	}
 
 	/**
+	 * 모임원 이름 수정(총무 전용). 오타 정정 용도이며 회비 참여 데이터는 그대로 유지된다.
+	 */
+	@Transactional
+	public MemberResponse updateMember(Long groupId, Long userId, Long memberId, MemberUpdateRequest request) {
+		guard.requireOwner(groupId, userId);
+
+		Member member = memberRepository.findByIdAndGroupId(memberId, groupId)
+				.orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_NOT_FOUND));
+		String name = request.name().trim();
+		if (name.isEmpty()) {
+			throw new BusinessException(ErrorCode.INVALID_REQUEST, "모임원 이름은 공백일 수 없습니다.");
+		}
+		member.rename(name);
+
+		return MemberResponse.from(member);
+	}
+
+	/**
 	 * 모임원 삭제. 회비 참여 데이터까지 완전 삭제하며, 관리자 권한(GroupMembership)에는 영향을 주지 않는다.
-	 * 회비 도메인 구현 시 이 메서드에 삭제 대상을 추가해야 한다.
 	 */
 	@Transactional
 	public void removeMember(Long groupId, Long userId, Long memberId) {

@@ -6,6 +6,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -18,6 +19,7 @@ import com.billage.auth.security.CurrentUserId;
 import com.billage.common.response.ApiResponse;
 import com.billage.member.dto.MemberCreateRequest;
 import com.billage.member.dto.MemberResponse;
+import com.billage.member.dto.MemberUpdateRequest;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -43,6 +45,14 @@ public class MemberController {
 		MemberResponse response = memberService.addMember(groupId, userId, request);
 		return ResponseEntity.status(HttpStatus.CREATED)
 				.body(ApiResponse.of(response, "모임원 등록에 성공했습니다."));
+	}
+
+	@PatchMapping("/{memberId}")
+	public ResponseEntity<ApiResponse<MemberResponse>> updateMember(@CurrentUserId Long userId,
+			@PathVariable Long groupId, @PathVariable Long memberId,
+			@Valid @RequestBody MemberUpdateRequest request) {
+		return ResponseEntity.ok(ApiResponse.of(
+				memberService.updateMember(groupId, userId, memberId, request), "모임원 수정에 성공했습니다."));
 	}
 
 	@DeleteMapping("/{memberId}")
