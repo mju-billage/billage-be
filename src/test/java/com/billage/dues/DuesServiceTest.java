@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -28,6 +29,7 @@ import com.billage.ledger.LedgerService;
 import com.billage.ledger.dto.LedgerCreateRequest;
 import com.billage.member.MemberService;
 import com.billage.member.dto.MemberCreateRequest;
+import com.billage.member.dto.MemberUpdateRequest;
 import com.billage.membership.GroupMembershipService;
 import com.billage.support.IntegrationTest;
 import com.billage.user.User;
@@ -284,9 +286,10 @@ class DuesServiceTest extends IntegrationTest {
 	void 모임원_이름을_고쳐도_회비_납부_기록은_유지된다() {
 		Long duesId = createDues(List.of(member1, member2));
 		pay(duesId, member1);
+		OffsetDateTime paidAtBeforeRename = paidAtOf(duesId, member1);
+		assertThat(paidAtBeforeRename).isNotNull();
 
-		memberService.updateMember(groupId, ownerId, member1,
-				new com.billage.member.dto.MemberUpdateRequest("김모임원정정"));
+		memberService.updateMember(groupId, ownerId, member1, new MemberUpdateRequest("김모임원정정"));
 
 		// 지우고 다시 만들면 납부 기록이 사라진다 — 그래서 수정 API 가 필요하다.
 		assertThat(duesService.getTargets(duesId, ownerId, null, null))
@@ -295,7 +298,8 @@ class DuesServiceTest extends IntegrationTest {
 				.satisfies(target -> {
 					assertThat(target.name()).isEqualTo("김모임원정정");
 					assertThat(target.status()).isEqualTo(PaymentStatus.PAID);
-					assertThat(target.paidAt()).isNotNull();
+					// 이름만 바뀌어야 한다 — 납부 시각이 갱신되면 이름 수정이 재납부처럼 기록된다.
+					assertThat(target.paidAt()).isEqualTo(paidAtBeforeRename);
 				});
 	}
 
@@ -354,6 +358,14 @@ class DuesServiceTest extends IntegrationTest {
 
 	private void pay(Long duesId, Long memberId) {
 		duesService.changePaymentStatus(duesId, memberId, ownerId, new PaymentStatusUpdateRequest("PAID"));
+	}
+
+	private OffsetDateTime paidAtOf(Long duesId, Long memberId) {
+		return duesService.getTargets(duesId, ownerId, null, null).stream()
+				.filter(target -> target.memberId().equals(memberId))
+				.findFirst()
+				.orElseThrow()
+				.paidAt();
 	}
 
 	private Long closeWithAllPaid() {
