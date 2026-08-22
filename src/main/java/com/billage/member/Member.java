@@ -61,6 +61,14 @@ public class Member {
 		return new Member(group, name);
 	}
 
+	/**
+	 * 이름 수정. 오타 정정 용도이며 회비 참여 데이터는 그대로 유지된다
+	 * (지우고 다시 만들면 납부 기록이 함께 사라진다).
+	 */
+	public void rename(String name) {
+		this.name = name;
+	}
+
 	@PrePersist
 	void onCreate() {
 		LocalDateTime now = LocalDateTime.now();
