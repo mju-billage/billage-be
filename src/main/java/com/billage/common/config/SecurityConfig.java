@@ -35,6 +35,7 @@ public class SecurityConfig {
 				.authorizeHttpRequests(auth -> auth
 						// 인증 없이 접근: 로그인·회원가입·재발급·로그아웃(로그아웃은 Refresh Token 자체로 검증)
 						.requestMatchers(HttpMethod.POST,
+								"/api/v1/auth/signup",
 								"/api/v1/auth/login",
 								"/api/v1/auth/social/login",
 								"/api/v1/auth/social/signup",

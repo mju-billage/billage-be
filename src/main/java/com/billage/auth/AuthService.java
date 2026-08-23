@@ -3,11 +3,13 @@ package com.billage.auth;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.billage.auth.dto.LoginResponse;
+import com.billage.auth.dto.SignupResponse;
 import com.billage.auth.dto.TokenResponse;
 import com.billage.auth.dto.UserResponse;
 import com.billage.auth.jwt.JwtProperties;
@@ -36,6 +38,29 @@ public class AuthService {
 	private final TokenHasher tokenHasher;
 
 	private record IssuedRefreshToken(RefreshToken entity, String rawToken) {
+	}
+
+	/**
+	 * 이메일 회원가입. 명세상 가입과 로그인은 분리돼 있어 토큰을 발급하지 않는다.
+	 *
+	 * <p>소셜 전용으로 먼저 만들어진 계정도 같은 이메일을 점유하므로 중복으로 막는다.
+	 * 이 경우 비밀번호를 나중에 붙여주는 경로는 명세에 없다.
+	 */
+	@Transactional
+	public SignupResponse signup(String email, String rawPassword, String name) {
+		if (userRepository.existsByEmail(email)) {
+			throw new BusinessException(ErrorCode.EMAIL_ALREADY_EXISTS);
+		}
+
+		try {
+			// 위 검사와 저장 사이에 같은 이메일이 끼어들 수 있다. 최종 판정은 users.email 의 UNIQUE 제약이며,
+			// 지금 flush 해서 그 충돌을 이 자리에서 409 로 바꾼다(트랜잭션 커밋 시점에 터지면 500 이 된다).
+			User user = userRepository.saveAndFlush(
+					User.create(email, passwordEncoder.encode(rawPassword), name.trim()));
+			return SignupResponse.from(user);
+		} catch (DataIntegrityViolationException e) {
+			throw new BusinessException(ErrorCode.EMAIL_ALREADY_EXISTS);
+		}
 	}
 
 	/**
