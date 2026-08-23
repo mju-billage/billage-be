@@ -1,6 +1,7 @@
 package com.billage.group;
 
 import java.util.List;
+import java.util.Objects;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,7 +48,7 @@ public class GroupService {
 	@Transactional(readOnly = true)
 	public List<GroupSummaryResponse> getMyGroups(Long userId) {
 		return groupMembershipRepository.findMyGroups(userId).stream()
-				.map(GroupSummaryResponse::from)
+				.map(row -> GroupSummaryResponse.of(row, fileService.contentUrl(row.groupImageFileId())))
 				.toList();
 	}
 
@@ -57,11 +58,15 @@ public class GroupService {
 	 */
 	@Transactional
 	public GroupCreateResponse create(Long userId, GroupCreateRequest request) {
+		Long imageFileId = request.groupImageFileId();
+		if (imageFileId != null) {
+			fileService.requireUsableGroupImage(imageFileId, userId);
+		}
 		GroupSpace group = groupSpaceRepository.save(
-				GroupSpace.create(request.name().trim(), request.description(), userId));
+				GroupSpace.create(request.name().trim(), request.description(), imageFileId, userId));
 		groupMembershipRepository.save(GroupMembership.createOwner(group, userId));
 
-		return GroupCreateResponse.from(group);
+		return GroupCreateResponse.of(group, fileService.contentUrl(imageFileId));
 	}
 
 	@Transactional(readOnly = true)
@@ -70,7 +75,8 @@ public class GroupService {
 		long memberCount = memberRepository.countByGroupId(groupId);
 		long ownerCount = groupMembershipRepository.countByGroupIdAndRole(groupId, GroupRole.OWNER);
 
-		return GroupDetailResponse.of(me.getGroup(), me.getRole(), memberCount, ownerCount);
+		return GroupDetailResponse.of(me.getGroup(), fileService.contentUrl(me.getGroup().getGroupImageFileId()),
+				me.getRole(), memberCount, ownerCount);
 	}
 
 	/**
@@ -85,8 +91,28 @@ public class GroupService {
 			throw new BusinessException(ErrorCode.INVALID_REQUEST, "모임 이름은 공백일 수 없습니다.");
 		}
 		group.update(name, request.description());
+		if (request.imageChangeRequested()) {
+			replaceImage(group, request.targetImageFileId(), userId);
+		}
 
-		return GroupUpdateResponse.from(group);
+		return GroupUpdateResponse.of(group, fileService.contentUrl(group.getGroupImageFileId()));
+	}
+
+	/**
+	 * 대표 이미지 교체. 새 파일이 null 이면 기본 이미지로 되돌린다.
+	 * 쓰이지 않게 된 이전 이미지는 저장소에 남기지 않는다.
+	 */
+	private void replaceImage(GroupSpace group, Long newFileId, Long userId) {
+		Long previousFileId = group.getGroupImageFileId();
+		if (Objects.equals(previousFileId, newFileId)) {
+			return;
+		}
+		if (newFileId != null) {
+			fileService.requireUsableGroupImage(newFileId, userId);
+		}
+		// 참조를 먼저 옮긴 뒤 이전 파일을 지운다. 반대로 하면 삭제 실패 시 깨진 참조만 남는다.
+		group.changeImage(newFileId);
+		fileService.deleteGroupImage(previousFileId);
 	}
 
 	/**
@@ -109,6 +135,9 @@ public class GroupService {
 		ledgerRepository.deleteAllByGroupId(groupId);
 		folderRepository.deleteDeepestFirst(folderRepository.findAllByGroupId(groupId));
 		groupMembershipRepository.deleteByGroupId(groupId);
+		Long imageFileId = groupSpaceRepository.findById(groupId)
+				.map(GroupSpace::getGroupImageFileId).orElse(null);
 		groupSpaceRepository.deleteById(groupId);
+		fileService.deleteGroupImage(imageFileId);
 	}
 }

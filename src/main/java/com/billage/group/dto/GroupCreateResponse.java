@@ -15,8 +15,8 @@ public record GroupCreateResponse(
 		OffsetDateTime createdAt
 ) {
 
-	public static GroupCreateResponse from(GroupSpace group) {
-		return new GroupCreateResponse(group.getId(), group.getName(), group.getDescription(), null,
+	public static GroupCreateResponse of(GroupSpace group, String groupImageUrl) {
+		return new GroupCreateResponse(group.getId(), group.getName(), group.getDescription(), groupImageUrl,
 				GroupRole.OWNER, KoreanTime.toOffset(group.getCreatedAt()));
 	}
 }

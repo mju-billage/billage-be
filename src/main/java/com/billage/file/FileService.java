@@ -19,6 +19,8 @@ import com.billage.common.exception.ErrorCode;
 import com.billage.entry.Entry;
 import com.billage.file.dto.FileResponse;
 import com.billage.file.dto.ReceiptFileResponse;
+import com.billage.group.GroupSpace;
+import com.billage.group.GroupSpaceRepository;
 import com.billage.membership.GroupAccessGuard;
 
 import lombok.RequiredArgsConstructor;
@@ -38,6 +40,7 @@ public class FileService {
 	private final FileRepository fileRepository;
 	private final FileStorage fileStorage;
 	private final FileProperties properties;
+	private final GroupSpaceRepository groupSpaceRepository;
 	private final GroupAccessGuard guard;
 
 	@Transactional
@@ -60,6 +63,14 @@ public class FileService {
 
 		if (file.isLinked()) {
 			guard.requireMembership(file.getEntry().getGroupId(), userId);
+			return file;
+		}
+		// 모임 대표 이미지는 그 모임 관리자 전원이 볼 수 있어야 한다(업로더 본인만이면 목록 화면이 깨진다).
+		Optional<GroupSpace> owningGroup = file.getPurpose() == FilePurpose.GROUP_IMAGE
+				? groupSpaceRepository.findByGroupImageFileId(file.getId())
+				: Optional.empty();
+		if (owningGroup.isPresent()) {
+			guard.requireMembership(owningGroup.get().getId(), userId);
 		} else if (!file.isUploadedBy(userId)) {
 			throw new BusinessException(ErrorCode.ACCESS_DENIED);
 		}
@@ -135,6 +146,40 @@ public class FileService {
 		linkReceipts(entry, fileIds.stream()
 				.filter(fileId -> linked.stream().noneMatch(file -> file.getId().equals(fileId)))
 				.toList(), userId);
+	}
+
+	/**
+	 * 모임 대표 이미지로 쓸 파일인지 확인한다. 업로더 본인의 GROUP_IMAGE 파일만 허용한다.
+	 * 증빙과 달리 파일 쪽에 소유 모임을 적어 두지 않으므로(엔티티 연결 없음) 여기서는 검증만 하고,
+	 * 참조는 GroupSpace 가 파일 ID 로 들고 간다.
+	 */
+	@Transactional(readOnly = true)
+	public void requireUsableGroupImage(Long fileId, Long userId) {
+		UploadedFile file = fileRepository.findById(fileId)
+				.orElseThrow(() -> new BusinessException(ErrorCode.FILE_NOT_FOUND));
+		if (file.getPurpose() != FilePurpose.GROUP_IMAGE) {
+			throw new BusinessException(ErrorCode.INVALID_FILE_PURPOSE);
+		}
+		if (!file.isUploadedBy(userId)) {
+			throw new BusinessException(ErrorCode.ACCESS_DENIED);
+		}
+	}
+
+	/**
+	 * 모임 대표 이미지 파일을 지운다. 교체·모임 삭제 경로에서만 호출한다.
+	 * 이미 없는 파일이면 조용히 넘어간다 — 참조만 남고 실물이 사라진 상태에서 모임 삭제가 막히면 안 된다.
+	 */
+	@Transactional
+	public void deleteGroupImage(Long fileId) {
+		if (fileId == null) {
+			return;
+		}
+		fileRepository.findById(fileId).ifPresent(file -> deleteAll(List.of(file)));
+	}
+
+	/** 파일 내려받기 URL. 참조만 들고 있는 도메인이 응답을 만들 때 쓴다. */
+	public String contentUrl(Long fileId) {
+		return fileId == null ? null : fileUrl(fileId);
 	}
 
 	/** 내역 삭제 시 그 내역에 연결된 증빙을 함께 지운다. */

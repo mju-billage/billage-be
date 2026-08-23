@@ -9,6 +9,9 @@ public record GroupCreateRequest(
 		String name,
 
 		@Size(max = 30, message = "모임 설명은 30자 이하여야 합니다.")
-		String description
+		String description,
+
+		/** 미리 업로드한 대표 이미지 파일 ID. 본인이 올린 GROUP_IMAGE 파일만 허용된다. 선택값. */
+		Long groupImageFileId
 ) {
 }

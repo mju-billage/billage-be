@@ -5,9 +5,7 @@ import java.time.OffsetDateTime;
 import com.billage.common.response.KoreanTime;
 import com.billage.membership.GroupRole;
 
-/**
- * 모임 목록 항목. {@code groupImageUrl} 은 File 도메인 구현 전까지 항상 null.
- */
+/** 모임 목록 항목. */
 public record GroupSummaryResponse(
 		Long groupId,
 		String name,
@@ -18,8 +16,8 @@ public record GroupSummaryResponse(
 		OffsetDateTime createdAt
 ) {
 
-	public static GroupSummaryResponse from(GroupListRow row) {
-		return new GroupSummaryResponse(row.groupId(), row.name(), row.description(), null,
+	public static GroupSummaryResponse of(GroupListRow row, String groupImageUrl) {
+		return new GroupSummaryResponse(row.groupId(), row.name(), row.description(), groupImageUrl,
 				row.myRole(), row.memberCount(), KoreanTime.toOffset(row.createdAt()));
 	}
 }

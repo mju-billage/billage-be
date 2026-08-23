@@ -76,7 +76,7 @@ class DuesServiceTest extends IntegrationTest {
 		adminId = userRepository.save(User.create("admin@example.com", "encoded", "일반관리자")).getId();
 		outsiderId = userRepository.save(User.create("out@example.com", "encoded", "남의모임")).getId();
 
-		groupId = groupService.create(ownerId, new GroupCreateRequest("주리랑", null)).groupId();
+		groupId = groupService.create(ownerId, new GroupCreateRequest("주리랑", null, null)).groupId();
 		String code = groupMembershipService.createInvitation(groupId, ownerId).invitationCode();
 		groupMembershipService.join(adminId, code);
 
@@ -231,7 +231,7 @@ class DuesServiceTest extends IntegrationTest {
 
 	@Test
 	void 다른_모임의_모임원이나_장부는_지정할_수_없다() {
-		Long otherGroupId = groupService.create(outsiderId, new GroupCreateRequest("남의모임", null)).groupId();
+		Long otherGroupId = groupService.create(outsiderId, new GroupCreateRequest("남의모임", null, null)).groupId();
 		Long otherMemberId = memberService.addMember(otherGroupId, outsiderId,
 				new MemberCreateRequest("남의모임원", null, null, null)).memberId();
 

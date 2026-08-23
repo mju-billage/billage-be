@@ -11,6 +11,7 @@ public record GroupListRow(
 		Long groupId,
 		String name,
 		String description,
+		Long groupImageFileId,
 		GroupRole myRole,
 		long memberCount,
 		LocalDateTime createdAt

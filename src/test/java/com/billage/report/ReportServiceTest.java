@@ -68,12 +68,12 @@ class ReportServiceTest extends IntegrationTest {
 		adminId = userRepository.save(User.create("admin@example.com", "encoded", "일반관리자")).getId();
 		outsiderId = userRepository.save(User.create("outsider@example.com", "encoded", "남의모임")).getId();
 
-		groupId = groupService.create(ownerId, new GroupCreateRequest("주리랑", null)).groupId();
+		groupId = groupService.create(ownerId, new GroupCreateRequest("주리랑", null, null)).groupId();
 		String code = groupMembershipService.createInvitation(groupId, ownerId).invitationCode();
 		groupMembershipService.join(adminId, code);
 		ledgerId = createLedger(groupId, ownerId, "운영 장부");
 
-		Long otherGroupId = groupService.create(outsiderId, new GroupCreateRequest("남의모임", null)).groupId();
+		Long otherGroupId = groupService.create(outsiderId, new GroupCreateRequest("남의모임", null, null)).groupId();
 		otherGroupLedgerId = createLedger(otherGroupId, outsiderId, "남의 장부");
 	}
 

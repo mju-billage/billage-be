@@ -17,8 +17,9 @@ public record GroupDetailResponse(
 		OffsetDateTime createdAt
 ) {
 
-	public static GroupDetailResponse of(GroupSpace group, GroupRole myRole, long memberCount, long ownerCount) {
-		return new GroupDetailResponse(group.getId(), group.getName(), group.getDescription(), null,
+	public static GroupDetailResponse of(GroupSpace group, String groupImageUrl, GroupRole myRole,
+			long memberCount, long ownerCount) {
+		return new GroupDetailResponse(group.getId(), group.getName(), group.getDescription(), groupImageUrl,
 				myRole, memberCount, ownerCount, KoreanTime.toOffset(group.getCreatedAt()));
 	}
 }

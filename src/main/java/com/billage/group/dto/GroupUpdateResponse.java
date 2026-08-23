@@ -9,7 +9,7 @@ public record GroupUpdateResponse(
 		String groupImageUrl
 ) {
 
-	public static GroupUpdateResponse from(GroupSpace group) {
-		return new GroupUpdateResponse(group.getId(), group.getName(), group.getDescription(), null);
+	public static GroupUpdateResponse of(GroupSpace group, String groupImageUrl) {
+		return new GroupUpdateResponse(group.getId(), group.getName(), group.getDescription(), groupImageUrl);
 	}
 }
