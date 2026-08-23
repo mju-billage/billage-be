@@ -144,8 +144,12 @@ public class GroupMembershipService {
 		groupMembershipRepository.delete(target);
 	}
 
+	/**
+	 * 총무를 한 명 줄이기 직전에 호출한다. 총무 행을 잠근 채로 세어 같은 모임의 총무 변경을 직렬화한다.
+	 * 일반 count 로는 부족하다 — 자세한 이유는 {@link GroupMembershipRepository#lockOwners}.
+	 */
 	private void requireNotLastOwner(Long groupId) {
-		if (groupMembershipRepository.countByGroupIdAndRole(groupId, GroupRole.OWNER) <= 1) {
+		if (groupMembershipRepository.lockOwners(groupId).size() <= 1) {
 			throw new BusinessException(ErrorCode.LAST_OWNER_REQUIRED);
 		}
 	}

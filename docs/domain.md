@@ -33,7 +33,9 @@
 ### GroupMembership (모임 관리자)
 - 가입 사용자(User)와 모임의 **권한 관계**. 앱에 로그인해 모임을 쓰는 주체.
 - 역할: `OWNER`(총무) / `MEMBER`(일반 권한 관리자) 2단계. 커스텀 권한 없음.
-  공동 총무 수 제한 없고 **항상 최소 1명의 OWNER** 필요 → 마지막 총무의 권한 해제·탈퇴는 `LAST_OWNER_REQUIRED(409)`.
+  공동 총무 수 제한 없고 **항상 최소 1명의 OWNER** 필요 → 마지막 총무의 권한 해제·탈퇴·내보내기는 `LAST_OWNER_REQUIRED(409)`.
+  총무를 줄이는 경로는 총무 행을 잠근 채로 센다(`lockOwners`). 일반 count 는 MySQL REPEATABLE READ 에서
+  트랜잭션 시작 스냅샷을 보므로, 공동 총무 둘이 서로를 동시에 내보내면 양쪽 다 통과해 총무 0명이 된다.
 - 모임 생성자 = OWNER, 초대 코드 참여자 = MEMBER.
 - 일반 권한 관리자는 폴더·장부 이름 수정/삭제 불가, 내역 등록 시 승인 요청(PENDING) 흐름을 탄다.
 - **내보내기** `DELETE /groups/{groupId}/memberships/{membershipId}`(총무 전용, 화면: 더보기 > 모임 관리자 > 프로필 > 모임 내보내기).
