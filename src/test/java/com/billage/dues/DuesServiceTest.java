@@ -85,8 +85,8 @@ class DuesServiceTest extends IntegrationTest {
 		ledgerId = ledgerService.create(folderId, ownerId,
 				new LedgerCreateRequest("운영 장부", null)).ledgerId();
 
-		member1 = memberService.addMember(groupId, ownerId, new MemberCreateRequest("김모임원")).memberId();
-		member2 = memberService.addMember(groupId, ownerId, new MemberCreateRequest("이모임원")).memberId();
+		member1 = memberService.addMember(groupId, ownerId, new MemberCreateRequest("김모임원", null, null, null)).memberId();
+		member2 = memberService.addMember(groupId, ownerId, new MemberCreateRequest("이모임원", null, null, null)).memberId();
 	}
 
 	// --- 권한 (전부 총무 전용) ---
@@ -233,7 +233,7 @@ class DuesServiceTest extends IntegrationTest {
 	void 다른_모임의_모임원이나_장부는_지정할_수_없다() {
 		Long otherGroupId = groupService.create(outsiderId, new GroupCreateRequest("남의모임", null)).groupId();
 		Long otherMemberId = memberService.addMember(otherGroupId, outsiderId,
-				new MemberCreateRequest("남의모임원")).memberId();
+				new MemberCreateRequest("남의모임원", null, null, null)).memberId();
 
 		assertThatThrownBy(() -> duesService.create(groupId, ownerId,
 				new DuesCreateRequest("2학기 회비", 30_000L, LocalDate.of(2026, 9, 30),
@@ -289,7 +289,7 @@ class DuesServiceTest extends IntegrationTest {
 		OffsetDateTime paidAtBeforeRename = paidAtOf(duesId, member1);
 		assertThat(paidAtBeforeRename).isNotNull();
 
-		memberService.updateMember(groupId, ownerId, member1, new MemberUpdateRequest("김모임원정정"));
+		memberService.updateMember(groupId, ownerId, member1, new MemberUpdateRequest("김모임원정정", null, null, null));
 
 		// 지우고 다시 만들면 납부 기록이 사라진다 — 그래서 수정 API 가 필요하다.
 		assertThat(duesService.getTargets(duesId, ownerId, null, null))

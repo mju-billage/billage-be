@@ -1,6 +1,7 @@
 package com.billage.member.dto;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 
 import com.billage.common.response.KoreanTime;
 import com.billage.member.Member;
@@ -9,10 +10,14 @@ import com.billage.member.Member;
 public record MemberResponse(
 		Long memberId,
 		String name,
+		String phoneNumber,
+		List<String> tags,
+		String memo,
 		OffsetDateTime createdAt
 ) {
 
 	public static MemberResponse from(Member member) {
-		return new MemberResponse(member.getId(), member.getName(), KoreanTime.toOffset(member.getCreatedAt()));
+		return new MemberResponse(member.getId(), member.getName(), member.getPhoneNumber(),
+				member.sortedTags(), member.getMemo(), KoreanTime.toOffset(member.getCreatedAt()));
 	}
 }
