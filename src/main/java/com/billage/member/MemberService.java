@@ -5,6 +5,7 @@ import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,6 +36,9 @@ public class MemberService {
 	private static final String BULK_DELIMITER = "[,\\s]+";
 
 	private static final int MAX_NAME_LENGTH = 10;
+
+	/** 전화번호 입력 허용 문자. 표기용 하이픈·공백까지만 받는다. */
+	private static final Pattern PHONE_ALLOWED = Pattern.compile("[0-9 -]+");
 
 	private final MemberRepository memberRepository;
 	private final DuesService duesService;
@@ -135,12 +139,18 @@ public class MemberService {
 	/**
 	 * 하이픈·공백을 걷어내고 숫자만 저장한다. 표기 형식은 화면이 만든다.
 	 * 빈 값은 "지움"으로 보고 null 로 둔다.
+	 * 숫자·하이픈·공백 외의 문자가 섞이면 걷어내지 않고 거부한다 — 조용히 지우면
+	 * {@code 010a1234b5678} 같은 오입력이 멀쩡한 번호로 저장된다.
 	 */
 	private String normalizePhone(String phoneNumber) {
 		if (phoneNumber == null || phoneNumber.isBlank()) {
 			return null;
 		}
-		String digits = phoneNumber.replaceAll("[^0-9]", "");
+		String trimmed = phoneNumber.trim();
+		if (!PHONE_ALLOWED.matcher(trimmed).matches()) {
+			throw new BusinessException(ErrorCode.INVALID_REQUEST, "전화번호는 숫자와 하이픈만 사용할 수 있습니다.");
+		}
+		String digits = trimmed.replaceAll("[^0-9]", "");
 		if (digits.length() < 9 || digits.length() > 11) {
 			throw new BusinessException(ErrorCode.INVALID_REQUEST, "전화번호 형식이 올바르지 않습니다.");
 		}
@@ -154,7 +164,13 @@ public class MemberService {
 		return memo.trim();
 	}
 
-	/** 공백 제거 후 중복을 걸러 낸다. 빈 목록과 null 은 "태그 없음"으로 같게 다룬다. */
+	/**
+	 * 공백 제거 후 중복을 걸러 낸다. 빈 목록과 null 은 "태그 없음"으로 같게 다룬다.
+	 * DB 는 (member_id, name) 복합 기본키로 중복을 막는데, 컬럼 collation 을
+	 * {@code utf8mb4_0900_as_cs} 로 고정해 두었으므로 자바의 문자열 동등성과 판정이 일치한다.
+	 * (기본 collation 인 {@code utf8mb4_0900_ai_ci} 였다면 "VIP" 와 "vip" 가 자바에서는 둘,
+	 *  DB 에서는 하나로 갈려 duplicate key 500 이 난다.)
+	 */
 	private Set<String> normalizeTags(List<String> tags) {
 		Set<String> normalized = new LinkedHashSet<>();
 		if (tags == null) {

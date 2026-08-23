@@ -83,6 +83,25 @@ class MemberProfileServiceTest extends IntegrationTest {
 	}
 
 	@Test
+	void 대소문자만_다른_태그도_각각_저장된다() {
+		// member_tag 는 기본 collation(ai_ci) 이면 두 값을 같은 키로 봐서 duplicate key 500 이 난다.
+		MemberResponse created = memberService.addMember(groupId, ownerId,
+				new MemberCreateRequest("김모임원", null, List.of("VIP", "vip"), null));
+
+		assertThat(created.tags()).containsExactly("VIP", "vip");
+	}
+
+	@Test
+	void 숫자와_하이픈_외의_문자가_섞인_전화번호는_거부된다() {
+		// 문자를 조용히 걷어내면 오입력이 멀쩡한 번호로 저장된다.
+		assertThatThrownBy(() -> memberService.addMember(groupId, ownerId,
+				new MemberCreateRequest("김모임원", "010a1234b5678", null, null)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.INVALID_REQUEST);
+	}
+
+	@Test
 	void 태그가_상한을_넘으면_거부된다() {
 		List<String> tooMany = List.of("t1", "t2", "t3", "t4", "t5", "t6", "t7", "t8", "t9", "t10", "t11");
 
