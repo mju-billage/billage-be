@@ -48,6 +48,87 @@ class AuthIntegrationTest extends IntegrationTest {
 		user = userRepository.save(User.create(EMAIL, passwordEncoder.encode(PASSWORD), "홍길동"));
 	}
 
+	// --- 회원가입 ---
+
+	@Test
+	void 회원가입_성공() {
+		Response response = signup("new@example.com", "Password123!", "김가입");
+
+		assertThat(response.status()).isEqualTo(201);
+		assertThat(response.at("data.userId")).isNotNull();
+		assertThat(response.at("data.email")).isEqualTo("new@example.com");
+		assertThat(response.at("data.name")).isEqualTo("김가입");
+		// 명세상 가입과 로그인은 분리돼 있다 — 토큰을 함께 내려주지 않는다.
+		assertThat(response.at("data.accessToken")).isNull();
+		assertThat(response.at("data.refreshToken")).isNull();
+	}
+
+	@Test
+	void 회원가입_후_해당_계정으로_로그인할_수_있다() {
+		signup("new@example.com", "Password123!", "김가입");
+
+		Response response = login("new@example.com", "Password123!");
+
+		assertThat(response.status()).isEqualTo(200);
+		assertThat(response.at("data.user.email")).isEqualTo("new@example.com");
+	}
+
+	@Test
+	void 회원가입_비밀번호는_평문으로_저장되지_않는다() {
+		signup("new@example.com", "Password123!", "김가입");
+
+		String stored = userRepository.findByEmail("new@example.com").orElseThrow().getPassword();
+
+		assertThat(stored).isNotEqualTo("Password123!");
+		assertThat(passwordEncoder.matches("Password123!", stored)).isTrue();
+	}
+
+	@Test
+	void 회원가입_실패_이미_가입된_이메일() {
+		Response response = signup(EMAIL, "Password123!", "김가입");
+
+		assertThat(response.status()).isEqualTo(409);
+		assertThat(response.at("code")).isEqualTo("EMAIL_ALREADY_EXISTS");
+	}
+
+	@Test
+	void 회원가입_실패_소셜_전용_계정이_점유한_이메일() {
+		userRepository.save(User.createSocial("social@example.com", "소셜", LocalDateTime.now()));
+
+		Response response = signup("social@example.com", "Password123!", "김가입");
+
+		assertThat(response.status()).isEqualTo(409);
+		assertThat(response.at("code")).isEqualTo("EMAIL_ALREADY_EXISTS");
+	}
+
+	@Test
+	void 회원가입_실패_비밀번호_규칙_위반() {
+		// 각각 소문자만 / 특수문자 없음 / 숫자 없음 / 8자 미만
+		for (String weak : new String[] {"password", "Password123", "Password!", "Pw1!"}) {
+			Response response = signup("new@example.com", weak, "김가입");
+
+			assertThat(response.status()).as("비밀번호 %s", weak).isEqualTo(400);
+			assertThat(response.at("code")).isEqualTo("INVALID_REQUEST");
+		}
+		assertThat(userRepository.findByEmail("new@example.com")).isEmpty();
+	}
+
+	@Test
+	void 회원가입_실패_이름이_10자를_넘음() {
+		Response response = signup("new@example.com", "Password123!", "가나다라마바사아자차카");
+
+		assertThat(response.status()).isEqualTo(400);
+		assertThat(response.at("code")).isEqualTo("INVALID_REQUEST");
+	}
+
+	@Test
+	void 회원가입_실패_이메일_형식_오류() {
+		Response response = signup("not-an-email", "Password123!", "김가입");
+
+		assertThat(response.status()).isEqualTo(400);
+		assertThat(response.at("code")).isEqualTo("INVALID_REQUEST");
+	}
+
 	// --- 로그인 ---
 
 	@Test
@@ -200,6 +281,11 @@ class AuthIntegrationTest extends IntegrationTest {
 	}
 
 	// --- helpers ---
+
+	private Response signup(String email, String password, String name) {
+		return http.postJson("/api/v1/auth/signup",
+				Map.of("email", email, "password", password, "name", name));
+	}
 
 	private Response login(String email, String password) {
 		return http.postJson("/api/v1/auth/login", Map.of("email", email, "password", password));

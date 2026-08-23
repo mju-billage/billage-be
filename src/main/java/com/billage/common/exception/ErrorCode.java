@@ -17,6 +17,7 @@ public enum ErrorCode {
 
 	// 인증
 	INVALID_CREDENTIALS("INVALID_CREDENTIALS", HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 올바르지 않습니다."),
+	EMAIL_ALREADY_EXISTS("EMAIL_ALREADY_EXISTS", HttpStatus.CONFLICT, "이미 가입된 이메일입니다."),
 	REFRESH_TOKEN_INVALID("REFRESH_TOKEN_INVALID", HttpStatus.UNAUTHORIZED, "유효하지 않은 Refresh Token 입니다."),
 	REFRESH_TOKEN_EXPIRED("REFRESH_TOKEN_EXPIRED", HttpStatus.UNAUTHORIZED, "만료된 Refresh Token 입니다."),
 	REFRESH_TOKEN_REUSED("REFRESH_TOKEN_REUSED", HttpStatus.UNAUTHORIZED, "이미 사용된 Refresh Token 입니다. 다시 로그인해 주세요."),

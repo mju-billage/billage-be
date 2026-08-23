@@ -13,6 +13,8 @@ import com.billage.auth.dto.LoginRequest;
 import com.billage.auth.dto.LoginResponse;
 import com.billage.auth.dto.LogoutRequest;
 import com.billage.auth.dto.RefreshRequest;
+import com.billage.auth.dto.SignupRequest;
+import com.billage.auth.dto.SignupResponse;
 import com.billage.auth.dto.SocialLoginRequest;
 import com.billage.auth.dto.SocialLoginResponse;
 import com.billage.auth.dto.SocialSignupRequest;
@@ -32,6 +34,17 @@ public class AuthController {
 
 	private final AuthService authService;
 	private final SocialAuthService socialAuthService;
+
+	/**
+	 * 이메일 회원가입. 명세상 가입과 로그인은 분리돼 있어 토큰을 발급하지 않는다 —
+	 * 클라이언트는 성공 후 로그인을 별도로 호출한다.
+	 */
+	@PostMapping("/signup")
+	public ResponseEntity<ApiResponse<SignupResponse>> signup(@Valid @RequestBody SignupRequest request) {
+		SignupResponse response = authService.signup(request.email(), request.password(), request.name());
+		return ResponseEntity.status(HttpStatus.CREATED)
+				.body(ApiResponse.of(response, "회원가입에 성공했습니다."));
+	}
 
 	@PostMapping("/login")
 	public ResponseEntity<ApiResponse<LoginResponse>> login(@Valid @RequestBody LoginRequest request) {
