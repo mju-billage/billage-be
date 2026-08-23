@@ -35,7 +35,7 @@ class RefreshConcurrencyTest extends IntegrationTest {
 	@Test
 	void 동시_재발급시_하나만_성공() throws Exception {
 		LoginResponse login = authService.login("member@example.com", "password123!");
-		String refreshToken = login.refreshToken();
+		String refreshToken = login.tokens().refreshToken();
 
 		int threads = 8;
 		ExecutorService executor = Executors.newFixedThreadPool(threads);

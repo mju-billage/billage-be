@@ -117,7 +117,7 @@ class GroupAccessIntegrationTest extends IntegrationTest {
 	private String tokenOf(String email, String name) {
 		userRepository.save(User.create(email, passwordEncoder.encode(PASSWORD), name));
 		Response login = http.postJson("/api/v1/auth/login", Map.of("email", email, "password", PASSWORD));
-		return (String) login.at("data.accessToken");
+		return (String) login.at("data.tokens.accessToken");
 	}
 
 	private long createGroup(String token) {
