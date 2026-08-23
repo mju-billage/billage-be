@@ -3,6 +3,7 @@ package com.billage.group;
 import java.util.List;
 import java.util.Objects;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -62,8 +63,13 @@ public class GroupService {
 		if (imageFileId != null) {
 			fileService.requireUsableGroupImage(imageFileId, userId);
 		}
-		GroupSpace group = groupSpaceRepository.save(
-				GroupSpace.create(request.name().trim(), request.description(), imageFileId, userId));
+		GroupSpace group;
+		try {
+			group = groupSpaceRepository.saveAndFlush(
+					GroupSpace.create(request.name().trim(), request.description(), imageFileId, userId));
+		} catch (DataIntegrityViolationException e) {
+			throw new BusinessException(ErrorCode.FILE_IN_USE);
+		}
 		groupMembershipRepository.save(GroupMembership.createOwner(group, userId));
 
 		return GroupCreateResponse.of(group, fileService.contentUrl(imageFileId));
@@ -112,6 +118,12 @@ public class GroupService {
 		}
 		// 참조를 먼저 옮긴 뒤 이전 파일을 지운다. 반대로 하면 삭제 실패 시 깨진 참조만 남는다.
 		group.changeImage(newFileId);
+		try {
+			// 두 모임이 같은 파일을 동시에 집어 가는 경합은 유니크 제약이 막는다. 500 대신 409 로 돌려준다.
+			groupSpaceRepository.flush();
+		} catch (DataIntegrityViolationException e) {
+			throw new BusinessException(ErrorCode.FILE_IN_USE);
+		}
 		fileService.deleteGroupImage(previousFileId);
 	}
 

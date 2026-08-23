@@ -98,7 +98,8 @@ public class FileService {
 		if (!file.isUploadedBy(userId)) {
 			throw new BusinessException(ErrorCode.ACCESS_DENIED);
 		}
-		if (file.isLinked()) {
+		if (file.isLinked() || groupSpaceRepository.findByGroupImageFileId(fileId).isPresent()) {
+			// 모임 대표 이미지로 쓰이는 파일도 "연결된 파일"이다. 지우면 모임에 깨진 URL 만 남는다.
 			throw new BusinessException(ErrorCode.FILE_IN_USE);
 		}
 
@@ -162,6 +163,10 @@ public class FileService {
 		}
 		if (!file.isUploadedBy(userId)) {
 			throw new BusinessException(ErrorCode.ACCESS_DENIED);
+		}
+		if (groupSpaceRepository.findByGroupImageFileId(fileId).isPresent()) {
+			// 한 파일을 두 모임이 나눠 쓰면 한쪽에서 교체·삭제할 때 다른 쪽 참조가 깨진다.
+			throw new BusinessException(ErrorCode.FILE_IN_USE);
 		}
 	}
 

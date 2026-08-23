@@ -145,6 +145,55 @@ class GroupImageServiceTest extends IntegrationTest {
 	}
 
 	@Test
+	void 대표_이미지로_쓰이는_파일은_직접_삭제할_수_없다() {
+		Long fileId = uploadGroupImage(ownerId);
+		groupService.update(groupId, ownerId, new GroupUpdateRequest(null, null, Optional.of(fileId)));
+
+		// 지워지면 모임에 깨진 URL 만 남는다.
+		assertThatThrownBy(() -> fileService.delete(fileId, ownerId))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.FILE_IN_USE);
+	}
+
+	@Test
+	void 한_파일을_두_모임이_나눠_쓸_수_없다() {
+		Long fileId = uploadGroupImage(ownerId);
+		groupService.update(groupId, ownerId, new GroupUpdateRequest(null, null, Optional.of(fileId)));
+		Long otherGroupId = groupService.create(ownerId, new GroupCreateRequest("다른모임", null, null)).groupId();
+
+		assertThatThrownBy(() -> groupService.update(otherGroupId, ownerId,
+				new GroupUpdateRequest(null, null, Optional.of(fileId))))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.FILE_IN_USE);
+	}
+
+	@Test
+	void 이미_다른_모임이_쓰는_파일로는_모임을_만들_수_없다() {
+		Long fileId = uploadGroupImage(ownerId);
+		groupService.update(groupId, ownerId, new GroupUpdateRequest(null, null, Optional.of(fileId)));
+
+		assertThatThrownBy(() -> groupService.create(ownerId, new GroupCreateRequest("새모임", null, fileId)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.FILE_IN_USE);
+	}
+
+	@Test
+	void 이미지를_떼어낸_파일은_다시_쓸_수_있다() {
+		Long fileId = uploadGroupImage(ownerId);
+		Long keeper = uploadGroupImage(ownerId);
+		groupService.update(groupId, ownerId, new GroupUpdateRequest(null, null, Optional.of(fileId)));
+
+		// 교체하면 이전 파일은 삭제되므로, 새로 올린 파일이 자리를 이어받는다.
+		groupService.update(groupId, ownerId, new GroupUpdateRequest(null, null, Optional.of(keeper)));
+
+		assertThat(groupSpaceImageId()).isEqualTo(keeper);
+		assertThat(fileRepository.findById(fileId)).isEmpty();
+	}
+
+	@Test
 	void 모임을_지우면_대표_이미지도_지워진다() {
 		Long fileId = uploadGroupImage(ownerId);
 		groupService.update(groupId, ownerId, new GroupUpdateRequest(null, null, Optional.of(fileId)));
