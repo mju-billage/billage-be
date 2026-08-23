@@ -93,12 +93,13 @@ public class FileService {
 	 */
 	@Transactional
 	public void delete(Long fileId, Long userId) {
-		UploadedFile file = fileRepository.findById(fileId)
+		// 대표 이미지 지정과 동시에 들어와도 한쪽만 진행하도록 파일 행을 잠근다.
+		UploadedFile file = fileRepository.findByIdForUpdate(fileId)
 				.orElseThrow(() -> new BusinessException(ErrorCode.FILE_NOT_FOUND));
 		if (!file.isUploadedBy(userId)) {
 			throw new BusinessException(ErrorCode.ACCESS_DENIED);
 		}
-		if (file.isLinked() || groupSpaceRepository.findByGroupImageFileId(fileId).isPresent()) {
+		if (file.isLinked() || groupSpaceRepository.findByGroupImageFileIdForUpdate(fileId).isPresent()) {
 			// 모임 대표 이미지로 쓰이는 파일도 "연결된 파일"이다. 지우면 모임에 깨진 URL 만 남는다.
 			throw new BusinessException(ErrorCode.FILE_IN_USE);
 		}
@@ -154,9 +155,10 @@ public class FileService {
 	 * 증빙과 달리 파일 쪽에 소유 모임을 적어 두지 않으므로(엔티티 연결 없음) 여기서는 검증만 하고,
 	 * 참조는 GroupSpace 가 파일 ID 로 들고 간다.
 	 */
-	@Transactional(readOnly = true)
+	@Transactional
 	public void requireUsableGroupImage(Long fileId, Long userId) {
-		UploadedFile file = fileRepository.findById(fileId)
+		// 직접 삭제와 동시에 들어와도 한쪽만 진행하도록 파일 행을 잠근다(삭제 경로와 잠금 순서를 맞춘다).
+		UploadedFile file = fileRepository.findByIdForUpdate(fileId)
 				.orElseThrow(() -> new BusinessException(ErrorCode.FILE_NOT_FOUND));
 		if (file.getPurpose() != FilePurpose.GROUP_IMAGE) {
 			throw new BusinessException(ErrorCode.INVALID_FILE_PURPOSE);
@@ -164,7 +166,7 @@ public class FileService {
 		if (!file.isUploadedBy(userId)) {
 			throw new BusinessException(ErrorCode.ACCESS_DENIED);
 		}
-		if (groupSpaceRepository.findByGroupImageFileId(fileId).isPresent()) {
+		if (groupSpaceRepository.findByGroupImageFileIdForUpdate(fileId).isPresent()) {
 			// 한 파일을 두 모임이 나눠 쓰면 한쪽에서 교체·삭제할 때 다른 쪽 참조가 깨진다.
 			throw new BusinessException(ErrorCode.FILE_IN_USE);
 		}

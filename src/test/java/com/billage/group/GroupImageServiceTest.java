@@ -4,6 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -212,6 +216,40 @@ class GroupImageServiceTest extends IntegrationTest {
 		assertThat(groupService.getDetail(groupId, ownerId).groupImageUrl()).isEqualTo(expected);
 		assertThat(groupService.getMyGroups(ownerId)).singleElement()
 				.satisfies(group -> assertThat(group.groupImageUrl()).isEqualTo(expected));
+	}
+
+	@Test
+	void 직접_삭제와_이미지_지정이_동시에_들어와도_깨진_참조가_남지_않는다() throws Exception {
+		Long fileId = uploadGroupImage(ownerId);
+		CountDownLatch start = new CountDownLatch(1);
+		ExecutorService pool = Executors.newFixedThreadPool(2);
+		try {
+			pool.submit(() -> attempt(start, () -> groupService.update(groupId, ownerId,
+					new GroupUpdateRequest(null, null, Optional.of(fileId)))));
+			pool.submit(() -> attempt(start, () -> fileService.delete(fileId, ownerId)));
+			start.countDown();
+			pool.shutdown();
+			assertThat(pool.awaitTermination(30, TimeUnit.SECONDS)).isTrue();
+		} finally {
+			pool.shutdownNow();
+		}
+
+		// 모임이 파일을 가리킨다면 그 파일은 반드시 남아 있어야 한다.
+		Long referenced = groupSpaceImageId();
+		if (referenced != null) {
+			assertThat(fileRepository.findById(referenced)).isPresent();
+		}
+	}
+
+	private void attempt(CountDownLatch start, Runnable action) {
+		try {
+			start.await();
+			action.run();
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		} catch (RuntimeException e) {
+			// 뒤늦게 들어온 쪽은 FILE_IN_USE 또는 FILE_NOT_FOUND 로 막힌다. 둘 다 정상이다.
+		}
 	}
 
 	private Long uploadGroupImage(Long userId) {
