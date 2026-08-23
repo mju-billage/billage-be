@@ -65,8 +65,7 @@ class AuthIntegrationTest extends IntegrationTest {
 		assertThat(response.at("data.email")).isEqualTo("new@example.com");
 		assertThat(response.at("data.name")).isEqualTo("김가입");
 		// 명세상 가입과 로그인은 분리돼 있다 — 토큰을 함께 내려주지 않는다.
-		assertThat(response.at("data.accessToken")).isNull();
-		assertThat(response.at("data.refreshToken")).isNull();
+		assertThat(response.at("data.tokens")).isNull();
 	}
 
 	@Test
@@ -208,10 +207,10 @@ class AuthIntegrationTest extends IntegrationTest {
 		assertThat(response.status()).isEqualTo(200);
 		assertThat(response.at("data.user.email")).isEqualTo(EMAIL);
 		assertThat(response.at("data.user.name")).isEqualTo("홍길동");
-		assertThat(response.at("data.accessToken")).isNotNull();
-		assertThat(response.at("data.refreshToken")).isNotNull();
-		assertThat(response.at("data.tokenType")).isEqualTo("Bearer");
-		assertThat(response.at("data.accessTokenExpiresIn")).isEqualTo(1800);
+		assertThat(response.at("data.tokens.accessToken")).isNotNull();
+		assertThat(response.at("data.tokens.refreshToken")).isNotNull();
+		assertThat(response.at("data.tokens.tokenType")).isEqualTo("Bearer");
+		assertThat(response.at("data.tokens.accessTokenExpiresIn")).isEqualTo(1800);
 	}
 
 	@Test
@@ -234,12 +233,12 @@ class AuthIntegrationTest extends IntegrationTest {
 
 	@Test
 	void me_인증된_사용자_조회() {
-		String accessToken = (String) login(EMAIL, PASSWORD).at("data.accessToken");
+		String accessToken = (String) login(EMAIL, PASSWORD).at("data.tokens.accessToken");
 
 		Response response = http.get("/api/v1/auth/me", accessToken);
 
 		assertThat(response.status()).isEqualTo(200);
-		assertThat(response.at("data.id")).isEqualTo(user.getId().intValue());
+		assertThat(response.at("data.userId")).isEqualTo(user.getId().intValue());
 		assertThat(response.at("data.email")).isEqualTo(EMAIL);
 	}
 
@@ -264,7 +263,7 @@ class AuthIntegrationTest extends IntegrationTest {
 
 	@Test
 	void 정상적인_Refresh_Token_재발급() {
-		String originalRefresh = (String) login(EMAIL, PASSWORD).at("data.refreshToken");
+		String originalRefresh = (String) login(EMAIL, PASSWORD).at("data.tokens.refreshToken");
 
 		Response response = refresh(originalRefresh);
 
@@ -299,7 +298,7 @@ class AuthIntegrationTest extends IntegrationTest {
 
 	@Test
 	void 로그아웃으로_폐기된_Refresh_Token_거부() {
-		String refreshToken = (String) login(EMAIL, PASSWORD).at("data.refreshToken");
+		String refreshToken = (String) login(EMAIL, PASSWORD).at("data.tokens.refreshToken");
 		logout(refreshToken);
 
 		Response response = refresh(refreshToken);
@@ -312,7 +311,7 @@ class AuthIntegrationTest extends IntegrationTest {
 
 	@Test
 	void Rotation된_토큰_재사용시_패밀리_전체_폐기() {
-		String originalRefresh = (String) login(EMAIL, PASSWORD).at("data.refreshToken");
+		String originalRefresh = (String) login(EMAIL, PASSWORD).at("data.tokens.refreshToken");
 		String tokenHash = tokenHasher.hash(originalRefresh);
 		String familyId = refreshTokenRepository.findAll().stream()
 				.filter(t -> t.getTokenHash().equals(tokenHash))
@@ -343,7 +342,7 @@ class AuthIntegrationTest extends IntegrationTest {
 
 	@Test
 	void 로그아웃_멱등성() {
-		String refreshToken = (String) login(EMAIL, PASSWORD).at("data.refreshToken");
+		String refreshToken = (String) login(EMAIL, PASSWORD).at("data.tokens.refreshToken");
 
 		assertThat(logout(refreshToken).status()).isEqualTo(204); // 1회
 		assertThat(logout(refreshToken).status()).isEqualTo(204); // 이미 폐기됨
