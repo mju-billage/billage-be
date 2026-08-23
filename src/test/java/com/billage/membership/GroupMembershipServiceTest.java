@@ -78,7 +78,7 @@ class GroupMembershipServiceTest extends IntegrationTest {
 
 	@Test
 	void 모임원_등록은_관리자_권한을_만들지_않는다() {
-		memberService.addMember(groupId, ownerId, new MemberCreateRequest("김모임원"));
+		memberService.addMember(groupId, ownerId, new MemberCreateRequest("김모임원", null, null, null));
 
 		assertThat(memberRepository.countByGroupId(groupId)).isEqualTo(1);
 		assertThat(groupMembershipRepository.findByGroupId(groupId)).hasSize(1);
@@ -87,7 +87,7 @@ class GroupMembershipServiceTest extends IntegrationTest {
 	@Test
 	void 탈퇴해도_납부_명단은_남는다() {
 		joinWithInvitation(adminId);
-		memberService.addMember(groupId, ownerId, new MemberCreateRequest("김모임원"));
+		memberService.addMember(groupId, ownerId, new MemberCreateRequest("김모임원", null, null, null));
 
 		groupMembershipService.leave(groupId, adminId);
 
@@ -165,8 +165,8 @@ class GroupMembershipServiceTest extends IntegrationTest {
 	@Test
 	void 내_모임_목록은_내_역할과_명단_인원수를_함께_준다() {
 		joinWithInvitation(adminId);
-		memberService.addMember(groupId, ownerId, new MemberCreateRequest("김모임원"));
-		memberService.addMember(groupId, ownerId, new MemberCreateRequest("이모임원"));
+		memberService.addMember(groupId, ownerId, new MemberCreateRequest("김모임원", null, null, null));
+		memberService.addMember(groupId, ownerId, new MemberCreateRequest("이모임원", null, null, null));
 
 		var mine = groupService.getMyGroups(ownerId);
 		var admins = groupService.getMyGroups(adminId);
@@ -198,13 +198,13 @@ class GroupMembershipServiceTest extends IntegrationTest {
 	@Test
 	void 총무는_모임원_이름을_고칠_수_있고_일반_관리자는_못_고친다() {
 		joinWithInvitation(adminId);
-		Long memberId = memberService.addMember(groupId, ownerId, new MemberCreateRequest("김모임원")).memberId();
+		Long memberId = memberService.addMember(groupId, ownerId, new MemberCreateRequest("김모임원", null, null, null)).memberId();
 
 		assertThat(memberService.updateMember(groupId, ownerId, memberId,
-				new MemberUpdateRequest("김모임원정정")).name()).isEqualTo("김모임원정정");
+				new MemberUpdateRequest("김모임원정정", null, null, null)).name()).isEqualTo("김모임원정정");
 
 		assertThatThrownBy(() -> memberService.updateMember(groupId, adminId, memberId,
-				new MemberUpdateRequest("몰래 변경")))
+				new MemberUpdateRequest("몰래 변경", null, null, null)))
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
 				.isEqualTo(ErrorCode.ACCESS_DENIED);
@@ -214,10 +214,10 @@ class GroupMembershipServiceTest extends IntegrationTest {
 	void 다른_모임의_모임원은_수정할_수_없다() {
 		Long otherGroupId = groupService.create(adminId, new GroupCreateRequest("남의모임", null)).groupId();
 		Long otherMemberId = memberService.addMember(otherGroupId, adminId,
-				new MemberCreateRequest("남의모임원")).memberId();
+				new MemberCreateRequest("남의모임원", null, null, null)).memberId();
 
 		assertThatThrownBy(() -> memberService.updateMember(groupId, ownerId, otherMemberId,
-				new MemberUpdateRequest("탈취")))
+				new MemberUpdateRequest("탈취", null, null, null)))
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
 				.isEqualTo(ErrorCode.MEMBER_NOT_FOUND);
@@ -228,7 +228,7 @@ class GroupMembershipServiceTest extends IntegrationTest {
 	@Test
 	void 모임_삭제_시_관리자_명단_초대코드가_함께_삭제된다() {
 		joinWithInvitation(adminId);
-		memberService.addMember(groupId, ownerId, new MemberCreateRequest("김모임원"));
+		memberService.addMember(groupId, ownerId, new MemberCreateRequest("김모임원", null, null, null));
 
 		groupService.delete(groupId, ownerId);
 

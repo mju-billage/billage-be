@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.billage.auth.security.CurrentUserId;
 import com.billage.common.response.ApiResponse;
+import com.billage.member.dto.MemberBulkCreateRequest;
 import com.billage.member.dto.MemberCreateRequest;
 import com.billage.member.dto.MemberResponse;
 import com.billage.member.dto.MemberUpdateRequest;
@@ -45,6 +46,15 @@ public class MemberController {
 		MemberResponse response = memberService.addMember(groupId, userId, request);
 		return ResponseEntity.status(HttpStatus.CREATED)
 				.body(ApiResponse.of(response, "모임원 등록에 성공했습니다."));
+	}
+
+	/** 일괄 추가. 쉼표·띄어쓰기·줄바꿈으로 구분한 이름만 받는다. */
+	@PostMapping("/bulk")
+	public ResponseEntity<ApiResponse<List<MemberResponse>>> addMembers(@CurrentUserId Long userId,
+			@PathVariable Long groupId, @Valid @RequestBody MemberBulkCreateRequest request) {
+		List<MemberResponse> members = memberService.addMembers(groupId, userId, request);
+		return ResponseEntity.status(HttpStatus.CREATED)
+				.body(ApiResponse.of(members, "모임원 %d명 등록에 성공했습니다.".formatted(members.size())));
 	}
 
 	@PatchMapping("/{memberId}")
