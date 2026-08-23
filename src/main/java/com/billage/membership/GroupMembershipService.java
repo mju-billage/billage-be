@@ -50,10 +50,10 @@ public class GroupMembershipService {
 		guard.requireMembership(groupId, userId);
 
 		List<GroupMembership> memberships = groupMembershipRepository.findByGroupId(groupId);
-		Map<Long, String> names = userNames(memberships);
+		Map<Long, User> users = usersOf(memberships);
 
 		return memberships.stream()
-				.map(ms -> MembershipResponse.of(ms, names.get(ms.getUserId())))
+				.map(ms -> MembershipResponse.of(ms, users.get(ms.getUserId())))
 				.toList();
 	}
 
@@ -123,16 +123,37 @@ public class GroupMembershipService {
 		groupMembershipRepository.delete(me);
 	}
 
+	/**
+	 * 모임 관리자 내보내기(총무 전용). 대상의 관리자 관계만 끊는다.
+	 * 그 사람이 작성·승인한 과거 내역은 <b>지우지 않는다</b>(화면명세: "과거 장부 내역 데이터는 삭제하지 않고 매핑을 유지").
+	 * 별도로 등록된 납부 명단(Member)도 건드리지 않는다.
+	 */
+	@Transactional
+	public void removeMembership(Long groupId, Long userId, Long membershipId) {
+		guard.requireOwner(groupId, userId);
+
+		GroupMembership target = groupMembershipRepository.findByIdAndGroupId(membershipId, groupId)
+				.orElseThrow(() -> new BusinessException(ErrorCode.MEMBERSHIP_NOT_FOUND));
+		if (target.getUserId().equals(userId)) {
+			// 본인 이탈은 「모임 나가기」(leave) 가 담당한다. 총무 인수인계 규칙이 달라 경로를 섞지 않는다.
+			throw new BusinessException(ErrorCode.INVALID_REQUEST, "본인은 모임 나가기로 이탈해 주세요.");
+		}
+		if (target.isOwner()) {
+			requireNotLastOwner(groupId);
+		}
+		groupMembershipRepository.delete(target);
+	}
+
 	private void requireNotLastOwner(Long groupId) {
 		if (groupMembershipRepository.countByGroupIdAndRole(groupId, GroupRole.OWNER) <= 1) {
 			throw new BusinessException(ErrorCode.LAST_OWNER_REQUIRED);
 		}
 	}
 
-	private Map<Long, String> userNames(List<GroupMembership> memberships) {
+	private Map<Long, User> usersOf(List<GroupMembership> memberships) {
 		List<Long> userIds = memberships.stream().map(GroupMembership::getUserId).toList();
 		return userRepository.findAllById(userIds).stream()
-				.collect(Collectors.toMap(User::getId, User::getName));
+				.collect(Collectors.toMap(User::getId, user -> user));
 	}
 
 	private String userName(Long userId) {
