@@ -3,6 +3,7 @@ package com.billage.auth;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,9 +52,15 @@ public class AuthService {
 			throw new BusinessException(ErrorCode.EMAIL_ALREADY_EXISTS);
 		}
 
-		User user = userRepository.save(
-				User.create(email, passwordEncoder.encode(rawPassword), name.trim()));
-		return SignupResponse.from(user);
+		try {
+			// 위 검사와 저장 사이에 같은 이메일이 끼어들 수 있다. 최종 판정은 users.email 의 UNIQUE 제약이며,
+			// 지금 flush 해서 그 충돌을 이 자리에서 409 로 바꾼다(트랜잭션 커밋 시점에 터지면 500 이 된다).
+			User user = userRepository.saveAndFlush(
+					User.create(email, passwordEncoder.encode(rawPassword), name.trim()));
+			return SignupResponse.from(user);
+		} catch (DataIntegrityViolationException e) {
+			throw new BusinessException(ErrorCode.EMAIL_ALREADY_EXISTS);
+		}
 	}
 
 	/**

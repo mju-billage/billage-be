@@ -2,9 +2,15 @@ package com.billage.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -119,6 +125,70 @@ class AuthIntegrationTest extends IntegrationTest {
 
 		assertThat(response.status()).isEqualTo(400);
 		assertThat(response.at("code")).isEqualTo("INVALID_REQUEST");
+	}
+
+	@Test
+	void 회원가입_비밀번호_72바이트까지_허용된다() {
+		// BCrypt 한계와 같은 값이 경계다. 한글은 글자당 3바이트 — 4 + (3 * 22) + 2 = 72바이트.
+		String boundary = "Aa1!" + "가".repeat(22) + "xy";
+		assertThat(boundary.getBytes(StandardCharsets.UTF_8)).hasSize(72);
+
+		Response response = signup("new@example.com", boundary, "김가입");
+
+		assertThat(response.status()).isEqualTo(201);
+	}
+
+	@Test
+	void 회원가입_실패_비밀번호가_72바이트를_넘음() {
+		// 글자 수(27)로는 72 이하라 @Size 로는 못 막는다 — BCrypt 가 예외를 던져 500 이 되던 케이스.
+		String tooLong = "Aa1!" + "한".repeat(23);
+		assertThat(tooLong.length()).isLessThanOrEqualTo(72);
+		assertThat(tooLong.getBytes(StandardCharsets.UTF_8)).hasSize(73);
+
+		Response response = signup("new@example.com", tooLong, "김가입");
+
+		assertThat(response.status()).isEqualTo(400);
+		assertThat(response.at("code")).isEqualTo("INVALID_REQUEST");
+		assertThat(userRepository.findByEmail("new@example.com")).isEmpty();
+	}
+
+	@Test
+	void 회원가입_실패_이메일이_254자를_넘음() {
+		// 형식은 유효하지만 users.email VARCHAR(255) 를 넘겨 저장 단계에서 500 이 되던 케이스.
+		String longEmail = "a".repeat(250) + "@example.com";
+		assertThat(longEmail.length()).isGreaterThan(254);
+
+		Response response = signup(longEmail, "Password123!", "김가입");
+
+		assertThat(response.status()).isEqualTo(400);
+		assertThat(response.at("code")).isEqualTo("INVALID_REQUEST");
+	}
+
+	@Test
+	void 회원가입_동시_요청은_하나만_성공하고_나머지는_409() throws Exception {
+		int threads = 8;
+		ExecutorService executor = Executors.newFixedThreadPool(threads);
+		try {
+			List<Callable<Integer>> tasks = Collections.nCopies(threads,
+					() -> signup("race@example.com", "Password123!", "김가입").status());
+
+			List<Integer> statuses = executor.invokeAll(tasks).stream()
+					.map(future -> {
+						try {
+							return future.get();
+						} catch (Exception e) {
+							throw new IllegalStateException(e);
+						}
+					})
+					.toList();
+
+			// UNIQUE 제약에서 밀린 요청이 500 이 아니라 409 로 나와야 한다.
+			assertThat(statuses).filteredOn(status -> status == 201).hasSize(1);
+			assertThat(statuses).allMatch(status -> status == 201 || status == 409);
+			assertThat(userRepository.findByEmail("race@example.com")).isPresent();
+		} finally {
+			executor.shutdownNow();
+		}
 	}
 
 	@Test
