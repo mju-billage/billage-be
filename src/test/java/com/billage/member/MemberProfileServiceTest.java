@@ -102,8 +102,15 @@ class MemberProfileServiceTest extends IntegrationTest {
 	}
 
 	@Test
-	void 태그가_상한을_넘으면_거부된다() {
-		List<String> tooMany = List.of("t1", "t2", "t3", "t4", "t5", "t6", "t7", "t8", "t9", "t10", "t11");
+	void 태그는_세_개까지_붙는다() {
+		// 화면명세: "# 태그를 입력해 주세요 (최대 3개)"
+		assertThat(memberService.addMember(groupId, ownerId,
+				new MemberCreateRequest("김모임원", null, List.of("신입", "임원", "졸업"), null)).tags()).hasSize(3);
+	}
+
+	@Test
+	void 태그가_네_개면_거부된다() {
+		List<String> tooMany = List.of("신입", "임원", "졸업", "휴학");
 
 		assertThatThrownBy(() -> memberService.addMember(groupId, ownerId,
 				new MemberCreateRequest("김모임원", null, tooMany, null)))
