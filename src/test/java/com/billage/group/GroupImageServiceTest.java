@@ -22,7 +22,9 @@ import com.billage.file.FileService;
 import com.billage.file.FileStorage;
 import com.billage.group.dto.GroupCreateRequest;
 import com.billage.group.dto.GroupUpdateRequest;
+import com.billage.membership.GroupMembershipRepository;
 import com.billage.membership.GroupMembershipService;
+import com.billage.membership.dto.RoleUpdateRequest;
 import com.billage.support.IntegrationTest;
 import com.billage.user.User;
 import com.billage.user.UserRepository;
@@ -43,6 +45,8 @@ class GroupImageServiceTest extends IntegrationTest {
 	FileRepository fileRepository;
 	@Autowired
 	FileStorage fileStorage;
+	@Autowired
+	GroupMembershipRepository groupMembershipRepository;
 	@Autowired
 	UserRepository userRepository;
 
@@ -241,6 +245,22 @@ class GroupImageServiceTest extends IntegrationTest {
 
 		assertThat(updated.groupImageUrl()).isEqualTo("/api/v1/files/" + fileId + "/content");
 		assertThat(fileRepository.findById(fileId)).isPresent();
+	}
+
+	@Test
+	void 공동_총무가_남이_올린_현재_이미지를_그대로_다시_보내도_통과한다() {
+		joinAsAdmin();
+		Long coOwnerMembershipId = groupMembershipRepository.findByGroupIdAndUserId(groupId, adminId)
+				.orElseThrow().getId();
+		groupMembershipService.changeRole(groupId, ownerId, coOwnerMembershipId, new RoleUpdateRequest("OWNER"));
+		Long fileId = uploadGroupImage(ownerId);
+		groupService.update(groupId, ownerId, new GroupUpdateRequest(null, null, Optional.of(fileId)));
+
+		// 이름만 바꾸면서 이미지 값을 그대로 실어 보내는 흔한 폼 저장. 업로더가 아니어도 막히면 안 된다.
+		var updated = groupService.update(groupId, adminId,
+				new GroupUpdateRequest("이름변경", null, Optional.of(fileId)));
+
+		assertThat(updated.groupImageUrl()).isEqualTo("/api/v1/files/" + fileId + "/content");
 	}
 
 	@Test

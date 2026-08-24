@@ -112,12 +112,12 @@ public class GroupService {
 	 * 먼저 지우면 선점 실패 시 되살아난 참조가 빈 파일을 가리킨다.
 	 */
 	private void replaceImage(Long groupId, Long newFileId, Long userId) {
-		Optional<UploadedFile> previous = fileService.detachGroupImage(groupId);
-		if (previous.map(file -> file.getId().equals(newFileId)).orElse(false)) {
-			// 화면이 현재 이미지를 그대로 다시 보낸 경우. 떼었다 붙일 이유가 없다.
-			fileService.claimGroupImage(newFileId, groupId, userId);
+		// 화면이 현재 이미지를 그대로 다시 보낸 경우. 떼기 전에 걸러야 한다 —
+		// 떼었다 다시 붙이면 그 이미지를 올린 사람이 공동 총무일 때 본인 파일이 아니라 막힌다.
+		if (fileService.findGroupImage(groupId).map(file -> file.getId().equals(newFileId)).orElse(false)) {
 			return;
 		}
+		Optional<UploadedFile> previous = fileService.detachGroupImage(groupId);
 		if (newFileId != null) {
 			// 실패하면 트랜잭션째 되돌아가 이전 이미지가 그대로 남는다. 그래서 물리 삭제보다 먼저 한다.
 			fileService.claimGroupImage(newFileId, groupId, userId);

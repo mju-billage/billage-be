@@ -173,6 +173,12 @@ public class FileService {
 		fileRepository.findGroupImage(groupId).ifPresent(file -> deleteAll(List.of(file)));
 	}
 
+	/** 모임의 현재 대표 이미지. 바뀌는지 판단할 때 쓴다. */
+	@Transactional(readOnly = true)
+	public Optional<UploadedFile> findGroupImage(Long groupId) {
+		return fileRepository.findGroupImage(groupId);
+	}
+
 	/**
 	 * 대표 이미지를 모임에서 떼어내기만 한다(파일은 남는다). 교체 중간 단계로 쓴다.
 	 * 저장소 객체를 여기서 지우지 않는 것이 핵심이다 — 뒤이은 선점이 실패하면 DB 는 롤백되지만
