@@ -74,7 +74,7 @@ class GroupMembershipServiceTest extends IntegrationTest {
 
 		ownerId = userRepository.save(User.create("owner@example.com", "encoded", "총무")).getId();
 		adminId = userRepository.save(User.create("admin@example.com", "encoded", "일반관리자")).getId();
-		groupId = groupService.create(ownerId, new GroupCreateRequest("주리랑", null)).groupId();
+		groupId = groupService.create(ownerId, new GroupCreateRequest("주리랑", null, null)).groupId();
 	}
 
 	// --- 관리자 ↔ 모임원 명단 분리 ---
@@ -260,13 +260,13 @@ class GroupMembershipServiceTest extends IntegrationTest {
 
 	@Test
 	void 모임_이름을_공백만으로_수정할_수_없다() {
-		assertThatThrownBy(() -> groupService.update(groupId, ownerId, new GroupUpdateRequest("   ", null)))
+		assertThatThrownBy(() -> groupService.update(groupId, ownerId, new GroupUpdateRequest("   ", null, null)))
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
 				.isEqualTo(ErrorCode.INVALID_REQUEST);
 
 		// 이름을 생략한 부분 수정은 그대로 동작해야 한다.
-		groupService.update(groupId, ownerId, new GroupUpdateRequest(null, "설명만 변경"));
+		groupService.update(groupId, ownerId, new GroupUpdateRequest(null, "설명만 변경", null));
 		assertThat(groupSpaceRepository.findById(groupId).orElseThrow().getName()).isEqualTo("주리랑");
 	}
 
@@ -289,7 +289,7 @@ class GroupMembershipServiceTest extends IntegrationTest {
 
 	@Test
 	void 다른_모임의_모임원은_수정할_수_없다() {
-		Long otherGroupId = groupService.create(adminId, new GroupCreateRequest("남의모임", null)).groupId();
+		Long otherGroupId = groupService.create(adminId, new GroupCreateRequest("남의모임", null, null)).groupId();
 		Long otherMemberId = memberService.addMember(otherGroupId, adminId,
 				new MemberCreateRequest("남의모임원", null, null, null)).memberId();
 

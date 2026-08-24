@@ -57,8 +57,8 @@ class FolderServiceTest extends IntegrationTest {
 
 		ownerId = userRepository.save(User.create("owner@example.com", "encoded", "총무")).getId();
 		adminId = userRepository.save(User.create("admin@example.com", "encoded", "일반관리자")).getId();
-		groupId = groupService.create(ownerId, new GroupCreateRequest("주리랑", null)).groupId();
-		otherGroupId = groupService.create(adminId, new GroupCreateRequest("남의모임", null)).groupId();
+		groupId = groupService.create(ownerId, new GroupCreateRequest("주리랑", null, null)).groupId();
+		otherGroupId = groupService.create(adminId, new GroupCreateRequest("남의모임", null, null)).groupId();
 	}
 
 	// --- 권한 ---

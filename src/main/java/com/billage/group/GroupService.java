@@ -1,6 +1,8 @@
 package com.billage.group;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,11 +13,13 @@ import com.billage.dues.DuesService;
 import com.billage.group.dto.GroupCreateRequest;
 import com.billage.group.dto.GroupCreateResponse;
 import com.billage.group.dto.GroupDetailResponse;
+import com.billage.group.dto.GroupListRow;
 import com.billage.group.dto.GroupSummaryResponse;
 import com.billage.group.dto.GroupUpdateRequest;
 import com.billage.group.dto.GroupUpdateResponse;
 import com.billage.entry.EntryRepository;
 import com.billage.file.FileService;
+import com.billage.file.UploadedFile;
 import com.billage.folder.FolderRepository;
 import com.billage.ledger.LedgerRepository;
 import com.billage.member.MemberRepository;
@@ -46,8 +50,11 @@ public class GroupService {
 
 	@Transactional(readOnly = true)
 	public List<GroupSummaryResponse> getMyGroups(Long userId) {
-		return groupMembershipRepository.findMyGroups(userId).stream()
-				.map(GroupSummaryResponse::from)
+		List<GroupListRow> rows = groupMembershipRepository.findMyGroups(userId);
+		Map<Long, String> images = fileService.groupImageUrls(rows.stream().map(GroupListRow::groupId).toList());
+
+		return rows.stream()
+				.map(row -> GroupSummaryResponse.of(row, images.get(row.groupId())))
 				.toList();
 	}
 
@@ -60,8 +67,11 @@ public class GroupService {
 		GroupSpace group = groupSpaceRepository.save(
 				GroupSpace.create(request.name().trim(), request.description(), userId));
 		groupMembershipRepository.save(GroupMembership.createOwner(group, userId));
+		if (request.groupImageFileId() != null) {
+			fileService.claimGroupImage(request.groupImageFileId(), group.getId(), userId);
+		}
 
-		return GroupCreateResponse.from(group);
+		return GroupCreateResponse.of(group, fileService.groupImageUrl(group.getId()));
 	}
 
 	@Transactional(readOnly = true)
@@ -70,7 +80,8 @@ public class GroupService {
 		long memberCount = memberRepository.countByGroupId(groupId);
 		long ownerCount = groupMembershipRepository.countByGroupIdAndRole(groupId, GroupRole.OWNER);
 
-		return GroupDetailResponse.of(me.getGroup(), me.getRole(), memberCount, ownerCount);
+		return GroupDetailResponse.of(me.getGroup(), fileService.groupImageUrl(groupId),
+				me.getRole(), memberCount, ownerCount);
 	}
 
 	/**
@@ -85,8 +96,33 @@ public class GroupService {
 			throw new BusinessException(ErrorCode.INVALID_REQUEST, "모임 이름은 공백일 수 없습니다.");
 		}
 		group.update(name, request.description());
+		if (request.imageChangeRequested()) {
+			replaceImage(groupId, request.targetImageFileId(), userId);
+		}
 
-		return GroupUpdateResponse.from(group);
+		return GroupUpdateResponse.of(group, fileService.groupImageUrl(groupId));
+	}
+
+	/**
+	 * 대표 이미지 교체. 새 파일이 null 이면 기본 이미지로 되돌린다.
+	 * 쓰이지 않게 된 이전 이미지는 저장소에 남기지 않는다.
+	 *
+	 * <p>모임당 하나(uk_file_group)라 이전 이미지를 먼저 떼어낸 뒤 새 이미지를 선점한다.
+	 * 이전 파일의 <b>물리 삭제는 선점이 성공한 뒤</b>에 한다 — 저장소 삭제는 롤백되지 않으므로,
+	 * 먼저 지우면 선점 실패 시 되살아난 참조가 빈 파일을 가리킨다.
+	 */
+	private void replaceImage(Long groupId, Long newFileId, Long userId) {
+		// 화면이 현재 이미지를 그대로 다시 보낸 경우. 떼기 전에 걸러야 한다 —
+		// 떼었다 다시 붙이면 그 이미지를 올린 사람이 공동 총무일 때 본인 파일이 아니라 막힌다.
+		if (fileService.findGroupImage(groupId).map(file -> file.getId().equals(newFileId)).orElse(false)) {
+			return;
+		}
+		Optional<UploadedFile> previous = fileService.detachGroupImage(groupId);
+		if (newFileId != null) {
+			// 실패하면 트랜잭션째 되돌아가 이전 이미지가 그대로 남는다. 그래서 물리 삭제보다 먼저 한다.
+			fileService.claimGroupImage(newFileId, groupId, userId);
+		}
+		previous.ifPresent(fileService::deleteDetached);
 	}
 
 	/**
@@ -109,6 +145,8 @@ public class GroupService {
 		ledgerRepository.deleteAllByGroupId(groupId);
 		folderRepository.deleteDeepestFirst(folderRepository.findAllByGroupId(groupId));
 		groupMembershipRepository.deleteByGroupId(groupId);
+		// 대표 이미지는 모임을 참조하므로 모임 행보다 먼저 지운다.
+		fileService.deleteGroupImage(groupId);
 		groupSpaceRepository.deleteById(groupId);
 	}
 }

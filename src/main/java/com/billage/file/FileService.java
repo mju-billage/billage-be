@@ -10,8 +10,11 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.springframework.core.io.Resource;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.billage.common.exception.BusinessException;
@@ -22,6 +25,7 @@ import com.billage.file.dto.ReceiptFileResponse;
 import com.billage.membership.GroupAccessGuard;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 파일 업로드·조회·삭제와 내역 증빙 연결.
@@ -31,6 +35,7 @@ import lombok.RequiredArgsConstructor;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class FileService {
 
 	private static final DateTimeFormatter KEY_DATE = DateTimeFormatter.ofPattern("yyyy/MM/dd");
@@ -58,8 +63,11 @@ public class FileService {
 		UploadedFile file = fileRepository.findById(fileId)
 				.orElseThrow(() -> new BusinessException(ErrorCode.FILE_NOT_FOUND));
 
-		if (file.isLinked()) {
+		if (file.getEntry() != null) {
 			guard.requireMembership(file.getEntry().getGroupId(), userId);
+		} else if (file.getGroupId() != null) {
+			// 모임 대표 이미지는 그 모임 관리자 전원이 볼 수 있어야 한다(업로더 본인만이면 목록 화면이 깨진다).
+			guard.requireMembership(file.getGroupId(), userId);
 		} else if (!file.isUploadedBy(userId)) {
 			throw new BusinessException(ErrorCode.ACCESS_DENIED);
 		}
@@ -87,11 +95,10 @@ public class FileService {
 		if (!file.isUploadedBy(userId)) {
 			throw new BusinessException(ErrorCode.ACCESS_DENIED);
 		}
-		if (file.isLinked()) {
+		// 조건부 삭제로 선점과 겨룬다. 먼저 읽고 나중에 지우면 그 사이 대표 이미지가 된 파일까지 지워 버린다.
+		if (fileRepository.deleteIfUnused(fileId) == 0) {
 			throw new BusinessException(ErrorCode.FILE_IN_USE);
 		}
-
-		fileRepository.delete(file);
 		fileStorage.delete(file.getStorageKey());
 	}
 
@@ -137,6 +144,82 @@ public class FileService {
 				.toList(), userId);
 	}
 
+	/**
+	 * 모임 대표 이미지 지정. 아직 임자가 없는 본인의 GROUP_IMAGE 파일만 쓸 수 있다.
+	 * 선점은 조건부 UPDATE 한 줄로 원자적으로 끝나므로 잠금이 필요 없다.
+	 */
+	@Transactional
+	public void claimGroupImage(Long fileId, Long groupId, Long userId) {
+		try {
+			if (fileRepository.claimGroupImage(fileId, groupId, userId) == 1) {
+				return;
+			}
+		} catch (DataIntegrityViolationException e) {
+			// 이미지 없는 모임에 둘이 동시에 다른 파일을 지정하면 uk_file_group 에 걸린다. 500 대신 409.
+			throw new BusinessException(ErrorCode.FILE_IN_USE);
+		}
+		// 실패 이유를 구분해 돌려준다.
+		UploadedFile file = fileRepository.findById(fileId)
+				.orElseThrow(() -> new BusinessException(ErrorCode.FILE_NOT_FOUND));
+		if (file.getPurpose() != FilePurpose.GROUP_IMAGE) {
+			throw new BusinessException(ErrorCode.INVALID_FILE_PURPOSE);
+		}
+		if (!file.isUploadedBy(userId)) {
+			throw new BusinessException(ErrorCode.ACCESS_DENIED);
+		}
+		// 이미 다른 모임(또는 내역)이 쓰는 파일이다. 공유하면 한쪽이 지울 때 다른 쪽 참조가 깨진다.
+		throw new BusinessException(ErrorCode.FILE_IN_USE);
+	}
+
+	/** 모임의 현재 대표 이미지를 떼어내 완전히 지운다. 없으면 아무 일도 하지 않는다. */
+	@Transactional
+	public void deleteGroupImage(Long groupId) {
+		fileRepository.findGroupImage(groupId).ifPresent(file -> deleteAll(List.of(file)));
+	}
+
+	/** 모임의 현재 대표 이미지. 바뀌는지 판단할 때 쓴다. */
+	@Transactional(readOnly = true)
+	public Optional<UploadedFile> findGroupImage(Long groupId) {
+		return fileRepository.findGroupImage(groupId);
+	}
+
+	/**
+	 * 대표 이미지를 모임에서 떼어내기만 한다(파일은 남는다). 교체 중간 단계로 쓴다.
+	 * 저장소 객체를 여기서 지우지 않는 것이 핵심이다 — 뒤이은 선점이 실패하면 DB 는 롤백되지만
+	 * 저장소 삭제는 되돌릴 수 없어, 되살아난 참조가 빈 파일을 가리키게 된다.
+	 */
+	@Transactional
+	public Optional<UploadedFile> detachGroupImage(Long groupId) {
+		Optional<UploadedFile> current = fileRepository.findGroupImage(groupId);
+		if (current.isPresent() && fileRepository.detachGroupImage(groupId, current.get().getId()) == 0) {
+			// 그 사이 다른 요청이 이미지를 바꿨다. 덮어쓰면 남의 파일을 떼어 주인 없는 파일이 남는다.
+			throw new BusinessException(ErrorCode.FILE_IN_USE);
+		}
+		return current;
+	}
+
+	/** 임자가 없어진 파일을 실제로 지운다. 교체가 확정된 뒤에 호출한다. */
+	@Transactional
+	public void deleteDetached(UploadedFile file) {
+		deleteAll(List.of(file));
+	}
+
+	/** 모임의 대표 이미지 URL. 없으면 null. */
+	@Transactional(readOnly = true)
+	public String groupImageUrl(Long groupId) {
+		return fileRepository.findGroupImage(groupId).map(file -> fileUrl(file.getId())).orElse(null);
+	}
+
+	/** 여러 모임의 대표 이미지 URL. 목록 조회에서 N+1 을 피하려고 한 번에 가져온다. */
+	@Transactional(readOnly = true)
+	public Map<Long, String> groupImageUrls(List<Long> groupIds) {
+		if (groupIds.isEmpty()) {
+			return Map.of();
+		}
+		return fileRepository.findGroupImages(groupIds).stream()
+				.collect(Collectors.toMap(UploadedFile::getGroupId, file -> fileUrl(file.getId())));
+	}
+
 	/** 내역 삭제 시 그 내역에 연결된 증빙을 함께 지운다. */
 	@Transactional
 	public void deleteByEntry(Long entryId) {
@@ -169,16 +252,45 @@ public class FileService {
 	/** 모임 삭제 시 그 모임 내역에 연결된 증빙을 함께 지운다. */
 	@Transactional
 	public void deleteByGroup(Long groupId) {
-		deleteAll(fileRepository.findByGroupId(groupId));
+		deleteAll(fileRepository.findReceiptsByGroupId(groupId));
 	}
 
+	/**
+	 * DB 행을 지우고, 저장소 객체는 <b>커밋 이후</b>에 지운다.
+	 * 저장소 삭제는 롤백되지 않으므로 트랜잭션이 열려 있는 동안 지우면,
+	 * 뒤늦게 롤백됐을 때 되살아난 참조가 빈 파일을 가리킨다.
+	 */
 	private void deleteAll(List<UploadedFile> files) {
 		if (files.isEmpty()) {
 			return;
 		}
 		fileRepository.deleteAll(files);
 		fileRepository.flush();
-		files.forEach(file -> fileStorage.delete(file.getStorageKey()));
+
+		List<String> keys = files.stream().map(UploadedFile::getStorageKey).toList();
+		if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+			keys.forEach(fileStorage::delete);
+			return;
+		}
+		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+			@Override
+			public void afterCommit() {
+				keys.forEach(FileService.this::deleteQuietly);
+			}
+		});
+	}
+
+	/**
+	 * 커밋 이후의 저장소 삭제. 여기서 터져도 예외를 올리지 않는다 —
+	 * 이미 커밋된 요청을 실패로 보고하게 되고, 배치 뒤쪽 키까지 건너뛰기 때문이다.
+	 * 남은 객체는 메타데이터 없는 고아가 되므로 로그로 남겨 수동 정리한다.
+	 */
+	private void deleteQuietly(String storageKey) {
+		try {
+			fileStorage.delete(storageKey);
+		} catch (RuntimeException e) {
+			log.warn("저장소 객체 삭제 실패. 메타데이터는 이미 지워졌으니 수동 정리가 필요하다: {}", storageKey, e);
+		}
 	}
 
 	private void validate(MultipartFile file) {

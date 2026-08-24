@@ -40,7 +40,7 @@ class MemberProfileServiceTest extends IntegrationTest {
 	@BeforeEach
 	void setUp() {
 		ownerId = userRepository.save(User.create("owner@example.com", "encoded", "총무")).getId();
-		groupId = groupService.create(ownerId, new GroupCreateRequest("주리랑", null)).groupId();
+		groupId = groupService.create(ownerId, new GroupCreateRequest("주리랑", null, null)).groupId();
 	}
 
 	// --- 개별 추가 ---
