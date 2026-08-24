@@ -19,8 +19,6 @@ import com.billage.common.exception.ErrorCode;
 import com.billage.entry.Entry;
 import com.billage.file.dto.FileResponse;
 import com.billage.file.dto.ReceiptFileResponse;
-import com.billage.group.GroupSpace;
-import com.billage.group.GroupSpaceRepository;
 import com.billage.membership.GroupAccessGuard;
 
 import lombok.RequiredArgsConstructor;
@@ -40,7 +38,6 @@ public class FileService {
 	private final FileRepository fileRepository;
 	private final FileStorage fileStorage;
 	private final FileProperties properties;
-	private final GroupSpaceRepository groupSpaceRepository;
 	private final GroupAccessGuard guard;
 
 	@Transactional
@@ -61,16 +58,11 @@ public class FileService {
 		UploadedFile file = fileRepository.findById(fileId)
 				.orElseThrow(() -> new BusinessException(ErrorCode.FILE_NOT_FOUND));
 
-		if (file.isLinked()) {
+		if (file.getEntry() != null) {
 			guard.requireMembership(file.getEntry().getGroupId(), userId);
-			return file;
-		}
-		// 모임 대표 이미지는 그 모임 관리자 전원이 볼 수 있어야 한다(업로더 본인만이면 목록 화면이 깨진다).
-		Optional<GroupSpace> owningGroup = file.getPurpose() == FilePurpose.GROUP_IMAGE
-				? groupSpaceRepository.findByGroupImageFileId(file.getId())
-				: Optional.empty();
-		if (owningGroup.isPresent()) {
-			guard.requireMembership(owningGroup.get().getId(), userId);
+		} else if (file.getGroupId() != null) {
+			// 모임 대표 이미지는 그 모임 관리자 전원이 볼 수 있어야 한다(업로더 본인만이면 목록 화면이 깨진다).
+			guard.requireMembership(file.getGroupId(), userId);
 		} else if (!file.isUploadedBy(userId)) {
 			throw new BusinessException(ErrorCode.ACCESS_DENIED);
 		}
@@ -93,14 +85,12 @@ public class FileService {
 	 */
 	@Transactional
 	public void delete(Long fileId, Long userId) {
-		// 대표 이미지 지정과 동시에 들어와도 한쪽만 진행하도록 파일 행을 잠근다.
-		UploadedFile file = fileRepository.findByIdForUpdate(fileId)
+		UploadedFile file = fileRepository.findById(fileId)
 				.orElseThrow(() -> new BusinessException(ErrorCode.FILE_NOT_FOUND));
 		if (!file.isUploadedBy(userId)) {
 			throw new BusinessException(ErrorCode.ACCESS_DENIED);
 		}
-		if (file.isLinked() || groupSpaceRepository.findByGroupImageFileIdForUpdate(fileId).isPresent()) {
-			// 모임 대표 이미지로 쓰이는 파일도 "연결된 파일"이다. 지우면 모임에 깨진 URL 만 남는다.
+		if (file.isLinked()) {
 			throw new BusinessException(ErrorCode.FILE_IN_USE);
 		}
 
@@ -151,14 +141,16 @@ public class FileService {
 	}
 
 	/**
-	 * 모임 대표 이미지로 쓸 파일인지 확인한다. 업로더 본인의 GROUP_IMAGE 파일만 허용한다.
-	 * 증빙과 달리 파일 쪽에 소유 모임을 적어 두지 않으므로(엔티티 연결 없음) 여기서는 검증만 하고,
-	 * 참조는 GroupSpace 가 파일 ID 로 들고 간다.
+	 * 모임 대표 이미지 지정. 아직 임자가 없는 본인의 GROUP_IMAGE 파일만 쓸 수 있다.
+	 * 선점은 조건부 UPDATE 한 줄로 원자적으로 끝나므로 잠금이 필요 없다.
 	 */
 	@Transactional
-	public void requireUsableGroupImage(Long fileId, Long userId) {
-		// 직접 삭제와 동시에 들어와도 한쪽만 진행하도록 파일 행을 잠근다(삭제 경로와 잠금 순서를 맞춘다).
-		UploadedFile file = fileRepository.findByIdForUpdate(fileId)
+	public void claimGroupImage(Long fileId, Long groupId, Long userId) {
+		if (fileRepository.claimGroupImage(fileId, groupId, userId) == 1) {
+			return;
+		}
+		// 실패 이유를 구분해 돌려준다.
+		UploadedFile file = fileRepository.findById(fileId)
 				.orElseThrow(() -> new BusinessException(ErrorCode.FILE_NOT_FOUND));
 		if (file.getPurpose() != FilePurpose.GROUP_IMAGE) {
 			throw new BusinessException(ErrorCode.INVALID_FILE_PURPOSE);
@@ -166,27 +158,30 @@ public class FileService {
 		if (!file.isUploadedBy(userId)) {
 			throw new BusinessException(ErrorCode.ACCESS_DENIED);
 		}
-		if (groupSpaceRepository.findByGroupImageFileIdForUpdate(fileId).isPresent()) {
-			// 한 파일을 두 모임이 나눠 쓰면 한쪽에서 교체·삭제할 때 다른 쪽 참조가 깨진다.
-			throw new BusinessException(ErrorCode.FILE_IN_USE);
-		}
+		// 이미 다른 모임(또는 내역)이 쓰는 파일이다. 공유하면 한쪽이 지울 때 다른 쪽 참조가 깨진다.
+		throw new BusinessException(ErrorCode.FILE_IN_USE);
 	}
 
-	/**
-	 * 모임 대표 이미지 파일을 지운다. 교체·모임 삭제 경로에서만 호출한다.
-	 * 이미 없는 파일이면 조용히 넘어간다 — 참조만 남고 실물이 사라진 상태에서 모임 삭제가 막히면 안 된다.
-	 */
+	/** 모임의 현재 대표 이미지를 떼어내 완전히 지운다. 없으면 아무 일도 하지 않는다. */
 	@Transactional
-	public void deleteGroupImage(Long fileId) {
-		if (fileId == null) {
-			return;
-		}
-		fileRepository.findById(fileId).ifPresent(file -> deleteAll(List.of(file)));
+	public void deleteGroupImage(Long groupId) {
+		fileRepository.findGroupImage(groupId).ifPresent(file -> deleteAll(List.of(file)));
 	}
 
-	/** 파일 내려받기 URL. 참조만 들고 있는 도메인이 응답을 만들 때 쓴다. */
-	public String contentUrl(Long fileId) {
-		return fileId == null ? null : fileUrl(fileId);
+	/** 모임의 대표 이미지 URL. 없으면 null. */
+	@Transactional(readOnly = true)
+	public String groupImageUrl(Long groupId) {
+		return fileRepository.findGroupImage(groupId).map(file -> fileUrl(file.getId())).orElse(null);
+	}
+
+	/** 여러 모임의 대표 이미지 URL. 목록 조회에서 N+1 을 피하려고 한 번에 가져온다. */
+	@Transactional(readOnly = true)
+	public Map<Long, String> groupImageUrls(List<Long> groupIds) {
+		if (groupIds.isEmpty()) {
+			return Map.of();
+		}
+		return fileRepository.findGroupImages(groupIds).stream()
+				.collect(Collectors.toMap(UploadedFile::getGroupId, file -> fileUrl(file.getId())));
 	}
 
 	/** 내역 삭제 시 그 내역에 연결된 증빙을 함께 지운다. */
@@ -221,7 +216,7 @@ public class FileService {
 	/** 모임 삭제 시 그 모임 내역에 연결된 증빙을 함께 지운다. */
 	@Transactional
 	public void deleteByGroup(Long groupId) {
-		deleteAll(fileRepository.findByGroupId(groupId));
+		deleteAll(fileRepository.findReceiptsByGroupId(groupId));
 	}
 
 	private void deleteAll(List<UploadedFile> files) {

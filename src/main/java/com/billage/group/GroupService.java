@@ -1,9 +1,8 @@
 package com.billage.group;
 
 import java.util.List;
-import java.util.Objects;
+import java.util.Map;
 
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,6 +12,7 @@ import com.billage.dues.DuesService;
 import com.billage.group.dto.GroupCreateRequest;
 import com.billage.group.dto.GroupCreateResponse;
 import com.billage.group.dto.GroupDetailResponse;
+import com.billage.group.dto.GroupListRow;
 import com.billage.group.dto.GroupSummaryResponse;
 import com.billage.group.dto.GroupUpdateRequest;
 import com.billage.group.dto.GroupUpdateResponse;
@@ -48,8 +48,11 @@ public class GroupService {
 
 	@Transactional(readOnly = true)
 	public List<GroupSummaryResponse> getMyGroups(Long userId) {
-		return groupMembershipRepository.findMyGroups(userId).stream()
-				.map(row -> GroupSummaryResponse.of(row, fileService.contentUrl(row.groupImageFileId())))
+		List<GroupListRow> rows = groupMembershipRepository.findMyGroups(userId);
+		Map<Long, String> images = fileService.groupImageUrls(rows.stream().map(GroupListRow::groupId).toList());
+
+		return rows.stream()
+				.map(row -> GroupSummaryResponse.of(row, images.get(row.groupId())))
 				.toList();
 	}
 
@@ -59,20 +62,14 @@ public class GroupService {
 	 */
 	@Transactional
 	public GroupCreateResponse create(Long userId, GroupCreateRequest request) {
-		Long imageFileId = request.groupImageFileId();
-		if (imageFileId != null) {
-			fileService.requireUsableGroupImage(imageFileId, userId);
-		}
-		GroupSpace group;
-		try {
-			group = groupSpaceRepository.saveAndFlush(
-					GroupSpace.create(request.name().trim(), request.description(), imageFileId, userId));
-		} catch (DataIntegrityViolationException e) {
-			throw new BusinessException(ErrorCode.FILE_IN_USE);
-		}
+		GroupSpace group = groupSpaceRepository.save(
+				GroupSpace.create(request.name().trim(), request.description(), userId));
 		groupMembershipRepository.save(GroupMembership.createOwner(group, userId));
+		if (request.groupImageFileId() != null) {
+			fileService.claimGroupImage(request.groupImageFileId(), group.getId(), userId);
+		}
 
-		return GroupCreateResponse.of(group, fileService.contentUrl(imageFileId));
+		return GroupCreateResponse.of(group, fileService.groupImageUrl(group.getId()));
 	}
 
 	@Transactional(readOnly = true)
@@ -81,7 +78,7 @@ public class GroupService {
 		long memberCount = memberRepository.countByGroupId(groupId);
 		long ownerCount = groupMembershipRepository.countByGroupIdAndRole(groupId, GroupRole.OWNER);
 
-		return GroupDetailResponse.of(me.getGroup(), fileService.contentUrl(me.getGroup().getGroupImageFileId()),
+		return GroupDetailResponse.of(me.getGroup(), fileService.groupImageUrl(groupId),
 				me.getRole(), memberCount, ownerCount);
 	}
 
@@ -98,33 +95,24 @@ public class GroupService {
 		}
 		group.update(name, request.description());
 		if (request.imageChangeRequested()) {
-			replaceImage(group, request.targetImageFileId(), userId);
+			replaceImage(groupId, request.targetImageFileId(), userId);
 		}
 
-		return GroupUpdateResponse.of(group, fileService.contentUrl(group.getGroupImageFileId()));
+		return GroupUpdateResponse.of(group, fileService.groupImageUrl(groupId));
 	}
 
 	/**
 	 * 대표 이미지 교체. 새 파일이 null 이면 기본 이미지로 되돌린다.
 	 * 쓰이지 않게 된 이전 이미지는 저장소에 남기지 않는다.
+	 *
+	 * <p>모임당 하나(uk_file_group)라 이전 이미지를 먼저 떼어낸 뒤 새 이미지를 선점한다.
+	 * 새 이미지 선점이 실패하면 트랜잭션째 되돌아가므로 이전 이미지가 사라지는 일은 없다.
 	 */
-	private void replaceImage(GroupSpace group, Long newFileId, Long userId) {
-		Long previousFileId = group.getGroupImageFileId();
-		if (Objects.equals(previousFileId, newFileId)) {
-			return;
-		}
+	private void replaceImage(Long groupId, Long newFileId, Long userId) {
+		fileService.deleteGroupImage(groupId);
 		if (newFileId != null) {
-			fileService.requireUsableGroupImage(newFileId, userId);
+			fileService.claimGroupImage(newFileId, groupId, userId);
 		}
-		// 참조를 먼저 옮긴 뒤 이전 파일을 지운다. 반대로 하면 삭제 실패 시 깨진 참조만 남는다.
-		group.changeImage(newFileId);
-		try {
-			// 두 모임이 같은 파일을 동시에 집어 가는 경합은 유니크 제약이 막는다. 500 대신 409 로 돌려준다.
-			groupSpaceRepository.flush();
-		} catch (DataIntegrityViolationException e) {
-			throw new BusinessException(ErrorCode.FILE_IN_USE);
-		}
-		fileService.deleteGroupImage(previousFileId);
 	}
 
 	/**
@@ -147,9 +135,8 @@ public class GroupService {
 		ledgerRepository.deleteAllByGroupId(groupId);
 		folderRepository.deleteDeepestFirst(folderRepository.findAllByGroupId(groupId));
 		groupMembershipRepository.deleteByGroupId(groupId);
-		Long imageFileId = groupSpaceRepository.findById(groupId)
-				.map(GroupSpace::getGroupImageFileId).orElse(null);
+		// 대표 이미지는 모임을 참조하므로 모임 행보다 먼저 지운다.
+		fileService.deleteGroupImage(groupId);
 		groupSpaceRepository.deleteById(groupId);
-		fileService.deleteGroupImage(imageFileId);
 	}
 }

@@ -60,6 +60,13 @@ public class UploadedFile {
 	@JoinColumn(name = "entry_id")
 	private Entry entry;
 
+	/**
+	 * 대표 이미지로 쓰이는 모임. 증빙이 {@code entry} 로 주인을 적는 것과 같은 자리다.
+	 * 값이 있으면 그 모임의 대표 이미지이며, 모임당 하나만 가질 수 있다(uk_file_group).
+	 */
+	@Column(name = "group_id")
+	private Long groupId;
+
 	@Column(name = "created_at", nullable = false, updatable = false)
 	private LocalDateTime createdAt;
 
@@ -78,8 +85,9 @@ public class UploadedFile {
 		return new UploadedFile(purpose, storageKey, originalFileName, contentType, size, uploadedBy);
 	}
 
+	/** 어딘가에 쓰이고 있는 파일. 지우려면 먼저 연결을 끊어야 한다. */
 	public boolean isLinked() {
-		return this.entry != null;
+		return this.entry != null || this.groupId != null;
 	}
 
 	public void linkTo(Entry entry) {

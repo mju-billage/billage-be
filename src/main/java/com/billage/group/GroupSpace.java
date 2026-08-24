@@ -36,13 +36,6 @@ public class GroupSpace {
 	@Column(length = 255)
 	private String description;
 
-	/**
-	 * 모임 대표 이미지 파일. FK 를 걸지 않는다 — 파일 삭제·교체 순서를 DB 제약이 강제하면
-	 * 모임 삭제·이미지 교체 경로에 순서 함정이 생긴다. 참조 정리는 GroupService 가 책임진다.
-	 */
-	@Column(name = "group_image_file_id")
-	private Long groupImageFileId;
-
 	/** 모임을 만든 사용자. 인증 도메인과 결합하지 않도록 식별자만 보관한다. */
 	@Column(name = "created_by", nullable = false, updatable = false)
 	private Long createdBy;
@@ -56,15 +49,14 @@ public class GroupSpace {
 	@Version
 	private Long version;
 
-	private GroupSpace(String name, String description, Long groupImageFileId, Long createdBy) {
+	private GroupSpace(String name, String description, Long createdBy) {
 		this.name = name;
 		this.description = description;
-		this.groupImageFileId = groupImageFileId;
 		this.createdBy = createdBy;
 	}
 
-	public static GroupSpace create(String name, String description, Long groupImageFileId, Long createdBy) {
-		return new GroupSpace(name, description, groupImageFileId, createdBy);
+	public static GroupSpace create(String name, String description, Long createdBy) {
+		return new GroupSpace(name, description, createdBy);
 	}
 
 	/** PATCH 부분 수정. null 로 전달된 필드는 변경하지 않는다. */
@@ -75,11 +67,6 @@ public class GroupSpace {
 		if (description != null) {
 			this.description = description;
 		}
-	}
-
-	/** 대표 이미지 교체·삭제. null 이면 기본 이미지로 되돌린다. */
-	public void changeImage(Long groupImageFileId) {
-		this.groupImageFileId = groupImageFileId;
 	}
 
 	@PrePersist

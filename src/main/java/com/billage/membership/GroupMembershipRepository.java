@@ -35,7 +35,7 @@ public interface GroupMembershipRepository extends JpaRepository<GroupMembership
 	 */
 	@Query("""
 			select new com.billage.group.dto.GroupListRow(
-				g.id, g.name, g.description, g.groupImageFileId, ms.role,
+				g.id, g.name, g.description, ms.role,
 				(select count(m.id) from Member m where m.group = g),
 				g.createdAt)
 			from GroupMembership ms

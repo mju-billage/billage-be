@@ -41,8 +41,6 @@ class GroupImageServiceTest extends IntegrationTest {
 	@Autowired
 	FileRepository fileRepository;
 	@Autowired
-	GroupSpaceRepository groupSpaceRepository;
-	@Autowired
 	UserRepository userRepository;
 
 	private Long ownerId;
@@ -185,6 +183,18 @@ class GroupImageServiceTest extends IntegrationTest {
 	}
 
 	@Test
+	void 이미_증빙으로_쓰인_파일도_대표_이미지가_될_수_없다() {
+		// 용도가 GROUP_IMAGE 여도 이미 임자가 있으면 못 쓴다.
+		Long fileId = uploadGroupImage(ownerId);
+		groupService.update(groupId, ownerId, new GroupUpdateRequest(null, null, Optional.of(fileId)));
+		Long otherGroupId = groupService.create(adminId, new GroupCreateRequest("남의모임", null, null)).groupId();
+
+		assertThatThrownBy(() -> groupService.update(otherGroupId, adminId,
+				new GroupUpdateRequest(null, null, Optional.of(fileId))))
+				.isInstanceOf(BusinessException.class);
+	}
+
+	@Test
 	void 이미지를_떼어낸_파일은_다시_쓸_수_있다() {
 		Long fileId = uploadGroupImage(ownerId);
 		Long keeper = uploadGroupImage(ownerId);
@@ -263,6 +273,6 @@ class GroupImageServiceTest extends IntegrationTest {
 	}
 
 	private Long groupSpaceImageId() {
-		return groupSpaceRepository.findById(groupId).orElseThrow().getGroupImageFileId();
+		return fileRepository.findGroupImage(groupId).map(file -> file.getId()).orElse(null);
 	}
 }
