@@ -25,6 +25,7 @@ import com.billage.file.dto.ReceiptFileResponse;
 import com.billage.membership.GroupAccessGuard;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 파일 업로드·조회·삭제와 내역 증빙 연결.
@@ -34,6 +35,7 @@ import lombok.RequiredArgsConstructor;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class FileService {
 
 	private static final DateTimeFormatter KEY_DATE = DateTimeFormatter.ofPattern("yyyy/MM/dd");
@@ -273,9 +275,22 @@ public class FileService {
 		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
 			@Override
 			public void afterCommit() {
-				keys.forEach(fileStorage::delete);
+				keys.forEach(FileService.this::deleteQuietly);
 			}
 		});
+	}
+
+	/**
+	 * 커밋 이후의 저장소 삭제. 여기서 터져도 예외를 올리지 않는다 —
+	 * 이미 커밋된 요청을 실패로 보고하게 되고, 배치 뒤쪽 키까지 건너뛰기 때문이다.
+	 * 남은 객체는 메타데이터 없는 고아가 되므로 로그로 남겨 수동 정리한다.
+	 */
+	private void deleteQuietly(String storageKey) {
+		try {
+			fileStorage.delete(storageKey);
+		} catch (RuntimeException e) {
+			log.warn("저장소 객체 삭제 실패. 메타데이터는 이미 지워졌으니 수동 정리가 필요하다: {}", storageKey, e);
+		}
 	}
 
 	private void validate(MultipartFile file) {
