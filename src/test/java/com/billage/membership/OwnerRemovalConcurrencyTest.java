@@ -37,7 +37,7 @@ class OwnerRemovalConcurrencyTest extends IntegrationTest {
 	void 공동_총무가_서로를_동시에_내보내도_총무는_남는다() throws Exception {
 		Long firstId = userRepository.save(User.create("first@example.com", "encoded", "총무1")).getId();
 		Long secondId = userRepository.save(User.create("second@example.com", "encoded", "총무2")).getId();
-		Long groupId = groupService.create(firstId, new GroupCreateRequest("주리랑", null)).groupId();
+		Long groupId = groupService.create(firstId, new GroupCreateRequest("주리랑", null, null)).groupId();
 		String code = groupMembershipService.createInvitation(groupId, firstId).invitationCode();
 		groupMembershipService.join(secondId, code);
 		Long secondMembershipId = membershipId(groupId, secondId);

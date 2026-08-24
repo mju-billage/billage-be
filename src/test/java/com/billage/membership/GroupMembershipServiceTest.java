@@ -180,7 +180,7 @@ class GroupMembershipServiceTest extends IntegrationTest {
 
 	@Test
 	void 다른_모임의_관리자는_내보낼_수_없다() {
-		Long otherGroupId = groupService.create(adminId, new GroupCreateRequest("남의모임", null)).groupId();
+		Long otherGroupId = groupService.create(adminId, new GroupCreateRequest("남의모임", null, null)).groupId();
 		Long otherMembershipId = groupMembershipRepository.findByGroupIdAndUserId(otherGroupId, adminId)
 				.orElseThrow().getId();
 

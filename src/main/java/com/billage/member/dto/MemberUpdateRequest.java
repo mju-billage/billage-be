@@ -17,7 +17,7 @@ public record MemberUpdateRequest(
 		@Size(max = 20, message = "전화번호가 너무 깁니다.")
 		String phoneNumber,
 
-		@Size(max = 10, message = "태그는 10개 이하여야 합니다.")
+		@Size(max = 3, message = "태그는 3개 이하여야 합니다.")
 		List<@Size(max = 10, message = "태그는 10자 이하여야 합니다.") String> tags,
 
 		@Size(max = 30, message = "메모는 30자 이하여야 합니다.")

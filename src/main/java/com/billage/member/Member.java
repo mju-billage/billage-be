@@ -38,8 +38,12 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Member {
 
-	/** 한 명에게 붙일 수 있는 태그 수. 화면이 칩으로 나열하는 구조라 과도한 입력만 막는다. */
-	public static final int MAX_TAGS = 10;
+	/**
+	 * 한 명에게 붙일 수 있는 태그 수.
+	 * 화면명세 「모임원 추가 > 태그」의 Placeholder "# 태그를 입력해 주세요 (최대 3개)" 기준이며,
+	 * 프론트는 3개가 차면 입력 필드를 비활성화한다.
+	 */
+	public static final int MAX_TAGS = 3;
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
