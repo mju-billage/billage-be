@@ -24,6 +24,19 @@ public interface FileRepository extends JpaRepository<UploadedFile, Long> {
 	int claimGroupImage(@Param("fileId") Long fileId, @Param("groupId") Long groupId,
 			@Param("userId") Long userId);
 
+	/**
+	 * 아직 어디에도 쓰이지 않을 때만 지운다. 조건부 DELETE 라 삭제와 선점이 같은 조건을 두고 원자적으로 겨룬다 —
+	 * "안 쓰인다"를 먼저 읽고 나중에 지우면 그 사이에 선점된 파일까지 지워 버린다.
+	 */
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("delete from UploadedFile f where f.id = :fileId and f.groupId is null and f.entry is null")
+	int deleteIfUnused(@Param("fileId") Long fileId);
+
+	/** 모임에서 대표 이미지를 떼어낸다. 파일 자체는 남는다. */
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("update UploadedFile f set f.groupId = null where f.groupId = :groupId")
+	int detachGroupImage(@Param("groupId") Long groupId);
+
 	/** 모임의 현재 대표 이미지. */
 	@Query("select f from UploadedFile f where f.groupId = :groupId")
 	Optional<UploadedFile> findGroupImage(@Param("groupId") Long groupId);

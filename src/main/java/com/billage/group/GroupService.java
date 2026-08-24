@@ -2,6 +2,7 @@ package com.billage.group;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,6 +19,7 @@ import com.billage.group.dto.GroupUpdateRequest;
 import com.billage.group.dto.GroupUpdateResponse;
 import com.billage.entry.EntryRepository;
 import com.billage.file.FileService;
+import com.billage.file.UploadedFile;
 import com.billage.folder.FolderRepository;
 import com.billage.ledger.LedgerRepository;
 import com.billage.member.MemberRepository;
@@ -106,13 +108,21 @@ public class GroupService {
 	 * 쓰이지 않게 된 이전 이미지는 저장소에 남기지 않는다.
 	 *
 	 * <p>모임당 하나(uk_file_group)라 이전 이미지를 먼저 떼어낸 뒤 새 이미지를 선점한다.
-	 * 새 이미지 선점이 실패하면 트랜잭션째 되돌아가므로 이전 이미지가 사라지는 일은 없다.
+	 * 이전 파일의 <b>물리 삭제는 선점이 성공한 뒤</b>에 한다 — 저장소 삭제는 롤백되지 않으므로,
+	 * 먼저 지우면 선점 실패 시 되살아난 참조가 빈 파일을 가리킨다.
 	 */
 	private void replaceImage(Long groupId, Long newFileId, Long userId) {
-		fileService.deleteGroupImage(groupId);
+		Optional<UploadedFile> previous = fileService.detachGroupImage(groupId);
+		if (previous.map(file -> file.getId().equals(newFileId)).orElse(false)) {
+			// 화면이 현재 이미지를 그대로 다시 보낸 경우. 떼었다 붙일 이유가 없다.
+			fileService.claimGroupImage(newFileId, groupId, userId);
+			return;
+		}
 		if (newFileId != null) {
+			// 실패하면 트랜잭션째 되돌아가 이전 이미지가 그대로 남는다. 그래서 물리 삭제보다 먼저 한다.
 			fileService.claimGroupImage(newFileId, groupId, userId);
 		}
+		previous.ifPresent(fileService::deleteDetached);
 	}
 
 	/**

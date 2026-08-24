@@ -10,6 +10,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.springframework.core.io.Resource;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -90,11 +91,10 @@ public class FileService {
 		if (!file.isUploadedBy(userId)) {
 			throw new BusinessException(ErrorCode.ACCESS_DENIED);
 		}
-		if (file.isLinked()) {
+		// 조건부 삭제로 선점과 겨룬다. 먼저 읽고 나중에 지우면 그 사이 대표 이미지가 된 파일까지 지워 버린다.
+		if (fileRepository.deleteIfUnused(fileId) == 0) {
 			throw new BusinessException(ErrorCode.FILE_IN_USE);
 		}
-
-		fileRepository.delete(file);
 		fileStorage.delete(file.getStorageKey());
 	}
 
@@ -146,8 +146,13 @@ public class FileService {
 	 */
 	@Transactional
 	public void claimGroupImage(Long fileId, Long groupId, Long userId) {
-		if (fileRepository.claimGroupImage(fileId, groupId, userId) == 1) {
-			return;
+		try {
+			if (fileRepository.claimGroupImage(fileId, groupId, userId) == 1) {
+				return;
+			}
+		} catch (DataIntegrityViolationException e) {
+			// 이미지 없는 모임에 둘이 동시에 다른 파일을 지정하면 uk_file_group 에 걸린다. 500 대신 409.
+			throw new BusinessException(ErrorCode.FILE_IN_USE);
 		}
 		// 실패 이유를 구분해 돌려준다.
 		UploadedFile file = fileRepository.findById(fileId)
@@ -166,6 +171,26 @@ public class FileService {
 	@Transactional
 	public void deleteGroupImage(Long groupId) {
 		fileRepository.findGroupImage(groupId).ifPresent(file -> deleteAll(List.of(file)));
+	}
+
+	/**
+	 * 대표 이미지를 모임에서 떼어내기만 한다(파일은 남는다). 교체 중간 단계로 쓴다.
+	 * 저장소 객체를 여기서 지우지 않는 것이 핵심이다 — 뒤이은 선점이 실패하면 DB 는 롤백되지만
+	 * 저장소 삭제는 되돌릴 수 없어, 되살아난 참조가 빈 파일을 가리키게 된다.
+	 */
+	@Transactional
+	public Optional<UploadedFile> detachGroupImage(Long groupId) {
+		Optional<UploadedFile> current = fileRepository.findGroupImage(groupId);
+		if (current.isPresent()) {
+			fileRepository.detachGroupImage(groupId);
+		}
+		return current;
+	}
+
+	/** 임자가 없어진 파일을 실제로 지운다. 교체가 확정된 뒤에 호출한다. */
+	@Transactional
+	public void deleteDetached(UploadedFile file) {
+		deleteAll(List.of(file));
 	}
 
 	/** 모임의 대표 이미지 URL. 없으면 null. */

@@ -19,6 +19,7 @@ import com.billage.common.exception.ErrorCode;
 import com.billage.file.FilePurpose;
 import com.billage.file.FileRepository;
 import com.billage.file.FileService;
+import com.billage.file.FileStorage;
 import com.billage.group.dto.GroupCreateRequest;
 import com.billage.group.dto.GroupUpdateRequest;
 import com.billage.membership.GroupMembershipService;
@@ -40,6 +41,8 @@ class GroupImageServiceTest extends IntegrationTest {
 	FileService fileService;
 	@Autowired
 	FileRepository fileRepository;
+	@Autowired
+	FileStorage fileStorage;
 	@Autowired
 	UserRepository userRepository;
 
@@ -226,6 +229,34 @@ class GroupImageServiceTest extends IntegrationTest {
 		assertThat(groupService.getDetail(groupId, ownerId).groupImageUrl()).isEqualTo(expected);
 		assertThat(groupService.getMyGroups(ownerId)).singleElement()
 				.satisfies(group -> assertThat(group.groupImageUrl()).isEqualTo(expected));
+	}
+
+	@Test
+	void 같은_이미지를_다시_보내도_그대로_남는다() {
+		// 화면이 현재 값을 그대로 다시 보내는 흔한 경우. 떼었다 지우면 이미지가 사라진다.
+		Long fileId = uploadGroupImage(ownerId);
+		groupService.update(groupId, ownerId, new GroupUpdateRequest(null, null, Optional.of(fileId)));
+
+		var updated = groupService.update(groupId, ownerId, new GroupUpdateRequest(null, null, Optional.of(fileId)));
+
+		assertThat(updated.groupImageUrl()).isEqualTo("/api/v1/files/" + fileId + "/content");
+		assertThat(fileRepository.findById(fileId)).isPresent();
+	}
+
+	@Test
+	void 교체에_실패하면_기존_이미지가_그대로_남는다() {
+		Long current = uploadGroupImage(ownerId);
+		groupService.update(groupId, ownerId, new GroupUpdateRequest(null, null, Optional.of(current)));
+		Long othersFile = uploadGroupImage(adminId);
+
+		assertThatThrownBy(() -> groupService.update(groupId, ownerId,
+				new GroupUpdateRequest(null, null, Optional.of(othersFile))))
+				.isInstanceOf(BusinessException.class);
+
+		// 저장소 삭제는 롤백되지 않으므로, 실패 경로에서 기존 파일을 건드리면 안 된다.
+		assertThat(groupSpaceImageId()).isEqualTo(current);
+		assertThat(fileRepository.findById(current)).isPresent();
+		assertThat(fileStorage.load(fileRepository.findById(current).orElseThrow().getStorageKey()).exists()).isTrue();
 	}
 
 	@Test
