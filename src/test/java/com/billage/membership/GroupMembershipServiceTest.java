@@ -3,6 +3,7 @@ package com.billage.membership;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -11,11 +12,19 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
+import com.billage.entry.EntryRepository;
+import com.billage.entry.EntryService;
+import com.billage.entry.EntryType;
+import com.billage.entry.dto.EntryCreateRequest;
+import com.billage.folder.FolderService;
+import com.billage.folder.dto.FolderCreateRequest;
 import com.billage.group.GroupService;
 import com.billage.group.GroupSpace;
 import com.billage.group.GroupSpaceRepository;
 import com.billage.group.dto.GroupCreateRequest;
 import com.billage.group.dto.GroupUpdateRequest;
+import com.billage.ledger.LedgerService;
+import com.billage.ledger.dto.LedgerCreateRequest;
 import com.billage.member.MemberRepository;
 import com.billage.member.MemberService;
 import com.billage.member.dto.MemberCreateRequest;
@@ -37,6 +46,14 @@ class GroupMembershipServiceTest extends IntegrationTest {
 	GroupMembershipService groupMembershipService;
 	@Autowired
 	MemberService memberService;
+	@Autowired
+	FolderService folderService;
+	@Autowired
+	LedgerService ledgerService;
+	@Autowired
+	EntryService entryService;
+	@Autowired
+	EntryRepository entryRepository;
 	@Autowired
 	GroupMembershipRepository groupMembershipRepository;
 	@Autowired
@@ -125,6 +142,66 @@ class GroupMembershipServiceTest extends IntegrationTest {
 
 		assertThat(groupMembershipRepository.countByGroupIdAndRole(groupId, GroupRole.OWNER)).isEqualTo(1);
 		assertThat(groupMembershipRepository.existsByGroupIdAndUserId(groupId, ownerId)).isFalse();
+	}
+
+	// --- 관리자 내보내기 ---
+
+	@Test
+	void 총무는_다른_관리자를_내보낼_수_있다() {
+		joinWithInvitation(adminId);
+
+		groupMembershipService.removeMembership(groupId, ownerId, membershipIdOf(adminId));
+
+		assertThat(groupMembershipRepository.existsByGroupIdAndUserId(groupId, adminId)).isFalse();
+		// 관리자 관계만 끊는다. 납부 명단은 별개다.
+		assertThat(groupMembershipRepository.countByGroupIdAndRole(groupId, GroupRole.OWNER)).isEqualTo(1);
+	}
+
+	@Test
+	void 일반_관리자는_다른_사람을_내보낼_수_없다() {
+		joinWithInvitation(adminId);
+		Long otherId = userRepository.save(User.create("other@example.com", "encoded", "다른관리자")).getId();
+		joinWithInvitation(otherId);
+
+		assertThatThrownBy(() -> groupMembershipService.removeMembership(groupId, adminId, membershipIdOf(otherId)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.ACCESS_DENIED);
+	}
+
+	@Test
+	void 본인은_내보내기로_이탈할_수_없다() {
+		// 총무 인수인계 규칙이 달라 「모임 나가기」와 경로를 섞지 않는다.
+		assertThatThrownBy(() -> groupMembershipService.removeMembership(groupId, ownerId, membershipIdOf(ownerId)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.INVALID_REQUEST);
+	}
+
+	@Test
+	void 다른_모임의_관리자는_내보낼_수_없다() {
+		Long otherGroupId = groupService.create(adminId, new GroupCreateRequest("남의모임", null)).groupId();
+		Long otherMembershipId = groupMembershipRepository.findByGroupIdAndUserId(otherGroupId, adminId)
+				.orElseThrow().getId();
+
+		assertThatThrownBy(() -> groupMembershipService.removeMembership(groupId, ownerId, otherMembershipId))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.MEMBERSHIP_NOT_FOUND);
+	}
+
+	@Test
+	void 내보내도_그_사람이_남긴_내역은_지워지지_않는다() {
+		joinWithInvitation(adminId);
+		Long ledgerId = ledgerFixture();
+		Long entryId = entryService.create(ledgerId, adminId,
+				new EntryCreateRequest(EntryType.EXPENSE, "회식비", 30000L, LocalDate.now(), null, null)).entryId();
+
+		groupMembershipService.removeMembership(groupId, ownerId, membershipIdOf(adminId));
+
+		// 작성자 이름은 등록 시점 값으로 남아 있어야 한다.
+		assertThat(entryRepository.findById(entryId)).isPresent()
+				.get().satisfies(entry -> assertThat(entry.getCreatedByName()).isEqualTo("일반관리자"));
 	}
 
 	// --- 초대 코드 ---
@@ -236,6 +313,11 @@ class GroupMembershipServiceTest extends IntegrationTest {
 		assertThat(groupMembershipRepository.findByGroupId(groupId)).isEmpty();
 		assertThat(memberRepository.countByGroupId(groupId)).isZero();
 		assertThat(groupInvitationRepository.count()).isZero();
+	}
+
+	private Long ledgerFixture() {
+		Long folderId = folderService.create(groupId, ownerId, new FolderCreateRequest("2026년", null)).folderId();
+		return ledgerService.create(folderId, ownerId, new LedgerCreateRequest("회비장부", null)).ledgerId();
 	}
 
 	private void joinWithInvitation(Long userId) {
