@@ -13,6 +13,8 @@ import org.springframework.core.io.Resource;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.billage.common.exception.BusinessException;
@@ -187,8 +189,9 @@ public class FileService {
 	@Transactional
 	public Optional<UploadedFile> detachGroupImage(Long groupId) {
 		Optional<UploadedFile> current = fileRepository.findGroupImage(groupId);
-		if (current.isPresent()) {
-			fileRepository.detachGroupImage(groupId);
+		if (current.isPresent() && fileRepository.detachGroupImage(groupId, current.get().getId()) == 0) {
+			// 그 사이 다른 요청이 이미지를 바꿨다. 덮어쓰면 남의 파일을 떼어 주인 없는 파일이 남는다.
+			throw new BusinessException(ErrorCode.FILE_IN_USE);
 		}
 		return current;
 	}
@@ -250,13 +253,29 @@ public class FileService {
 		deleteAll(fileRepository.findReceiptsByGroupId(groupId));
 	}
 
+	/**
+	 * DB 행을 지우고, 저장소 객체는 <b>커밋 이후</b>에 지운다.
+	 * 저장소 삭제는 롤백되지 않으므로 트랜잭션이 열려 있는 동안 지우면,
+	 * 뒤늦게 롤백됐을 때 되살아난 참조가 빈 파일을 가리킨다.
+	 */
 	private void deleteAll(List<UploadedFile> files) {
 		if (files.isEmpty()) {
 			return;
 		}
 		fileRepository.deleteAll(files);
 		fileRepository.flush();
-		files.forEach(file -> fileStorage.delete(file.getStorageKey()));
+
+		List<String> keys = files.stream().map(UploadedFile::getStorageKey).toList();
+		if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+			keys.forEach(fileStorage::delete);
+			return;
+		}
+		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+			@Override
+			public void afterCommit() {
+				keys.forEach(fileStorage::delete);
+			}
+		});
 	}
 
 	private void validate(MultipartFile file) {

@@ -32,10 +32,14 @@ public interface FileRepository extends JpaRepository<UploadedFile, Long> {
 	@Query("delete from UploadedFile f where f.id = :fileId and f.groupId is null and f.entry is null")
 	int deleteIfUnused(@Param("fileId") Long fileId);
 
-	/** 모임에서 대표 이미지를 떼어낸다. 파일 자체는 남는다. */
+	/**
+	 * 모임에서 대표 이미지를 떼어낸다. 파일 자체는 남는다.
+	 * 방금 읽은 그 파일일 때만 떼어낸다 — 조건 없이 떼면, 동시에 들어온 다른 교체가 이미 붙여 놓은
+	 * 새 이미지를 떼어 버려 주인 없는 파일이 남는다.
+	 */
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
-	@Query("update UploadedFile f set f.groupId = null where f.groupId = :groupId")
-	int detachGroupImage(@Param("groupId") Long groupId);
+	@Query("update UploadedFile f set f.groupId = null where f.groupId = :groupId and f.id = :fileId")
+	int detachGroupImage(@Param("groupId") Long groupId, @Param("fileId") Long fileId);
 
 	/** 모임의 현재 대표 이미지. */
 	@Query("select f from UploadedFile f where f.groupId = :groupId")
