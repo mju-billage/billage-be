@@ -3,6 +3,7 @@ package com.billage.folder;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -13,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
 import com.billage.folder.dto.FolderCreateRequest;
+import com.billage.folder.dto.FolderItemResponse;
 import com.billage.folder.dto.FolderTreeResponse;
 import com.billage.folder.dto.FolderUpdateRequest;
 import com.billage.group.GroupService;
@@ -20,6 +22,10 @@ import com.billage.group.dto.GroupCreateRequest;
 import com.billage.ledger.Ledger;
 import com.billage.ledger.LedgerRepository;
 import com.billage.ledger.LedgerService;
+import com.billage.entry.EntryService;
+import com.billage.entry.EntryType;
+import com.billage.entry.dto.EntryCreateRequest;
+import com.billage.ledger.dto.GroupLedgerResponse;
 import com.billage.ledger.dto.LedgerCreateRequest;
 import com.billage.ledger.dto.LedgerUpdateRequest;
 import com.billage.membership.GroupMembershipService;
@@ -40,6 +46,8 @@ class FolderServiceTest extends IntegrationTest {
 	FolderService folderService;
 	@Autowired
 	LedgerService ledgerService;
+	@Autowired
+	EntryService entryService;
 	@Autowired
 	FolderRepository folderRepository;
 	@Autowired
@@ -275,6 +283,133 @@ class FolderServiceTest extends IntegrationTest {
 		ledgerService.update(ledgerId, ownerId, new LedgerUpdateRequest(null, folderId));
 		assertThat(ledgerRepository.findById(ledgerId).orElseThrow().getName()).isEqualTo("운영 장부");
 		assertThat(folderRepository.findById(folderId).orElseThrow().getName()).isEqualTo("정기공연");
+	}
+
+	// --- 폴더 화면의 한 계층 (폴더 + 장부) ---
+
+	@Test
+	void 한_계층의_폴더와_장부를_한_목록으로_주고_합산_개수를_센다() {
+		Long mtId = createFolder("MT", null);
+		createFolder("정기공연", null);
+		createFolder("MT 하위", mtId);
+		ledgerService.create(mtId, ownerId, new LedgerCreateRequest("MT 장부", null));
+		Long rootLedgerId = createRootLedger("최상위 장부");
+
+		var top = folderService.getFolderItems(groupId, ownerId, null, null);
+
+		assertThat(top.totalCount()).isEqualTo(3);
+		// 폴더가 먼저, 그다음 장부.
+		assertThat(top.items()).extracting(FolderItemResponse::name)
+				.containsExactly("MT", "정기공연", "최상위 장부");
+		assertThat(top.items()).extracting(FolderItemResponse::itemType)
+				.containsExactly(FolderItemResponse.ItemType.FOLDER, FolderItemResponse.ItemType.FOLDER,
+						FolderItemResponse.ItemType.LEDGER);
+		// MT 폴더의 '{N}개의 항목' 은 하위 폴더 1 + 하위 장부 1.
+		assertThat(top.items().get(0).childCount()).isEqualTo(2);
+		// 장부는 개수 대신 생성일을 보여 주므로 childCount 가 없다.
+		assertThat(top.items().get(2).childCount()).isNull();
+		assertThat(top.items().get(2).id()).isEqualTo(rootLedgerId);
+	}
+
+	@Test
+	void 폴더를_해제해_최상위로_올라온_장부도_조회된다() {
+		Long folderId = createFolder("MT", null);
+		Long ledgerId = ledgerService.create(folderId, ownerId,
+				new LedgerCreateRequest("MT 장부", null)).ledgerId();
+
+		folderService.delete(folderId, ownerId);
+
+		var top = folderService.getFolderItems(groupId, ownerId, null, null);
+		assertThat(top.items()).singleElement()
+				.satisfies(item -> assertThat(item.id()).isEqualTo(ledgerId));
+	}
+
+	@Test
+	void 폴더_안으로_들어가면_그_계층만_보인다() {
+		Long mtId = createFolder("MT", null);
+		createFolder("정기공연", null);
+		Long childId = createFolder("MT 하위", mtId);
+
+		var inside = folderService.getFolderItems(groupId, ownerId, mtId, null);
+
+		assertThat(inside.items()).singleElement()
+				.satisfies(item -> assertThat(item.id()).isEqualTo(childId));
+	}
+
+	@Test
+	void 검색어는_폴더명과_장부명에_모두_걸린다() {
+		createFolder("MT", null);
+		createFolder("정기공연", null);
+		createRootLedger("MT 회계");
+
+		var found = folderService.getFolderItems(groupId, ownerId, null, "MT");
+
+		assertThat(found.totalCount()).isEqualTo(2);
+		assertThat(found.items()).extracting(FolderItemResponse::name).containsExactly("MT", "MT 회계");
+	}
+
+	@Test
+	void 항목이_없어도_개수와_빈_목록을_준다() {
+		var empty = folderService.getFolderItems(groupId, ownerId, null, null);
+
+		assertThat(empty.totalCount()).isZero();
+		assertThat(empty.items()).isEmpty();
+	}
+
+	@Test
+	void 다른_모임의_폴더_항목은_조회할_수_없다() {
+		assertThatThrownBy(() -> folderService.getFolderItems(otherGroupId, ownerId, null, null))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.ACCESS_DENIED);
+	}
+
+	// --- 모임 전체 장부 목록 ---
+
+	@Test
+	void 모임_전체_장부는_폴더를_가로질러_모으고_최상위_장부도_포함한다() {
+		Long mtId = createFolder("MT", null);
+		Long childId = createFolder("MT 하위", mtId);
+		ledgerService.create(mtId, ownerId, new LedgerCreateRequest("MT 장부", null));
+		ledgerService.create(childId, ownerId, new LedgerCreateRequest("하위 장부", null));
+		createRootLedger("최상위 장부");
+
+		var ledgers = ledgerService.getGroupLedgers(groupId, ownerId, null);
+
+		assertThat(ledgers).hasSize(3);
+		// 최신 생성순(화면 「예산 설정」 규칙).
+		assertThat(ledgers).extracting(GroupLedgerResponse::name)
+				.containsExactly("최상위 장부", "하위 장부", "MT 장부");
+		// 최상위로 올라온 장부는 폴더 정보가 비어 있다.
+		assertThat(ledgers.get(0).folderId()).isNull();
+		assertThat(ledgers.get(0).folderName()).isNull();
+		assertThat(ledgers.get(2).folderName()).isEqualTo("MT");
+	}
+
+	@Test
+	void 예산_소진율은_지출을_예산으로_나눈_값이고_예산이_없으면_비운다() {
+		Long folderId = createFolder("MT", null);
+		Long budgeted = ledgerService.create(folderId, ownerId,
+				new LedgerCreateRequest("예산 장부", 1_000_000L)).ledgerId();
+		ledgerService.create(folderId, ownerId, new LedgerCreateRequest("예산 없는 장부", null));
+		entryService.create(budgeted, ownerId, new EntryCreateRequest(EntryType.EXPENSE, "대관료", 250_000L,
+				LocalDate.of(2026, 7, 20), null, null, null));
+
+		var byId = ledgerService.getGroupLedgers(groupId, ownerId, null).stream()
+				.collect(java.util.stream.Collectors.toMap(GroupLedgerResponse::ledgerId, l -> l));
+
+		assertThat(byId.get(budgeted).budgetUsageRate()).isEqualByComparingTo("25.00");
+		assertThat(byId.get(budgeted).remainingBudget()).isEqualTo(750_000L);
+		assertThat(byId.values().stream().filter(l -> l.budget() == null).findFirst().orElseThrow()
+				.budgetUsageRate()).isNull();
+	}
+
+	/** 최상위 영역(어느 폴더에도 속하지 않는) 장부. 폴더를 만들고 바로 해제해서 만든다. */
+	private Long createRootLedger(String name) {
+		Long tempFolderId = createFolder("임시", null);
+		Long ledgerId = ledgerService.create(tempFolderId, ownerId, new LedgerCreateRequest(name, null)).ledgerId();
+		folderService.delete(tempFolderId, ownerId);
+		return ledgerId;
 	}
 
 	private Long createFolder(String name, Long parentId) {

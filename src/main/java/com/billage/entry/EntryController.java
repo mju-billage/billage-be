@@ -1,8 +1,12 @@
 package com.billage.entry;
 
+import java.time.LocalDate;
+import java.util.List;
+
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -24,6 +28,7 @@ import com.billage.entry.dto.EntryDetailResponse;
 import com.billage.entry.dto.EntrySummaryResponse;
 import com.billage.entry.dto.EntryUpdateRequest;
 import com.billage.entry.dto.EntryUpdateResponse;
+import com.billage.entry.dto.GroupEntryListResponse;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -46,6 +51,30 @@ public class EntryController {
 				entryService.getEntries(ledgerId, userId, type, status, keyword, pageable);
 		String message = entries.content().isEmpty() ? "조회된 데이터가 없습니다." : "내역 목록 조회에 성공했습니다.";
 		return ResponseEntity.ok(ApiResponse.of(entries, message));
+	}
+
+	/**
+	 * 모임 전체 내역 목록. GNB 「내역」 탭·검색·필터 시트가 모두 이 API 를 쓴다.
+	 *
+	 * <p>장부 하나만 볼 때는 {@code /ledgers/{ledgerId}/entries} 를 쓴다 — 그쪽은 잔액 요약을 내지 않는다.
+	 */
+	@GetMapping("/api/v1/groups/{groupId}/entries")
+	public ResponseEntity<ApiResponse<GroupEntryListResponse>> getGroupEntries(@CurrentUserId Long userId,
+			@PathVariable Long groupId,
+			@RequestParam(required = false) List<Long> ledgerIds,
+			@RequestParam(required = false) EntryType type,
+			@RequestParam(required = false) ApprovalStatus status,
+			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+			@RequestParam(required = false) String keyword,
+			@PageableDefault(size = 20, sort = { "occurredOn", "id" },
+					direction = Sort.Direction.DESC) Pageable pageable) {
+		GroupEntryListResponse response = entryService.getGroupEntries(groupId, userId, ledgerIds, type, status,
+				from, to, keyword, pageable);
+		String message = response.entries().content().isEmpty()
+				? "조회된 데이터가 없습니다."
+				: "내역 목록 조회에 성공했습니다.";
+		return ResponseEntity.ok(ApiResponse.of(response, message));
 	}
 
 	@PostMapping("/api/v1/ledgers/{ledgerId}/entries")

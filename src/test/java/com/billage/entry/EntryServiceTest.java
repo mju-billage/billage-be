@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.LocalDate;
+import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -15,6 +16,7 @@ import com.billage.common.exception.ErrorCode;
 import com.billage.entry.dto.EntryCreateRequest;
 import com.billage.entry.dto.EntryDetailResponse;
 import com.billage.entry.dto.EntryUpdateRequest;
+import com.billage.entry.dto.GroupEntryListResponse;
 import com.billage.folder.FolderService;
 import com.billage.folder.dto.FolderCreateRequest;
 import com.billage.group.GroupService;
@@ -350,6 +352,109 @@ class EntryServiceTest extends IntegrationTest {
 				.isEqualTo(ErrorCode.ACCESS_DENIED);
 	}
 
+	// --- 모임 전체 내역 목록 (GNB 「내역」 탭) ---
+
+	@Test
+	void 모임_전체_목록은_장부를_넘어서_모으고_승인분으로_잔액을_낸다() {
+		Long otherLedgerId = otherLedger("MT");
+		createExpense(ownerId, "공연장 대관료", 500_000L);
+		createIncome(ownerId, "후원금", 1_200_000L);
+		entryService.create(otherLedgerId, ownerId,
+				new EntryCreateRequest(EntryType.EXPENSE, "숙소비", 300_000L, LocalDate.of(2026, 7, 20), null, null, null));
+		// 일반 관리자가 올린 건은 승인 대기라 잔액에 들어가지 않는다.
+		entryService.create(ledgerId, adminId,
+				new EntryCreateRequest(EntryType.EXPENSE, "미승인 지출", 900_000L, LocalDate.of(2026, 7, 20), null, null,
+						null));
+
+		var result = list(null, null, null, null, null, null);
+
+		assertThat(result.entries().totalElements()).isEqualTo(4);
+		assertThat(result.summary().totalIncome()).isEqualTo(1_200_000L);
+		assertThat(result.summary().totalExpense()).isEqualTo(800_000L);
+		assertThat(result.summary().balance()).isEqualTo(400_000L);
+	}
+
+	@Test
+	void 장부를_여러_개_골라_거를_수_있다() {
+		Long mtLedgerId = otherLedger("MT");
+		Long etcLedgerId = otherLedger("비품");
+		createExpense(ownerId, "공연장 대관료", 500_000L);
+		entryService.create(mtLedgerId, ownerId,
+				new EntryCreateRequest(EntryType.EXPENSE, "숙소비", 300_000L, LocalDate.of(2026, 7, 20), null, null, null));
+		entryService.create(etcLedgerId, ownerId,
+				new EntryCreateRequest(EntryType.EXPENSE, "프린터", 100_000L, LocalDate.of(2026, 7, 20), null, null, null));
+
+		var result = list(List.of(ledgerId, mtLedgerId), null, null, null, null, null);
+
+		assertThat(result.entries().totalElements()).isEqualTo(2);
+		// 잔액도 고른 장부만 합산한다.
+		assertThat(result.summary().totalExpense()).isEqualTo(800_000L);
+	}
+
+	@Test
+	void 검색어는_내역명뿐_아니라_장부명에도_걸린다() {
+		Long mtLedgerId = otherLedger("MT");
+		createExpense(ownerId, "공연장 대관료", 500_000L);
+		entryService.create(mtLedgerId, ownerId,
+				new EntryCreateRequest(EntryType.EXPENSE, "숙소비", 300_000L, LocalDate.of(2026, 7, 20), null, null, null));
+
+		// '숙소비'라는 내역명에는 없지만 장부명이 MT 라서 걸린다.
+		var byLedgerName = list(null, null, null, null, null, "MT");
+		var byTitle = list(null, null, null, null, null, "대관");
+
+		assertThat(byLedgerName.entries().content()).singleElement()
+				.satisfies(entry -> assertThat(entry.ledgerName()).isEqualTo("MT"));
+		assertThat(byTitle.entries().content()).singleElement()
+				.satisfies(entry -> assertThat(entry.title()).isEqualTo("공연장 대관료"));
+	}
+
+	@Test
+	void 기간과_구분으로_거르면_잔액도_같은_조건을_따른다() {
+		entryService.create(ledgerId, ownerId,
+				new EntryCreateRequest(EntryType.INCOME, "6월 후원금", 100_000L, LocalDate.of(2026, 6, 10), null, null, null));
+		entryService.create(ledgerId, ownerId,
+				new EntryCreateRequest(EntryType.INCOME, "7월 후원금", 200_000L, LocalDate.of(2026, 7, 20), null, null, null));
+		createExpense(ownerId, "공연장 대관료", 500_000L);
+
+		var julyIncome = list(null, EntryType.INCOME, null, LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 31), null);
+
+		assertThat(julyIncome.entries().totalElements()).isEqualTo(1);
+		assertThat(julyIncome.summary().totalIncome()).isEqualTo(200_000L);
+		assertThat(julyIncome.summary().totalExpense()).isZero();
+	}
+
+	@Test
+	void 승인_요청_탭은_승인_대기_내역만_보여_준다() {
+		createExpense(ownerId, "총무가 올린 지출", 500_000L);
+		entryService.create(ledgerId, adminId,
+				new EntryCreateRequest(EntryType.EXPENSE, "승인 요청 지출", 100_000L, LocalDate.of(2026, 7, 20), null, null,
+						null));
+
+		var pending = list(null, null, ApprovalStatus.PENDING, null, null, null);
+
+		assertThat(pending.entries().content()).singleElement()
+				.satisfies(entry -> assertThat(entry.title()).isEqualTo("승인 요청 지출"));
+		// 탭을 걸러도 잔액 카드는 승인분 기준을 유지한다.
+		assertThat(pending.summary().totalExpense()).isEqualTo(500_000L);
+	}
+
+	@Test
+	void 조회_기간이_거꾸로면_거부한다() {
+		assertThatThrownBy(() -> list(null, null, null, LocalDate.of(2026, 7, 31), LocalDate.of(2026, 7, 1), null))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.INVALID_QUERY_PARAMETER);
+	}
+
+	@Test
+	void 다른_모임_사람은_모임_전체_내역을_볼_수_없다() {
+		assertThatThrownBy(() -> entryService.getGroupEntries(groupId, outsiderId, null, null, null, null, null, null,
+				PageRequest.of(0, 20)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.ACCESS_DENIED);
+	}
+
 	// --- 회비 연결 ---
 
 	@Test
@@ -361,6 +466,17 @@ class EntryServiceTest extends IntegrationTest {
 		assertThat(detail.duesExists()).isFalse();
 		assertThat(detail.payerCount()).isZero();
 		assertThat(detail.payers()).isEmpty();
+	}
+
+	private GroupEntryListResponse list(List<Long> ledgerIds, EntryType type, ApprovalStatus status,
+			LocalDate from, LocalDate to, String keyword) {
+		return entryService.getGroupEntries(groupId, ownerId, ledgerIds, type, status, from, to, keyword,
+				PageRequest.of(0, 20));
+	}
+
+	private Long otherLedger(String name) {
+		Long folderId = folderService.create(groupId, ownerId, new FolderCreateRequest(name + " 폴더", null)).folderId();
+		return ledgerService.create(folderId, ownerId, new LedgerCreateRequest(name, null)).ledgerId();
 	}
 
 	private Long createExpense(Long userId, String title, long amount) {
