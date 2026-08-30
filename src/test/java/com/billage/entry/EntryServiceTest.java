@@ -145,7 +145,7 @@ class EntryServiceTest extends IntegrationTest {
 
 		Long entryId = entryService.create(ledgerId, longNameUserId,
 				new EntryCreateRequest(EntryType.EXPENSE, "간식비", 30_000L,
-						LocalDate.of(2026, 7, 20), null, null)).entryId();
+						LocalDate.of(2026, 7, 20), null, null, null)).entryId();
 
 		assertThat(entryRepository.findById(entryId).orElseThrow().getCreatedByName())
 				.isEqualTo("가나다라마바사아자차");
@@ -158,7 +158,7 @@ class EntryServiceTest extends IntegrationTest {
 		Long entryId = createExpense(ownerId, "대관료", 500_000L);
 
 		entryService.update(entryId, ownerId, new EntryUpdateRequest("대관료 정정", 520_000L,
-				LocalDate.of(2026, 7, 21), "금액 정정", null));
+				LocalDate.of(2026, 7, 21), "금액 정정", null, null));
 
 		Entry entry = entryRepository.findById(entryId).orElseThrow();
 		assertThat(entry.getTitle()).isEqualTo("대관료 정정");
@@ -171,7 +171,7 @@ class EntryServiceTest extends IntegrationTest {
 	void 전달하지_않은_필드는_수정되지_않는다() {
 		Long entryId = createExpense(ownerId, "대관료", 500_000L);
 
-		entryService.update(entryId, ownerId, new EntryUpdateRequest(null, 520_000L, null, null, null));
+		entryService.update(entryId, ownerId, new EntryUpdateRequest(null, 520_000L, null, null, null, null));
 
 		Entry entry = entryRepository.findById(entryId).orElseThrow();
 		assertThat(entry.getAmount()).isEqualTo(520_000L);
@@ -184,7 +184,7 @@ class EntryServiceTest extends IntegrationTest {
 		Long entryId = createExpense(ownerId, "대관료", 500_000L);
 
 		assertThatThrownBy(() -> entryService.update(entryId, ownerId,
-				new EntryUpdateRequest("   ", null, null, null, null)))
+				new EntryUpdateRequest("   ", null, null, null, null, null)))
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
 				.isEqualTo(ErrorCode.INVALID_REQUEST);
@@ -197,7 +197,7 @@ class EntryServiceTest extends IntegrationTest {
 		Long entryId = createExpense(adminId, "간식비", 30_000L);
 
 		assertThatThrownBy(() -> entryService.update(entryId, adminId,
-				new EntryUpdateRequest("간식비 정정", null, null, null, null)))
+				new EntryUpdateRequest("간식비 정정", null, null, null, null, null)))
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
 				.isEqualTo(ErrorCode.ACCESS_DENIED);
@@ -226,7 +226,7 @@ class EntryServiceTest extends IntegrationTest {
 		Long entryId = createExpense(ownerId, "대관료", 500_000L);
 
 		assertThatThrownBy(() -> entryService.update(entryId, outsiderId,
-				new EntryUpdateRequest("몰래 수정", null, null, null, null)))
+				new EntryUpdateRequest("몰래 수정", null, null, null, null, null)))
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
 				.isEqualTo(ErrorCode.ACCESS_DENIED);
@@ -277,7 +277,7 @@ class EntryServiceTest extends IntegrationTest {
 				.isEqualTo(ErrorCode.ACCESS_DENIED);
 
 		assertThatThrownBy(() -> entryService.create(ledgerId, outsiderId,
-				new EntryCreateRequest(EntryType.EXPENSE, "몰래 등록", 1_000L, LocalDate.now(), null, null)))
+				new EntryCreateRequest(EntryType.EXPENSE, "몰래 등록", 1_000L, LocalDate.now(), null, null, null)))
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
 				.isEqualTo(ErrorCode.ACCESS_DENIED);
@@ -313,13 +313,63 @@ class EntryServiceTest extends IntegrationTest {
 		assertThat(entryRepository.countByLedgerId(ledgerId)).isZero();
 	}
 
+	// --- 담당자 ---
+
+	@Test
+	void 담당자를_지정하지_않으면_등록자_본인이_된다() {
+		Long entryId = createExpense(ownerId, "공연장 대관료", 500_000L);
+
+		var detail = entryService.getDetail(entryId, ownerId);
+		assertThat(detail.manager().userId()).isEqualTo(ownerId);
+		assertThat(detail.manager().name()).isEqualTo("총무");
+	}
+
+	@Test
+	void 담당자는_등록자와_다를_수_있고_수정으로_바꿀_수_있다() {
+		Long entryId = entryService.create(ledgerId, ownerId,
+				new EntryCreateRequest(EntryType.EXPENSE, "간식비", 30_000L, LocalDate.of(2026, 7, 20), null,
+						adminId, null)).entryId();
+
+		assertThat(entryService.getDetail(entryId, ownerId).manager().userId()).isEqualTo(adminId);
+		// 작성자는 그대로다 — 누가 입력했나의 기록이라 바뀌지 않는다.
+		assertThat(entryService.getDetail(entryId, ownerId).createdBy().userId()).isEqualTo(ownerId);
+
+		entryService.update(entryId, ownerId,
+				new EntryUpdateRequest(null, null, null, null, ownerId, null));
+
+		assertThat(entryService.getDetail(entryId, ownerId).manager().userId()).isEqualTo(ownerId);
+	}
+
+	@Test
+	void 이_모임의_관리자가_아닌_사람은_담당자가_될_수_없다() {
+		assertThatThrownBy(() -> entryService.create(ledgerId, ownerId,
+				new EntryCreateRequest(EntryType.EXPENSE, "간식비", 30_000L, LocalDate.of(2026, 7, 20), null,
+						outsiderId, null)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.ACCESS_DENIED);
+	}
+
+	// --- 회비 연결 ---
+
+	@Test
+	void 일반_내역은_회비_정보가_비어_있다() {
+		Long entryId = createExpense(ownerId, "공연장 대관료", 500_000L);
+
+		var detail = entryService.getDetail(entryId, ownerId);
+		assertThat(detail.duesId()).isNull();
+		assertThat(detail.duesExists()).isFalse();
+		assertThat(detail.payerCount()).isZero();
+		assertThat(detail.payers()).isEmpty();
+	}
+
 	private Long createExpense(Long userId, String title, long amount) {
 		return entryService.create(ledgerId, userId,
-				new EntryCreateRequest(EntryType.EXPENSE, title, amount, LocalDate.of(2026, 7, 20), null, null)).entryId();
+				new EntryCreateRequest(EntryType.EXPENSE, title, amount, LocalDate.of(2026, 7, 20), null, null, null)).entryId();
 	}
 
 	private Long createIncome(Long userId, String title, long amount) {
 		return entryService.create(ledgerId, userId,
-				new EntryCreateRequest(EntryType.INCOME, title, amount, LocalDate.of(2026, 7, 20), null, null)).entryId();
+				new EntryCreateRequest(EntryType.INCOME, title, amount, LocalDate.of(2026, 7, 20), null, null, null)).entryId();
 	}
 }

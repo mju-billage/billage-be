@@ -208,7 +208,7 @@ class ReportServiceTest extends IntegrationTest {
 
 	private void createEntry(Long userId, EntryType type, String title, long amount, LocalDate occurredOn) {
 		entryService.create(ledgerId, userId,
-				new EntryCreateRequest(type, title, amount, occurredOn, null, null));
+				new EntryCreateRequest(type, title, amount, occurredOn, null, null, null));
 	}
 
 	private ReportCreateResponse createReport(String title, List<Long> ledgerIds) {

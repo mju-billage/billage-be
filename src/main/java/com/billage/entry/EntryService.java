@@ -1,5 +1,6 @@
 package com.billage.entry;
 
+import java.util.List;
 import java.util.Map;
 
 import org.springframework.data.domain.Page;
@@ -17,6 +18,7 @@ import com.billage.entry.dto.EntryDetailResponse;
 import com.billage.entry.dto.EntrySummaryResponse;
 import com.billage.entry.dto.EntryUpdateRequest;
 import com.billage.entry.dto.EntryUpdateResponse;
+import com.billage.dues.DuesService;
 import com.billage.file.FileService;
 import com.billage.ledger.Ledger;
 import com.billage.ledger.LedgerRepository;
@@ -41,6 +43,7 @@ public class EntryService {
 	private final LedgerRepository ledgerRepository;
 	private final UserRepository userRepository;
 	private final FileService fileService;
+	private final DuesService duesService;
 	private final GroupAccessGuard guard;
 
 	@Transactional(readOnly = true)
@@ -67,8 +70,12 @@ public class EntryService {
 		GroupMembership author = guard.requireMembership(ledger.getGroup().getId(), userId);
 		String authorName = userName(userId);
 
+		Long managerUserId = request.managerUserId() == null ? userId : request.managerUserId();
+		String managerName = requireGroupManager(ledger.getGroup().getId(), managerUserId);
+
 		Entry entry = entryRepository.save(Entry.create(ledger, author, authorName, request.type(),
-				requireNonBlank(request.title()), request.amount(), request.occurredOn(), request.memo()));
+				requireNonBlank(request.title()), request.amount(), request.occurredOn(), request.memo(),
+				managerUserId, managerName));
 		fileService.linkReceipts(entry, request.receiptFileIds(), userId);
 
 		return EntryCreateResponse.of(entry, fileService.getReceipts(entry.getId()));
@@ -79,7 +86,20 @@ public class EntryService {
 		Entry entry = findEntry(entryId);
 		guard.requireMembership(entry.getGroupId(), userId);
 
-		return EntryDetailResponse.of(entry, fileService.getReceipts(entryId));
+		if (entry.getDuesId() == null) {
+			return EntryDetailResponse.of(entry, fileService.getReceipts(entryId));
+		}
+
+		// 마감된 회비가 만든 수입 내역이면 납부자 명단을 함께 보여 준다.
+		// 회비가 이미 지워졌으면 명단은 없고 제목만 마감 시점 값으로 남는다.
+		var payerViews = duesService.findPayers(entry.getDuesId());
+		List<EntryDetailResponse.Payer> payers = payerViews
+				.map(views -> views.stream()
+						.map(view -> new EntryDetailResponse.Payer(view.memberId(), view.name(), view.amount()))
+						.toList())
+				.orElse(List.of());
+
+		return EntryDetailResponse.of(entry, fileService.getReceipts(entryId), payerViews.isPresent(), payers);
 	}
 
 	/**
@@ -97,6 +117,10 @@ public class EntryService {
 			throw new BusinessException(ErrorCode.INVALID_REQUEST, "내역명은 공백일 수 없습니다.");
 		}
 		entry.update(title, request.amount(), request.occurredOn(), request.memo());
+		if (request.managerUserId() != null) {
+			entry.changeManager(request.managerUserId(),
+					requireGroupManager(entry.getGroupId(), request.managerUserId()));
+		}
 		fileService.replaceReceipts(entry, request.receiptFileIds(), userId);
 
 		return EntryUpdateResponse.from(entry);
@@ -125,6 +149,17 @@ public class EntryService {
 		entry.approve(userId, userName(userId));
 
 		return EntryApproveResponse.from(entry);
+	}
+
+	/**
+	 * 담당자로 지정할 수 있는지 확인하고 그 시점 이름을 돌려준다.
+	 *
+	 * <p>담당자는 이 모임의 <b>관리자</b>여야 한다 — 납부 명단(Member)은 계정이 없어 담당자가 될 수 없고,
+	 * 남의 모임 사용자를 담당자로 박아 두면 이름 스냅샷이 엉뚱해진다.
+	 */
+	private String requireGroupManager(Long groupId, Long managerUserId) {
+		guard.requireMembership(groupId, managerUserId);
+		return userName(managerUserId);
 	}
 
 	private String userName(Long userId) {

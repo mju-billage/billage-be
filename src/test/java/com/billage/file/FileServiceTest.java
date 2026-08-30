@@ -218,7 +218,7 @@ class FileServiceTest extends IntegrationTest {
 		Long entryId = createEntryWithReceipts(ownerId, List.of(oldFileId));
 		Long newFileId = upload(ownerId, "new.jpg");
 
-		entryService.update(entryId, ownerId, new EntryUpdateRequest(null, null, null, null, List.of(newFileId)));
+		entryService.update(entryId, ownerId, new EntryUpdateRequest(null, null, null, null, null, List.of(newFileId)));
 
 		assertThat(fileRepository.findById(oldFileId)).isEmpty();
 		assertThat(entryService.getDetail(entryId, ownerId).receiptFiles()).singleElement()
@@ -232,7 +232,7 @@ class FileServiceTest extends IntegrationTest {
 		Long extraFileId = upload(ownerId, "extra.jpg");
 
 		entryService.update(entryId, ownerId,
-				new EntryUpdateRequest(null, null, null, null, List.of(fileId, extraFileId)));
+				new EntryUpdateRequest(null, null, null, null, null, List.of(fileId, extraFileId)));
 
 		assertThat(entryService.getDetail(entryId, ownerId).receiptFiles()).hasSize(2);
 	}
@@ -264,6 +264,6 @@ class FileServiceTest extends IntegrationTest {
 
 	private Long createEntryWithReceipts(Long userId, List<Long> fileIds) {
 		return entryService.create(ledgerId, userId, new EntryCreateRequest(EntryType.EXPENSE, "대관료",
-				500_000L, LocalDate.of(2026, 7, 20), null, fileIds)).entryId();
+				500_000L, LocalDate.of(2026, 7, 20), null, null, fileIds)).entryId();
 	}
 }
