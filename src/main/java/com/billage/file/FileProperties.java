@@ -11,14 +11,19 @@ import org.springframework.util.unit.DataSize;
 /**
  * 파일 업로드 정책. 허용 형식·용량은 기획 확정 전 제안값이며 설정으로 바꿀 수 있다.
  *
- * @param storage 저장소 종류. 로컬 개발은 {@code LOCAL}(디스크), dev·prod 는 {@code S3}.
+ * @param storage             저장소 종류. 로컬 개발은 {@code LOCAL}(디스크), dev·prod 는 {@code S3}.
+ * @param publicBaseUrl       응답의 파일 URL 앞에 붙일 절대 주소(예: {@code https://api.billage.app}).
+ *                            비워두면 요청에서 유추한다 — 자세한 규칙은 {@code FileUrlResolver} 참고.
+ * @param allowedContentTypes {@code image/jpg} 는 표준 MIME 타입이 아니지만 일부 RN 이미지 피커가 그렇게 보낸다.
+ *                            흔한 오기라 415 로 막기보다 받아준다.
  */
 @ConfigurationProperties(prefix = "billage.file")
 public record FileProperties(
 		@DefaultValue("LOCAL") StorageType storage,
 		@DefaultValue("./data/files") Path storagePath,
 		@DefaultValue("10MB") DataSize maxSize,
-		@DefaultValue({ "image/jpeg", "image/png", "image/webp" }) Set<String> allowedContentTypes,
+		@DefaultValue({ "image/jpeg", "image/jpg", "image/png", "image/webp" }) Set<String> allowedContentTypes,
+		@DefaultValue("") String publicBaseUrl,
 		@DefaultValue S3 s3
 ) {
 

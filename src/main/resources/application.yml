@@ -40,6 +40,8 @@ billage:
     storage: ${BILLAGE_FILE_STORAGE:LOCAL}
     storage-path: ${FILE_STORAGE_PATH:./data/files}
     max-size: 10MB
+    # 응답 파일 URL 의 절대 주소. 비우면 요청(X-Forwarded-* 반영)에서 유추한다.
+    public-base-url: ${BILLAGE_PUBLIC_BASE_URL:}
     s3:
       bucket: ${BILLAGE_FILE_S3_BUCKET:}
       # 한 버킷을 dev·prod 가 공유하므로 환경 프리픽스로 구분한다.
@@ -94,6 +96,8 @@ billage:
     storage: ${BILLAGE_FILE_STORAGE:LOCAL}
     storage-path: ${FILE_STORAGE_PATH:./data/files}
     max-size: 10MB
+    # 응답 파일 URL 의 절대 주소. 비우면 요청(X-Forwarded-* 반영)에서 유추한다.
+    public-base-url: ${BILLAGE_PUBLIC_BASE_URL:}
     s3:
       bucket: ${BILLAGE_FILE_S3_BUCKET:}
       # 한 버킷을 dev·prod 가 공유하므로 환경 프리픽스로 구분한다.
@@ -122,6 +126,8 @@ billage:
     storage: ${BILLAGE_FILE_STORAGE:LOCAL}
     storage-path: ${FILE_STORAGE_PATH:./data/files}
     max-size: 10MB
+    # 응답 파일 URL 의 절대 주소. 비우면 요청(X-Forwarded-* 반영)에서 유추한다.
+    public-base-url: ${BILLAGE_PUBLIC_BASE_URL:}
     s3:
       bucket: ${BILLAGE_FILE_S3_BUCKET:}
       # 한 버킷을 dev·prod 가 공유하므로 환경 프리픽스로 구분한다.

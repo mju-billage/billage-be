@@ -43,6 +43,7 @@ public class FileService {
 	private final FileRepository fileRepository;
 	private final FileStorage fileStorage;
 	private final FileProperties properties;
+	private final FileUrlResolver fileUrlResolver;
 	private final GroupAccessGuard guard;
 
 	@Transactional
@@ -337,6 +338,6 @@ public class FileService {
 	}
 
 	private String fileUrl(Long fileId) {
-		return "/api/v1/files/" + fileId + "/content";
+		return fileUrlResolver.resolve(fileId);
 	}
 }
