@@ -10,7 +10,6 @@
 
 ```text
 /api/v1/auth
-/api/v1/users
 /api/v1/groups
 /api/v1/groups/{groupId}/memberships     ← 관리자 권한
 /api/v1/groups/{groupId}/members         ← 납부 명단
@@ -24,9 +23,18 @@
 /api/v1/groups/{groupId}/reports
 ```
 
+- 인증된 사용자 본인 정보는 `/api/v1/auth/me`. (`/api/v1/users` 는 만들지 않았다 — 명세에 남아 있으면 정리할 것.)
 - 성공 응답: `com.billage.common.response.ApiResponse` 로 `{ "data": ..., "message": "..." }` 래핑(프론트 합의). 목록은 비어 있어도 `[]`.
   본문이 없는 삭제·탈퇴는 래퍼 없이 `204 No Content`.
-- 오류 응답: 공통 형식(`{ code, message, fieldErrors }`)으로 통일 — **오류는 래핑하지 않는다**. 오류 코드는 `ErrorCode` enum 으로 관리하고, 프론트는 `message` 가 아닌 `code` 로 분기한다. JPA/SQL/내부 오류를 그대로 노출 금지.
+- 오류 응답: 공통 형식(`{ code, message, fieldErrors }`)으로 통일 — **오류는 래핑하지 않는다**.
+  경로 오타(404)·메서드 오기(405)·Content-Type 오기(415)·업로드 상한 초과(413) 같은 프레임워크 예외도
+  `GlobalExceptionHandler` 에서 같은 형식으로 내린다 — catch-all 이 4xx 를 500 으로 삼키지 않도록 구체 핸들러를 유지할 것.
+  오류 코드는 `ErrorCode` enum 으로 관리하고, 프론트는 `message` 가 아닌 `code` 로 분기한다. JPA/SQL/내부 오류를 그대로 노출 금지.
+- 401 은 사유를 구분해 내린다 — `TOKEN_EXPIRED`(재발급 후 재시도) / `TOKEN_INVALID`(재로그인) / `UNAUTHORIZED`(토큰 없음).
+  Refresh Token 계열(`REFRESH_TOKEN_*`)은 별도 코드이며, 이걸로는 재발급을 재시도하면 안 된다(무한 루프).
+- 응답의 파일 URL(`fileUrl`·`groupImageUrl`)은 절대 주소로 완성해 내린다(`FileUrlResolver`).
+  RN `<Image>` 가 상대경로를 해석하지 못한다. 주소는 `billage.file.public-base-url` 설정값이 우선이고, 비면 요청에서 유추한다.
+  해당 경로는 인증이 필요하므로 클라이언트는 `Authorization` 헤더를 함께 실어야 한다.
 - 날짜·시각은 ISO 8601. 시각은 오프셋 포함(`2026-07-20T18:00:00+09:00`) — `KoreanTime.toOffset` 사용. 날짜는 `2026-07-20`.
 - 인증된 사용자 ID는 컨트롤러에서 `@CurrentUserId Long userId` 로 받는다.
 - 목록 API는 노션 명세를 따른다 — 내역은 `page/size/sort` 기반 페이지네이션(`PageResponse`, 기본 20건·`occurredOn,id desc`), 모임원·관리자·폴더·장부 목록은 전체 반환.

@@ -255,8 +255,9 @@ class AuthIntegrationTest extends IntegrationTest {
 		Response response = http.get("/api/v1/auth/me", "not-a-real-jwt");
 
 		assertThat(response.status()).isEqualTo(401);
-		// 리소스 서버가 자체 EntryPoint 를 쓰더라도 공통 에러 형식이 유지되어야 한다
-		assertThat(response.at("code")).isEqualTo("UNAUTHORIZED");
+		// 리소스 서버가 자체 EntryPoint 를 쓰더라도 공통 에러 형식이 유지되어야 한다.
+		// 손상된 토큰은 재발급해도 소용없으므로 만료(TOKEN_EXPIRED)와 구분해서 알린다.
+		assertThat(response.at("code")).isEqualTo("TOKEN_INVALID");
 	}
 
 	// --- 재발급 ---
