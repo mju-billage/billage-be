@@ -10,6 +10,7 @@ public record DuesSummaryResponse(
 		Long duesId,
 		String title,
 		Long amount,
+		LocalDate startDate,
 		LocalDate dueDate,
 		DuesStatus status,
 		long paidCount,
@@ -20,8 +21,8 @@ public record DuesSummaryResponse(
 ) {
 
 	public static DuesSummaryResponse of(Dues dues, long paidCount, long targetCount, String ledgerName) {
-		return new DuesSummaryResponse(dues.getId(), dues.getTitle(), dues.getAmount(), dues.getDueDate(),
-				dues.getStatus(), paidCount, targetCount - paidCount, targetCount,
+		return new DuesSummaryResponse(dues.getId(), dues.getTitle(), dues.getAmount(), dues.getStartDate(), dues.getDueDate(),
+				dues.phase(), paidCount, targetCount - paidCount, targetCount,
 				dues.getLedgerId(), ledgerName);
 	}
 }

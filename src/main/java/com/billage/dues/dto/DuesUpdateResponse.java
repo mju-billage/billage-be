@@ -10,6 +10,7 @@ public record DuesUpdateResponse(
 		Long duesId,
 		String title,
 		Long amount,
+		LocalDate startDate,
 		LocalDate dueDate,
 		DuesStatus status,
 		long targetCount,
@@ -18,7 +19,7 @@ public record DuesUpdateResponse(
 ) {
 
 	public static DuesUpdateResponse from(Dues dues) {
-		return new DuesUpdateResponse(dues.getId(), dues.getTitle(), dues.getAmount(), dues.getDueDate(),
-				dues.getStatus(), dues.targetCount(), dues.paidCount(), dues.getLedgerId());
+		return new DuesUpdateResponse(dues.getId(), dues.getTitle(), dues.getAmount(), dues.getStartDate(), dues.getDueDate(),
+				dues.phase(), dues.targetCount(), dues.paidCount(), dues.getLedgerId());
 	}
 }

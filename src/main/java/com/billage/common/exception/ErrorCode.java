@@ -55,7 +55,7 @@ public enum ErrorCode {
 	// 회비
 	DUES_NOT_FOUND("DUES_NOT_FOUND", HttpStatus.NOT_FOUND, "회비를 찾을 수 없습니다."),
 	DUES_ALREADY_CLOSED("DUES_ALREADY_CLOSED", HttpStatus.CONFLICT, "이미 마감된 회비입니다."),
-	UNPAID_MEMBER_EXISTS("UNPAID_MEMBER_EXISTS", HttpStatus.CONFLICT, "미납 대상자가 있어 마감할 수 없습니다."),
+	DUES_NOT_STARTED("DUES_NOT_STARTED", HttpStatus.CONFLICT, "아직 시작되지 않은 회비입니다."),
 	DUES_AMOUNT_IMMUTABLE("DUES_AMOUNT_IMMUTABLE", HttpStatus.BAD_REQUEST, "회비 금액은 수정할 수 없습니다."),
 	INVALID_PAYMENT_STATUS("INVALID_PAYMENT_STATUS", HttpStatus.BAD_REQUEST, "허용되지 않은 납부 상태 값입니다."),
 

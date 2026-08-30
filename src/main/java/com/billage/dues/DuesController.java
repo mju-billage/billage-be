@@ -3,7 +3,6 @@ package com.billage.dues;
 import java.util.List;
 
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -27,6 +26,8 @@ import com.billage.dues.dto.DuesSummaryResponse;
 import com.billage.dues.dto.DuesTargetResponse;
 import com.billage.dues.dto.DuesUpdateRequest;
 import com.billage.dues.dto.DuesUpdateResponse;
+import com.billage.dues.dto.PaymentStatusBulkUpdateRequest;
+import com.billage.dues.dto.PaymentStatusBulkUpdateResponse;
 import com.billage.dues.dto.PaymentStatusUpdateRequest;
 import com.billage.dues.dto.PaymentStatusUpdateResponse;
 
@@ -39,12 +40,19 @@ public class DuesController {
 
 	private final DuesService duesService;
 
+	/**
+	 * 회비 목록. 정렬은 화면명세가 정한 '예정 → 진행 중 → 마감' 묶음 순서로 서버가 고정하므로
+	 * {@code sort} 파라미터를 받지 않는다 — 그룹마다 정렬 기준(시작일 / 마감일)이 달라
+	 * 단일 정렬 필드로는 표현할 수 없다.
+	 */
 	@GetMapping("/api/v1/groups/{groupId}/dues")
 	public ResponseEntity<ApiResponse<PageResponse<DuesSummaryResponse>>> getDuesList(
 			@CurrentUserId Long userId, @PathVariable Long groupId,
 			@RequestParam(required = false) DuesStatus status,
-			@PageableDefault(size = 20, sort = "dueDate", direction = Sort.Direction.ASC) Pageable pageable) {
-		PageResponse<DuesSummaryResponse> duesList = duesService.getDuesList(groupId, userId, status, pageable);
+			@RequestParam(required = false) String keyword,
+			@PageableDefault(size = 20) Pageable pageable) {
+		PageResponse<DuesSummaryResponse> duesList =
+				duesService.getDuesList(groupId, userId, status, keyword, pageable);
 		String message = duesList.content().isEmpty() ? "조회된 데이터가 없습니다." : "회비 목록 조회에 성공했습니다.";
 		return ResponseEntity.ok(ApiResponse.of(duesList, message));
 	}
@@ -94,6 +102,15 @@ public class DuesController {
 		return ResponseEntity.ok(ApiResponse.of(
 				duesService.changePaymentStatus(duesId, memberId, userId, request),
 				"납부 상태 변경에 성공했습니다."));
+	}
+
+	@PatchMapping("/api/v1/dues/{duesId}/members")
+	public ResponseEntity<ApiResponse<PaymentStatusBulkUpdateResponse>> changePaymentStatuses(
+			@CurrentUserId Long userId, @PathVariable Long duesId,
+			@Valid @RequestBody PaymentStatusBulkUpdateRequest request) {
+		PaymentStatusBulkUpdateResponse response = duesService.changePaymentStatuses(duesId, userId, request);
+		return ResponseEntity.ok(ApiResponse.of(response,
+				response.changedCount() + "명의 납부 상태를 변경했습니다."));
 	}
 
 	@PostMapping("/api/v1/dues/{duesId}/close")
