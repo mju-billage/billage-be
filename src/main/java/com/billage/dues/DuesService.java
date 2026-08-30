@@ -21,6 +21,8 @@ import com.billage.dues.dto.DuesSummaryResponse;
 import com.billage.dues.dto.DuesTargetResponse;
 import com.billage.dues.dto.DuesUpdateRequest;
 import com.billage.dues.dto.DuesUpdateResponse;
+import com.billage.dues.dto.PaymentStatusBulkUpdateRequest;
+import com.billage.dues.dto.PaymentStatusBulkUpdateResponse;
 import com.billage.dues.dto.PaymentStatusUpdateRequest;
 import com.billage.dues.dto.PaymentStatusUpdateResponse;
 import com.billage.entry.Entry;
@@ -58,10 +60,21 @@ public class DuesService {
 
 	@Transactional(readOnly = true)
 	public PageResponse<DuesSummaryResponse> getDuesList(Long groupId, Long userId, DuesStatus status,
-			Pageable pageable) {
+			String keyword, Pageable pageable) {
 		guard.requireMembership(groupId, userId);
 
-		Page<Dues> page = duesRepository.search(groupId, status, pageable);
+		// 화면의 '납부 예정' 탭은 저장 상태가 아니라 시작일로 갈린다 — DuesRepository.search 주석 참고.
+		DuesStatus persistedStatus = status == DuesStatus.SCHEDULED ? DuesStatus.OPEN : status;
+		Boolean started = switch (status) {
+			case null -> null;
+			case SCHEDULED -> Boolean.FALSE;
+			case OPEN -> Boolean.TRUE;
+			case CLOSED -> null;
+		};
+		String normalizedKeyword = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
+
+		Page<Dues> page = duesRepository.search(groupId, persistedStatus, started, normalizedKeyword,
+				LocalDate.now(), pageable);
 		List<Long> duesIds = page.getContent().stream().map(Dues::getId).toList();
 		Map<Long, Map<PaymentStatus, Long>> counts = duesMemberRepository.countByDues(duesIds);
 		Map<Long, String> ledgerNames = ledgerNamesOf(page.getContent());
@@ -80,8 +93,11 @@ public class DuesService {
 		Ledger ledger = findLedgerInGroup(request.ledgerId(), groupId);
 		List<Member> targets = findMembersInGroup(request.targetMemberIds(), groupId);
 
+		if (request.startDate().isAfter(request.dueDate())) {
+			throw new BusinessException(ErrorCode.INVALID_REQUEST);
+		}
 		Dues dues = duesRepository.save(Dues.create(groupId, request.title().trim(), request.amount(),
-				request.dueDate(), ledger.getId(), targets));
+				request.startDate(), request.dueDate(), ledger.getId(), targets));
 
 		return DuesCreateResponse.from(dues);
 	}
@@ -110,8 +126,8 @@ public class DuesService {
 		if (request.title() != null) {
 			dues.updateTitle(requireNonBlank(request.title()));
 		}
-		if (request.dueDate() != null) {
-			dues.updateDueDate(request.dueDate());
+		if (request.startDate() != null || request.dueDate() != null) {
+			dues.updatePeriod(request.startDate(), request.dueDate());
 		}
 		if (request.ledgerId() != null) {
 			dues.moveToLedger(findLedgerInGroup(request.ledgerId(), dues.getGroupId()).getId());
@@ -143,7 +159,7 @@ public class DuesService {
 		String normalizedKeyword = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
 
 		return duesMemberRepository.findTargets(duesId, status, normalizedKeyword).stream()
-				.map(DuesTargetResponse::from)
+				.map(target -> DuesTargetResponse.of(dues, target))
 				.toList();
 	}
 
@@ -165,8 +181,37 @@ public class DuesService {
 	}
 
 	/**
-	 * 회비 마감(총무 전용). 대상 전원이 납부해야 하며, 선택한 장부에 회비 제목과 총 모인 금액으로
-	 * 수입 내역 1건을 만든다. 총무의 행위이므로 그 내역은 즉시 승인 상태다.
+	 * 납부 상태 일괄 변경(총무 전용). 화면이 여러 명을 체크한 뒤 버튼 한 번으로 처리한다.
+	 *
+	 * <p>이미 요청한 상태인 사람은 조용히 넘어가고 {@code changedCount} 에 세지 않는다 —
+	 * 전체 선택으로 눌렀을 때 "0명의 납부가 확인되었어요" 같은 문구가 나오지 않도록 하기 위함이다.
+	 */
+	@Transactional
+	public PaymentStatusBulkUpdateResponse changePaymentStatuses(Long duesId, Long userId,
+			PaymentStatusBulkUpdateRequest request) {
+		Dues dues = findDues(duesId);
+		guard.requireOwner(dues.getGroupId(), userId);
+		PaymentStatus status = parseStatus(request.status());
+
+		List<Member> members = findMembersInGroup(request.memberIds(), dues.getGroupId());
+		int changed = 0;
+		for (Member member : members) {
+			if (dues.changePaymentStatus(member, status)) {
+				changed++;
+			}
+		}
+
+		return PaymentStatusBulkUpdateResponse.of(dues, changed, status);
+	}
+
+	/**
+	 * 회비 마감(총무 전용). 선택한 장부에 회비 제목과 <b>그때까지 실제로 걷힌 금액</b>으로 수입 내역 1건을 만든다.
+	 * 총무의 행위이므로 그 내역은 즉시 승인 상태다.
+	 *
+	 * <p>미납자가 남아 있어도 마감한다 — 근거는 {@link Dues#close(Long)} 참고.
+	 * 다만 한 명도 내지 않아 걷힌 금액이 0원이면 내역을 만들지 않는다. 금액은 1원 이상이어야 하고
+	 * (엔티티 검증과 {@code ck_entry_amount} 제약), 0원짜리 수입은 장부에도 의미가 없다.
+	 * 이 경우 {@code generatedEntryId} 는 {@code null} 로 남는다.
 	 */
 	@Transactional
 	public DuesCloseResponse close(Long duesId, Long userId) {
@@ -175,14 +220,13 @@ public class DuesService {
 		dues.requireOpen();
 
 		Ledger ledger = findLedgerInGroup(dues.getLedgerId(), dues.getGroupId());
-		// 마감 조건(전원 납부)은 close() 안에서 검증하므로 내역을 만들기 전에 확인한다.
-		if (dues.paidCount() != dues.targetCount()) {
-			throw new BusinessException(ErrorCode.UNPAID_MEMBER_EXISTS);
+		long collected = dues.totalCollectedAmount();
+		Long generatedEntryId = null;
+		if (collected > 0) {
+			generatedEntryId = entryRepository.save(Entry.create(ledger, owner, userName(userId), EntryType.INCOME,
+					dues.getTitle(), collected, LocalDate.now(), null)).getId();
 		}
-
-		Entry entry = entryRepository.save(Entry.create(ledger, owner, userName(userId), EntryType.INCOME,
-				dues.getTitle(), dues.totalCollectedAmount(), LocalDate.now(), null));
-		dues.close(entry.getId());
+		dues.close(generatedEntryId);
 
 		return DuesCloseResponse.from(dues);
 	}

@@ -23,6 +23,8 @@ public record DuesCreateRequest(
 		@Max(value = Dues.MAX_AMOUNT, message = "금액은 999,999,999원 이하여야 합니다.")
 		Long amount,
 
+		@NotNull(message = "시작일은 필수입니다.")
+		LocalDate startDate,
 		@NotNull(message = "마감일은 필수입니다.")
 		LocalDate dueDate,
 
