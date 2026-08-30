@@ -32,6 +32,12 @@ public record EntryCreateRequest(
 		@Size(max = 30, message = "메모는 30자 이하여야 합니다.")
 		String memo,
 
+		/**
+		 * 담당자(모임 관리자). 보내지 않으면 등록자 본인이 된다 — 화면의 담당자 기본값 규칙과 같다.
+		 * 납부 명단(Member)이 아니라 가입 사용자여야 한다.
+		 */
+		Long managerUserId,
+
 		/** 미리 업로드한 증빙 파일 ID. 본인이 올린 RECEIPT 파일 중 아직 연결되지 않은 것만 허용된다. */
 		List<Long> receiptFileIds
 ) {

@@ -29,6 +29,9 @@ public record EntryUpdateRequest(
 		@Size(max = 30, message = "메모는 30자 이하여야 합니다.")
 		String memo,
 
+		/** 담당자 변경. null 이면 그대로 둔다. */
+		Long managerUserId,
+
 		/**
 		 * 증빙 파일 전체 교체. 전달하면 이 목록이 최종 상태가 되고,
 		 * 빠진 증빙은 저장소에서도 삭제된다. null 이면 기존 증빙을 그대로 둔다.

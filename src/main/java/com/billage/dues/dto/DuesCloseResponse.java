@@ -19,7 +19,7 @@ public record DuesCloseResponse(
 ) {
 
 	public static DuesCloseResponse from(Dues dues) {
-		return new DuesCloseResponse(dues.getId(), dues.getStatus(), dues.paidCount(), dues.targetCount(),
+		return new DuesCloseResponse(dues.getId(), dues.phase(), dues.paidCount(), dues.targetCount(),
 				dues.totalCollectedAmount(), dues.getLedgerId(), dues.getGeneratedEntryId(),
 				KoreanTime.toOffset(dues.getClosedAt()));
 	}

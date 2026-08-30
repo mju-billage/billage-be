@@ -244,11 +244,11 @@ class ReportServiceTest extends IntegrationTest {
 		Long otherLedgerId = createLedger(groupId, ownerId, "MT 장부");
 		createEntry(ownerId, EntryType.INCOME, "회비 수입", 1_000_000L, LocalDate.of(2026, 3, 1));
 		entryService.create(otherLedgerId, ownerId, new EntryCreateRequest(EntryType.EXPENSE, "숙소비", 300_000L,
-				LocalDate.of(2026, 4, 1), null, null));
+				LocalDate.of(2026, 4, 1), null, null, null));
 		// 기간 밖에만 내역이 있는 장부는 포함되지 않는다.
 		Long outOfRangeLedgerId = createLedger(groupId, ownerId, "하반기 장부");
 		entryService.create(outOfRangeLedgerId, ownerId, new EntryCreateRequest(EntryType.EXPENSE, "하반기", 100_000L,
-				LocalDate.of(2026, 9, 1), null, null));
+				LocalDate.of(2026, 9, 1), null, null, null));
 
 		ReportCreateResponse report = createPeriodReport("상반기 결산");
 
@@ -304,7 +304,7 @@ class ReportServiceTest extends IntegrationTest {
 
 	private void createEntry(Long userId, EntryType type, String title, long amount, LocalDate occurredOn) {
 		entryService.create(ledgerId, userId,
-				new EntryCreateRequest(type, title, amount, occurredOn, null, null));
+				new EntryCreateRequest(type, title, amount, occurredOn, null, null, null));
 	}
 
 	/** 장부별 보고서. 기간을 받지 않으며 담긴 내역의 실제 범위가 기간이 된다. */

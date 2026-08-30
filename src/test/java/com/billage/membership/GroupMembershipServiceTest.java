@@ -195,7 +195,7 @@ class GroupMembershipServiceTest extends IntegrationTest {
 		joinWithInvitation(adminId);
 		Long ledgerId = ledgerFixture();
 		Long entryId = entryService.create(ledgerId, adminId,
-				new EntryCreateRequest(EntryType.EXPENSE, "회식비", 30000L, LocalDate.now(), null, null)).entryId();
+				new EntryCreateRequest(EntryType.EXPENSE, "회식비", 30000L, LocalDate.now(), null, null, null)).entryId();
 
 		groupMembershipService.removeMembership(groupId, ownerId, membershipIdOf(adminId));
 

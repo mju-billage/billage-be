@@ -17,9 +17,12 @@ import com.billage.common.exception.ErrorCode;
 import com.billage.dues.dto.DuesCloseResponse;
 import com.billage.dues.dto.DuesCreateRequest;
 import com.billage.dues.dto.DuesUpdateRequest;
+import com.billage.dues.dto.PaymentStatusBulkUpdateRequest;
 import com.billage.dues.dto.PaymentStatusUpdateRequest;
 import com.billage.entry.ApprovalStatus;
 import com.billage.entry.EntryRepository;
+import com.billage.entry.EntryService;
+import com.billage.entry.dto.EntryDetailResponse;
 import com.billage.entry.EntryType;
 import com.billage.folder.FolderService;
 import com.billage.folder.dto.FolderCreateRequest;
@@ -36,7 +39,7 @@ import com.billage.user.User;
 import com.billage.user.UserRepository;
 
 /**
- * 회비 핵심 규칙 검증 — 총무 전용 권한, 전원 납부 시에만 마감, 마감 시 수입 내역 1건 생성,
+ * 회비 핵심 규칙 검증 — 총무 전용 권한, 미납자가 있어도 마감(걷힌 금액만 반영), 마감 시 수입 내역 1건 생성,
  * 마감 후 회비와 내역의 분리, 대상자 제거 시 총액 변동.
  */
 class DuesServiceTest extends IntegrationTest {
@@ -57,6 +60,8 @@ class DuesServiceTest extends IntegrationTest {
 	DuesRepository duesRepository;
 	@Autowired
 	EntryRepository entryRepository;
+	@Autowired
+	EntryService entryService;
 	@Autowired
 	UserRepository userRepository;
 	@Autowired
@@ -128,14 +133,41 @@ class DuesServiceTest extends IntegrationTest {
 	// --- 마감 ---
 
 	@Test
-	void 미납자가_있으면_마감할_수_없다() {
+	void 미납자가_있어도_마감되며_걷힌_금액만_수입으로_잡힌다() {
 		Long duesId = createDues(List.of(member1, member2));
 		pay(duesId, member1);
 
-		assertThatThrownBy(() -> duesService.close(duesId, ownerId))
+		DuesCloseResponse closed = duesService.close(duesId, ownerId);
+
+		assertThat(closed.status()).isEqualTo(DuesStatus.CLOSED);
+		// 목표는 60,000원이지만 실제로 걷힌 30,000원만 장부에 올라간다.
+		assertThat(closed.totalCollectedAmount()).isEqualTo(30_000L);
+		assertThat(entryRepository.findById(closed.generatedEntryId()).orElseThrow().getAmount())
+				.isEqualTo(30_000L);
+	}
+
+	@Test
+	void 아무도_납부하지_않은_회비를_마감하면_수입_내역을_만들지_않는다() {
+		Long duesId = createDues(List.of(member1, member2));
+
+		DuesCloseResponse closed = duesService.close(duesId, ownerId);
+
+		assertThat(closed.status()).isEqualTo(DuesStatus.CLOSED);
+		assertThat(closed.totalCollectedAmount()).isZero();
+		// 0원짜리 수입은 장부에 의미가 없고 금액 제약(1원 이상)에도 걸린다.
+		assertThat(closed.generatedEntryId()).isNull();
+	}
+
+	@Test
+	void 마감된_회비는_납부_상태를_바꿀_수_없다() {
+		Long duesId = createDues(List.of(member1, member2));
+		pay(duesId, member1);
+		duesService.close(duesId, ownerId);
+
+		assertThatThrownBy(() -> pay(duesId, member2))
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
-				.isEqualTo(ErrorCode.UNPAID_MEMBER_EXISTS);
+				.isEqualTo(ErrorCode.DUES_ALREADY_CLOSED);
 	}
 
 	@Test
@@ -168,7 +200,7 @@ class DuesServiceTest extends IntegrationTest {
 				.isEqualTo(ErrorCode.DUES_ALREADY_CLOSED);
 
 		assertThatThrownBy(() -> duesService.update(duesId, ownerId,
-				new DuesUpdateRequest("바꾼 제목", null, null, null, null)))
+				new DuesUpdateRequest("바꾼 제목", null, null, null, null, null)))
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
 				.isEqualTo(ErrorCode.DUES_ALREADY_CLOSED);
@@ -197,7 +229,7 @@ class DuesServiceTest extends IntegrationTest {
 		pay(duesId, member2);
 
 		// 막지 않는다 — 총액이 달라지는 것이 정상 동작이고 보정은 총무가 수기로 한다.
-		duesService.update(duesId, ownerId, new DuesUpdateRequest(null, null, List.of(member1), null, null));
+		duesService.update(duesId, ownerId, new DuesUpdateRequest(null, null, null, List.of(member1), null, null));
 
 		var detail = duesService.getDetail(duesId, ownerId);
 		assertThat(detail.targetCount()).isEqualTo(1);
@@ -211,7 +243,7 @@ class DuesServiceTest extends IntegrationTest {
 		pay(duesId, member1);
 
 		duesService.update(duesId, ownerId,
-				new DuesUpdateRequest(null, null, List.of(member1, member2), null, null));
+				new DuesUpdateRequest(null, null, null, List.of(member1, member2), null, null));
 
 		var detail = duesService.getDetail(duesId, ownerId);
 		assertThat(detail.targetCount()).isEqualTo(2);
@@ -223,7 +255,7 @@ class DuesServiceTest extends IntegrationTest {
 		Long duesId = createDues(List.of(member1));
 
 		assertThatThrownBy(() -> duesService.update(duesId, ownerId,
-				new DuesUpdateRequest(null, null, null, null, 50_000L)))
+				new DuesUpdateRequest(null, null, null, null, null, 50_000L)))
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
 				.isEqualTo(ErrorCode.DUES_AMOUNT_IMMUTABLE);
@@ -236,7 +268,7 @@ class DuesServiceTest extends IntegrationTest {
 				new MemberCreateRequest("남의모임원", null, null, null)).memberId();
 
 		assertThatThrownBy(() -> duesService.create(groupId, ownerId,
-				new DuesCreateRequest("2학기 회비", 30_000L, LocalDate.of(2026, 9, 30),
+				new DuesCreateRequest("2학기 회비", 30_000L, LocalDate.now(), LocalDate.of(2026, 9, 30),
 						List.of(otherMemberId), ledgerId)))
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
@@ -335,8 +367,8 @@ class DuesServiceTest extends IntegrationTest {
 		pay(open, member1);
 		closeWithAllPaid();
 
-		var all = duesService.getDuesList(groupId, ownerId, null, PageRequest.of(0, 20));
-		var openOnly = duesService.getDuesList(groupId, ownerId, DuesStatus.OPEN, PageRequest.of(0, 20));
+		var all = duesService.getDuesList(groupId, ownerId, null, null, PageRequest.of(0, 20));
+		var openOnly = duesService.getDuesList(groupId, ownerId, DuesStatus.OPEN, null, PageRequest.of(0, 20));
 
 		assertThat(all.totalElements()).isEqualTo(2);
 		assertThat(openOnly.totalElements()).isEqualTo(1);
@@ -348,8 +380,154 @@ class DuesServiceTest extends IntegrationTest {
 		});
 	}
 
+	// --- 마감 회비와 내역의 연결 (내역 상세의 납부관리 화면) ---
+
+	@Test
+	void 마감으로_생긴_수입_내역은_회비를_가리키고_납부자_명단을_보여_준다() {
+		Long duesId = closeWithAllPaid();
+		Long entryId = duesService.getDetail(duesId, ownerId).generatedEntryId();
+
+		var detail = entryService.getDetail(entryId, ownerId);
+
+		assertThat(detail.duesId()).isEqualTo(duesId);
+		assertThat(detail.duesTitle()).isEqualTo("2학기 회비");
+		assertThat(detail.duesExists()).isTrue();
+		assertThat(detail.payerCount()).isEqualTo(2);
+		assertThat(detail.payers()).extracting(EntryDetailResponse.Payer::amount)
+				.containsOnly(30_000L);
+	}
+
+	@Test
+	void 회비를_지워도_내역은_회비명을_들고_있고_상세보기만_닫힌다() {
+		Long duesId = closeWithAllPaid();
+		Long entryId = duesService.getDetail(duesId, ownerId).generatedEntryId();
+
+		duesService.delete(duesId, ownerId);
+
+		var detail = entryService.getDetail(entryId, ownerId);
+		// 마감 시점 값이라 회비가 사라져도 이름은 남는다.
+		assertThat(detail.duesTitle()).isEqualTo("2학기 회비");
+		// 다만 이동할 곳이 없으므로 화면은 '회비 상세보기' 버튼을 숨긴다.
+		assertThat(detail.duesExists()).isFalse();
+		assertThat(detail.payers()).isEmpty();
+	}
+
+	// --- 납부 예정(시작일 전) ---
+
+	@Test
+	void 시작일이_미래면_납부_예정_상태이고_납부_처리를_할_수_없다() {
+		Long duesId = duesService.create(groupId, ownerId,
+				new DuesCreateRequest("다음 학기 회비", 30_000L, LocalDate.now().plusDays(3),
+						LocalDate.now().plusDays(30), List.of(member1), ledgerId)).duesId();
+
+		assertThat(duesService.getDetail(duesId, ownerId).status()).isEqualTo(DuesStatus.SCHEDULED);
+		assertThatThrownBy(() -> pay(duesId, member1))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.DUES_NOT_STARTED);
+	}
+
+	@Test
+	void 시작일이_마감일보다_늦으면_만들_수_없다() {
+		assertThatThrownBy(() -> duesService.create(groupId, ownerId,
+				new DuesCreateRequest("거꾸로 회비", 30_000L, LocalDate.now().plusDays(10), LocalDate.now(),
+						List.of(member1), ledgerId)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.INVALID_REQUEST);
+	}
+
+	@Test
+	void 예정_회비는_예정_탭에만_진행중_회비는_진행중_탭에만_나온다() {
+		createDues(List.of(member1));
+		duesService.create(groupId, ownerId, new DuesCreateRequest("다음 학기 회비", 30_000L,
+				LocalDate.now().plusDays(3), LocalDate.now().plusDays(30), List.of(member1), ledgerId));
+
+		var scheduled = duesService.getDuesList(groupId, ownerId, DuesStatus.SCHEDULED, null,
+				PageRequest.of(0, 20));
+		var open = duesService.getDuesList(groupId, ownerId, DuesStatus.OPEN, null, PageRequest.of(0, 20));
+
+		assertThat(scheduled.content()).singleElement()
+				.satisfies(dues -> assertThat(dues.title()).isEqualTo("다음 학기 회비"));
+		assertThat(open.content()).singleElement()
+				.satisfies(dues -> assertThat(dues.title()).isEqualTo("2학기 회비"));
+	}
+
+	@Test
+	void 목록은_제목으로_검색할_수_있다() {
+		createDues(List.of(member1));
+		duesService.create(groupId, ownerId, new DuesCreateRequest("MT 회비", 30_000L, LocalDate.now(),
+				LocalDate.now().plusDays(30), List.of(member1), ledgerId));
+
+		var found = duesService.getDuesList(groupId, ownerId, null, "mt", PageRequest.of(0, 20));
+
+		assertThat(found.content()).singleElement()
+				.satisfies(dues -> assertThat(dues.title()).isEqualTo("MT 회비"));
+	}
+
+	// --- 일괄 납부 처리 ---
+
+	@Test
+	void 여러_명의_납부를_한_번에_확인_처리한다() {
+		Long duesId = createDues(List.of(member1, member2));
+
+		var result = duesService.changePaymentStatuses(duesId, ownerId,
+				new PaymentStatusBulkUpdateRequest(List.of(member1, member2), "PAID"));
+
+		assertThat(result.changedCount()).isEqualTo(2);
+		assertThat(result.paidCount()).isEqualTo(2);
+		assertThat(result.totalCollectedAmount()).isEqualTo(60_000L);
+	}
+
+	@Test
+	void 이미_같은_상태인_사람은_변경_인원에_세지_않는다() {
+		Long duesId = createDues(List.of(member1, member2));
+		pay(duesId, member1);
+
+		var result = duesService.changePaymentStatuses(duesId, ownerId,
+				new PaymentStatusBulkUpdateRequest(List.of(member1, member2), "PAID"));
+
+		// member1 은 이미 PAID 였으므로 스낵바에 "2명"이 아니라 "1명"이 떠야 한다.
+		assertThat(result.changedCount()).isEqualTo(1);
+		assertThat(result.paidCount()).isEqualTo(2);
+	}
+
+	@Test
+	void 일괄_처리에_다른_모임의_모임원이_섞이면_전부_취소된다() {
+		Long duesId = createDues(List.of(member1, member2));
+		Long otherGroupId = groupService.create(outsiderId, new GroupCreateRequest("남의모임", null, null)).groupId();
+		Long otherMemberId = memberService.addMember(otherGroupId, outsiderId,
+				new MemberCreateRequest("남의모임원", null, null, null)).memberId();
+
+		assertThatThrownBy(() -> duesService.changePaymentStatuses(duesId, ownerId,
+				new PaymentStatusBulkUpdateRequest(List.of(member1, otherMemberId), "PAID")))
+				.isInstanceOf(BusinessException.class);
+
+		assertThat(duesService.getDetail(duesId, ownerId).paidCount()).isZero();
+	}
+
+	@Test
+	void 납부_완료_탭에서만_할당_금액이_보인다() {
+		Long duesId = createDues(List.of(member1, member2));
+		pay(duesId, member1);
+
+		var targets = duesService.getTargets(duesId, ownerId, null, null);
+
+		assertThat(targets).satisfiesExactlyInAnyOrder(
+				target -> {
+					assertThat(target.memberId()).isEqualTo(member1);
+					assertThat(target.amount()).isEqualTo(30_000L);
+				},
+				target -> {
+					assertThat(target.memberId()).isEqualTo(member2);
+					// 미납이면 아직 걷힌 게 없으므로 0 이고, 화면도 이 탭에서는 금액을 숨긴다.
+					assertThat(target.amount()).isZero();
+				});
+	}
+
 	private DuesCreateRequest createRequest(List<Long> memberIds) {
-		return new DuesCreateRequest("2학기 회비", 30_000L, LocalDate.of(2026, 9, 30), memberIds, ledgerId);
+		return new DuesCreateRequest("2학기 회비", 30_000L, LocalDate.now(), LocalDate.of(2026, 9, 30), memberIds,
+				ledgerId);
 	}
 
 	private Long createDues(List<Long> memberIds) {

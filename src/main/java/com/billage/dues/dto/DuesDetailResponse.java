@@ -16,6 +16,7 @@ public record DuesDetailResponse(
 		Long groupId,
 		String title,
 		Long amount,
+		LocalDate startDate,
 		LocalDate dueDate,
 		DuesStatus status,
 		long paidCount,
@@ -37,7 +38,7 @@ public record DuesDetailResponse(
 		long paidCount = dues.paidCount();
 
 		return new DuesDetailResponse(dues.getId(), dues.getGroupId(), dues.getTitle(), dues.getAmount(),
-				dues.getDueDate(), dues.getStatus(), paidCount, targetCount - paidCount, targetCount,
+				dues.getStartDate(), dues.getDueDate(), dues.phase(), paidCount, targetCount - paidCount, targetCount,
 				targetCount * dues.getAmount(),
 				new LedgerRef(dues.getLedgerId(), ledgerName),
 				KoreanTime.toOffset(dues.getCreatedAt()), KoreanTime.toOffset(dues.getClosedAt()),

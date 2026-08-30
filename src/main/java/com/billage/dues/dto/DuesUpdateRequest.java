@@ -14,6 +14,7 @@ public record DuesUpdateRequest(
 		@Size(min = 1, max = 20, message = "회비 제목은 1~20자여야 합니다.")
 		String title,
 
+		LocalDate startDate,
 		LocalDate dueDate,
 
 		List<Long> targetMemberIds,
