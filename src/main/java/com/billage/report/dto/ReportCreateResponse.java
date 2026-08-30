@@ -7,11 +7,13 @@ import java.util.List;
 import com.billage.common.response.KoreanTime;
 import com.billage.report.Report;
 import com.billage.report.ReportLedger;
+import com.billage.report.ReportType;
 
 /** 보고서 생성 응답. 상세와 달리 내역 목록 없이 장부별 요약만 담는다. */
 public record ReportCreateResponse(
 		Long reportId,
 		String title,
+		ReportType reportType,
 		LocalDate startDate,
 		LocalDate endDate,
 		ReportSummary summary,
@@ -34,7 +36,8 @@ public record ReportCreateResponse(
 	}
 
 	public static ReportCreateResponse from(Report report) {
-		return new ReportCreateResponse(report.getId(), report.getTitle(), report.getStartDate(),
+		return new ReportCreateResponse(report.getId(), report.getTitle(), report.getReportType(),
+				report.getStartDate(),
 				report.getEndDate(), ReportSummary.from(report),
 				report.getLedgers().stream().map(LedgerSummary::from).toList(),
 				KoreanTime.toOffset(report.getCreatedAt()));

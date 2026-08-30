@@ -5,11 +5,13 @@ import java.time.OffsetDateTime;
 
 import com.billage.common.response.KoreanTime;
 import com.billage.report.Report;
+import com.billage.report.ReportType;
 
 /** 보고서 목록 항목. */
 public record ReportSummaryResponse(
 		Long reportId,
 		String title,
+		ReportType reportType,
 		LocalDate startDate,
 		LocalDate endDate,
 		Long ledgerCount,
@@ -20,7 +22,8 @@ public record ReportSummaryResponse(
 ) {
 
 	public static ReportSummaryResponse from(Report report) {
-		return new ReportSummaryResponse(report.getId(), report.getTitle(), report.getStartDate(),
+		return new ReportSummaryResponse(report.getId(), report.getTitle(), report.getReportType(),
+				report.getStartDate(),
 				report.getEndDate(), report.getLedgerCount(), report.getTotalIncome(), report.getTotalExpense(),
 				report.getBalance(), KoreanTime.toOffset(report.getCreatedAt()));
 	}

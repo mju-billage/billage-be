@@ -17,6 +17,8 @@ import com.billage.auth.security.CurrentUserId;
 import com.billage.common.response.ApiResponse;
 import com.billage.folder.dto.FolderCreateRequest;
 import com.billage.folder.dto.FolderCreateResponse;
+import com.billage.folder.dto.FolderItemMoveRequest;
+import com.billage.folder.dto.FolderItemMoveResponse;
 import com.billage.folder.dto.FolderTreeResponse;
 import com.billage.folder.dto.FolderUpdateRequest;
 import com.billage.folder.dto.FolderUpdateResponse;
@@ -44,6 +46,18 @@ public class FolderController {
 		FolderCreateResponse response = folderService.create(groupId, userId, request);
 		return ResponseEntity.status(HttpStatus.CREATED)
 				.body(ApiResponse.of(response, "폴더 생성에 성공했습니다."));
+	}
+
+	/**
+	 * 폴더·장부 선택 이동. 여러 항목을 한 번에 목적지 폴더로 옮긴다.
+	 * {@code targetFolderId} 를 null 로 보내면 최상위 영역으로 올린다.
+	 */
+	@PostMapping("/api/v1/groups/{groupId}/folder-items/move")
+	public ResponseEntity<ApiResponse<FolderItemMoveResponse>> moveItems(@CurrentUserId Long userId,
+			@PathVariable Long groupId, @Valid @RequestBody FolderItemMoveRequest request) {
+		FolderItemMoveResponse response = folderService.moveItems(groupId, userId, request);
+		int moved = response.movedFolderCount() + response.movedLedgerCount();
+		return ResponseEntity.ok(ApiResponse.of(response, moved + "개 항목을 이동했습니다."));
 	}
 
 	@PatchMapping("/api/v1/folders/{folderId}")

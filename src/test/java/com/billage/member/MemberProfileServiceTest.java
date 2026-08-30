@@ -14,6 +14,7 @@ import com.billage.common.exception.ErrorCode;
 import com.billage.group.GroupService;
 import com.billage.group.dto.GroupCreateRequest;
 import com.billage.member.dto.MemberBulkCreateRequest;
+import com.billage.member.dto.MemberBulkDeleteRequest;
 import com.billage.member.dto.MemberCreateRequest;
 import com.billage.member.dto.MemberResponse;
 import com.billage.member.dto.MemberUpdateRequest;
@@ -214,5 +215,76 @@ class MemberProfileServiceTest extends IntegrationTest {
 		memberService.removeMember(groupId, ownerId, memberId);
 
 		assertThat(memberService.getMembers(groupId, ownerId, null)).isEmpty();
+	}
+
+	// --- 상세 · 납부 내역 · 일괄 삭제 ---
+
+	@Test
+	void 상세는_총_납부_금액을_함께_준다() {
+		Long memberId = memberService.addMember(groupId, ownerId,
+				new MemberCreateRequest("김모임원", null, null, null)).memberId();
+
+		// 아직 낸 회비가 없으면 0 이다.
+		assertThat(memberService.getMember(groupId, ownerId, memberId).totalPaidAmount()).isZero();
+		assertThat(memberService.getMember(groupId, ownerId, memberId).name()).isEqualTo("김모임원");
+	}
+
+	@Test
+	void 다른_모임의_모임원은_상세를_볼_수_없다() {
+		Long otherOwnerId = userRepository.save(User.create("other@example.com", "encoded", "남")).getId();
+		Long otherGroupId = groupService.create(otherOwnerId, new GroupCreateRequest("남의모임", null, null)).groupId();
+		Long otherMemberId = memberService.addMember(otherGroupId, otherOwnerId,
+				new MemberCreateRequest("남의모임원", null, null, null)).memberId();
+
+		assertThatThrownBy(() -> memberService.getMember(groupId, ownerId, otherMemberId))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.MEMBER_NOT_FOUND);
+	}
+
+	@Test
+	void 낸_회비가_없으면_납부_내역은_비어_있다() {
+		Long memberId = memberService.addMember(groupId, ownerId,
+				new MemberCreateRequest("김모임원", null, null, null)).memberId();
+
+		var payments = memberService.getPayments(groupId, ownerId, memberId, null, null);
+
+		assertThat(payments.totalPaidAmount()).isZero();
+		assertThat(payments.payments()).isEmpty();
+	}
+
+	@Test
+	void 여러_명을_한_번에_삭제한다() {
+		Long first = memberService.addMember(groupId, ownerId,
+				new MemberCreateRequest("김모임원", null, null, null)).memberId();
+		Long second = memberService.addMember(groupId, ownerId,
+				new MemberCreateRequest("이모임원", null, null, null)).memberId();
+		memberService.addMember(groupId, ownerId, new MemberCreateRequest("남는사람", null, null, null));
+
+		int removed = memberService.removeMembers(groupId, ownerId, new MemberBulkDeleteRequest(
+				List.of(first, second)));
+
+		assertThat(removed).isEqualTo(2);
+		assertThat(memberService.getMembers(groupId, ownerId, null))
+				.singleElement()
+				.satisfies(member -> assertThat(member.name()).isEqualTo("남는사람"));
+	}
+
+	@Test
+	void 일괄_삭제에_다른_모임의_모임원이_섞이면_전부_취소된다() {
+		Long memberId = memberService.addMember(groupId, ownerId,
+				new MemberCreateRequest("김모임원", null, null, null)).memberId();
+		Long otherOwnerId = userRepository.save(User.create("other@example.com", "encoded", "남")).getId();
+		Long otherGroupId = groupService.create(otherOwnerId, new GroupCreateRequest("남의모임", null, null)).groupId();
+		Long otherMemberId = memberService.addMember(otherGroupId, otherOwnerId,
+				new MemberCreateRequest("남의모임원", null, null, null)).memberId();
+
+		assertThatThrownBy(() -> memberService.removeMembers(groupId, ownerId,
+				new MemberBulkDeleteRequest(List.of(memberId, otherMemberId))))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.MEMBER_NOT_FOUND);
+
+		assertThat(memberService.getMembers(groupId, ownerId, null)).hasSize(1);
 	}
 }

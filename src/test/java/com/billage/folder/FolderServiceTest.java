@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
 import com.billage.folder.dto.FolderCreateRequest;
+import com.billage.folder.dto.FolderItemMoveRequest;
 import com.billage.folder.dto.FolderTreeResponse;
 import com.billage.folder.dto.FolderUpdateRequest;
 import com.billage.group.GroupService;
@@ -275,6 +276,69 @@ class FolderServiceTest extends IntegrationTest {
 		ledgerService.update(ledgerId, ownerId, new LedgerUpdateRequest(null, folderId));
 		assertThat(ledgerRepository.findById(ledgerId).orElseThrow().getName()).isEqualTo("운영 장부");
 		assertThat(folderRepository.findById(folderId).orElseThrow().getName()).isEqualTo("정기공연");
+	}
+
+	// --- 선택 이동 ---
+
+	@Test
+	void 여러_폴더와_장부를_한_번에_옮긴다() {
+		Long sourceId = createFolder("이번학기", null);
+		Long targetId = createFolder("보관", null);
+		Long childId = createFolder("MT", sourceId);
+		Long ledgerId = ledgerService.create(sourceId, ownerId,
+				new LedgerCreateRequest("운영 장부", null)).ledgerId();
+
+		var moved = folderService.moveItems(groupId, ownerId,
+				new FolderItemMoveRequest(List.of(childId), List.of(ledgerId), targetId));
+
+		assertThat(moved.movedFolderCount()).isEqualTo(1);
+		assertThat(moved.movedLedgerCount()).isEqualTo(1);
+		assertThat(moved.targetFolderName()).isEqualTo("보관");
+		assertThat(folderRepository.findById(childId).orElseThrow().getParentId()).isEqualTo(targetId);
+		assertThat(ledgerRepository.findById(ledgerId).orElseThrow().getFolderId()).isEqualTo(targetId);
+	}
+
+	@Test
+	void 목적지를_비우면_최상위로_올라간다() {
+		Long parentId = createFolder("이번학기", null);
+		Long childId = createFolder("MT", parentId);
+
+		folderService.moveItems(groupId, ownerId, new FolderItemMoveRequest(List.of(childId), null, null));
+
+		assertThat(folderRepository.findById(childId).orElseThrow().getParentId()).isNull();
+	}
+
+	@Test
+	void 자기_하위로는_옮길_수_없다() {
+		Long parentId = createFolder("이번학기", null);
+		Long childId = createFolder("MT", parentId);
+
+		assertThatThrownBy(() -> folderService.moveItems(groupId, ownerId,
+				new FolderItemMoveRequest(List.of(parentId), null, childId)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.INVALID_PARENT_FOLDER);
+	}
+
+	@Test
+	void 아무것도_고르지_않으면_거부한다() {
+		assertThatThrownBy(() -> folderService.moveItems(groupId, ownerId,
+				new FolderItemMoveRequest(null, null, null)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.INVALID_REQUEST);
+	}
+
+	@Test
+	void 일반_관리자는_선택_이동을_할_수_없다() {
+		joinAsAdmin();
+		Long folderId = createFolder("MT", null);
+
+		assertThatThrownBy(() -> folderService.moveItems(groupId, adminId,
+				new FolderItemMoveRequest(List.of(folderId), null, null)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.ACCESS_DENIED);
 	}
 
 	private Long createFolder(String name, Long parentId) {

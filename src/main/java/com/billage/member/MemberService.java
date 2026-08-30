@@ -3,6 +3,7 @@ package com.billage.member;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -14,7 +15,11 @@ import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
 import com.billage.dues.DuesService;
 import com.billage.group.GroupSpace;
+import com.billage.common.response.KoreanTime;
 import com.billage.member.dto.MemberBulkCreateRequest;
+import com.billage.member.dto.MemberBulkDeleteRequest;
+import com.billage.member.dto.MemberDetailResponse;
+import com.billage.member.dto.MemberPaymentListResponse;
 import com.billage.member.dto.MemberCreateRequest;
 import com.billage.member.dto.MemberResponse;
 import com.billage.member.dto.MemberUpdateRequest;
@@ -108,6 +113,60 @@ public class MemberService {
 				normalizeMemo(request.memo()), normalizeTags(request.tags()));
 
 		return MemberResponse.from(member);
+	}
+
+	/**
+	 * 모임원 상세. 목록에 없는 <b>총 납부 금액</b>을 함께 낸다 — 화면 상단 카드가 쓴다.
+	 */
+	@Transactional(readOnly = true)
+	public MemberDetailResponse getMember(Long groupId, Long userId, Long memberId) {
+		guard.requireMembership(groupId, userId);
+
+		Member member = memberRepository.findByIdAndGroupId(memberId, groupId)
+				.orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_NOT_FOUND));
+
+		return MemberDetailResponse.of(member,
+				duesService.totalPaidAmounts(List.of(memberId)).getOrDefault(memberId, 0L));
+	}
+
+	/**
+	 * 모임원 납부 내역. 상단 총액을 함께 담아 화면이 두 번 호출하지 않게 한다.
+	 */
+	@Transactional(readOnly = true)
+	public MemberPaymentListResponse getPayments(Long groupId, Long userId, Long memberId,
+			LocalDate from, LocalDate to) {
+		guard.requireMembership(groupId, userId);
+		memberRepository.findByIdAndGroupId(memberId, groupId)
+				.orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_NOT_FOUND));
+
+		List<MemberPaymentListResponse.Payment> payments = duesService.findPaymentsOf(memberId, from, to).stream()
+				.map(view -> new MemberPaymentListResponse.Payment(view.duesId(), view.duesTitle(),
+						view.ledgerId(), view.ledgerName(), view.amount(), KoreanTime.toOffset(view.paidAt())))
+				.toList();
+
+		return new MemberPaymentListResponse(
+				duesService.totalPaidAmounts(List.of(memberId)).getOrDefault(memberId, 0L), payments);
+	}
+
+	/**
+	 * 모임원 일괄 삭제. 화면의 삭제 모드가 여러 명을 체크한 뒤 한 번에 지운다.
+	 *
+	 * <p>단건 삭제를 N 번 부르면 중간에 실패했을 때 일부만 지워진 채 남는다. 하나라도 다른 모임의
+	 * 모임원이면 전부 취소된다.
+	 */
+	@Transactional
+	public int removeMembers(Long groupId, Long userId, MemberBulkDeleteRequest request) {
+		guard.requireOwner(groupId, userId);
+
+		List<Member> members = request.memberIds().stream().distinct()
+				.map(memberId -> memberRepository.findByIdAndGroupId(memberId, groupId)
+						.orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_NOT_FOUND)))
+				.toList();
+
+		members.forEach(member -> duesService.deleteByMember(member.getId()));
+		memberRepository.deleteAll(members);
+
+		return members.size();
 	}
 
 	/**

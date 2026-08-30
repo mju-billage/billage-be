@@ -90,6 +90,71 @@ public interface EntryRepository extends JpaRepository<Entry, Long> {
 			@Param("startDate") LocalDate startDate,
 			@Param("endDate") LocalDate endDate);
 
+	/**
+	 * 보고서 스냅샷용. 위와 같지만 <b>구분(수입/지출) 필터</b>가 붙는다 — 장부별 보고서가 "전체/수입/지출"을 고른다.
+	 * {@code type} 이 null 이면 전체다.
+	 */
+	@Query("""
+			select e from Entry e
+			where e.ledger.id in :ledgerIds
+			  and e.approvalStatus = com.billage.entry.ApprovalStatus.APPROVED
+			  and (:type is null or e.type = :type)
+			  and (:startDate is null or e.occurredOn >= :startDate)
+			  and (:endDate is null or e.occurredOn <= :endDate)
+			order by e.occurredOn asc, e.id asc
+			""")
+	List<Entry> findApprovedForReport(@Param("ledgerIds") Collection<Long> ledgerIds,
+			@Param("type") EntryType type,
+			@Param("startDate") LocalDate startDate,
+			@Param("endDate") LocalDate endDate);
+
+	/**
+	 * 기간별 보고서용. 그 기간에 승인된 내역이 <b>하나라도 있는</b> 장부 ID.
+	 * 화면이 장부를 고르지 않으므로 서버가 대상 장부를 정한다.
+	 */
+	@Query("""
+			select distinct e.ledger.id from Entry e
+			where e.groupId = :groupId
+			  and e.approvalStatus = com.billage.entry.ApprovalStatus.APPROVED
+			  and e.occurredOn between :startDate and :endDate
+			""")
+	List<Long> findLedgerIdsWithApprovedEntries(@Param("groupId") Long groupId,
+			@Param("startDate") LocalDate startDate,
+			@Param("endDate") LocalDate endDate);
+
+	/**
+	 * 기간별 보고서의 '시작 잔액'. 기간 시작일 <b>직전까지</b> 누적된 승인 내역의 유형별 합계다.
+	 */
+	@Query("""
+			select e.type, coalesce(sum(e.amount), 0)
+			from Entry e
+			where e.ledger.id in :ledgerIds
+			  and e.approvalStatus = com.billage.entry.ApprovalStatus.APPROVED
+			  and e.occurredOn < :before
+			group by e.type
+			""")
+	List<Object[]> sumApprovedBeforeRaw(@Param("ledgerIds") Collection<Long> ledgerIds,
+			@Param("before") LocalDate before);
+
+	default Map<EntryType, Long> sumApprovedBefore(Collection<Long> ledgerIds, LocalDate before) {
+		if (ledgerIds.isEmpty()) {
+			return Map.of();
+		}
+		return sumApprovedBeforeRaw(ledgerIds, before).stream()
+				.collect(Collectors.toMap(row -> (EntryType) row[0], row -> (Long) row[1]));
+	}
+
+	/** 장부별 보고서의 기간. 담긴 승인 내역의 실제 최소·최대 발생일이다. */
+	@Query("""
+			select min(e.occurredOn), max(e.occurredOn)
+			from Entry e
+			where e.ledger.id in :ledgerIds
+			  and e.approvalStatus = com.billage.entry.ApprovalStatus.APPROVED
+			  and (:type is null or e.type = :type)
+			""")
+	List<Object[]> findOccurredRangeRaw(@Param("ledgerIds") Collection<Long> ledgerIds,
+			@Param("type") EntryType type);
+
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
 	@Query("delete from Entry e where e.ledger.id = :ledgerId")
 	void deleteAllByLedgerId(@Param("ledgerId") Long ledgerId);
