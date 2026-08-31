@@ -39,8 +39,4 @@ public record ReportCreateRequest(
 		/** 기간별 전용. */
 		LocalDate endDate
 ) {
-
-	public boolean isByLedger() {
-		return reportType == ReportType.BY_LEDGER;
-	}
 }
