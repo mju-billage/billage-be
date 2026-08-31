@@ -1,12 +1,18 @@
 package com.billage.file;
 
+import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+
+import com.billage.entry.EntryType;
 
 public interface FileRepository extends JpaRepository<UploadedFile, Long> {
 
@@ -62,4 +68,43 @@ public interface FileRepository extends JpaRepository<UploadedFile, Long> {
 	/** 모임에 달린 증빙 전체. 대표 이미지는 여기에 걸리지 않는다(내역에 연결되지 않으므로). */
 	@Query("select f from UploadedFile f where f.entry.groupId = :groupId")
 	List<UploadedFile> findReceiptsByGroupId(@Param("groupId") Long groupId);
+
+	/**
+	 * 증빙자료 앨범. 모임의 증빙을 원본 내역과 함께 최신 발생일 순으로 모아 본다.
+	 *
+	 * <p>필터 조건은 내역 목록과 같은 것을 쓴다 — 화면도 "내역 조회 공통 로직과 완벽하게 동일하게 작동"이라
+	 * 적어 두었다. 앨범 항목이 내역명·장부명을 함께 보여 주므로 fetch join 으로 N+1 을 피한다.
+	 *
+	 * <p>모임 대표 이미지는 내역에 연결되지 않아 여기에 걸리지 않는다.
+	 */
+	@Query(value = """
+			select f from UploadedFile f
+			join fetch f.entry e
+			join fetch e.ledger l
+			where e.groupId = :groupId
+			  and (:ledgerIds is null or l.id in :ledgerIds)
+			  and (:type is null or e.type = :type)
+			  and (:from is null or e.occurredOn >= :from)
+			  and (:to is null or e.occurredOn <= :to)
+			  and (:keyword is null or e.title like concat('%', :keyword, '%')
+			       or l.name like concat('%', :keyword, '%'))
+			order by e.occurredOn desc, e.id desc, f.id asc
+			""",
+			countQuery = """
+			select count(f.id) from UploadedFile f
+			where f.entry.groupId = :groupId
+			  and (:ledgerIds is null or f.entry.ledger.id in :ledgerIds)
+			  and (:type is null or f.entry.type = :type)
+			  and (:from is null or f.entry.occurredOn >= :from)
+			  and (:to is null or f.entry.occurredOn <= :to)
+			  and (:keyword is null or f.entry.title like concat('%', :keyword, '%')
+			       or f.entry.ledger.name like concat('%', :keyword, '%'))
+			""")
+	Page<UploadedFile> searchReceipts(@Param("groupId") Long groupId,
+			@Param("ledgerIds") Collection<Long> ledgerIds,
+			@Param("type") EntryType type,
+			@Param("from") LocalDate from,
+			@Param("to") LocalDate to,
+			@Param("keyword") String keyword,
+			Pageable pageable);
 }

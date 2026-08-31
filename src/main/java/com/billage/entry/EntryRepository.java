@@ -2,6 +2,8 @@ package com.billage.entry;
 
 import java.time.LocalDate;
 import java.util.Collection;
+import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -176,6 +178,52 @@ public interface EntryRepository extends JpaRepository<Entry, Long> {
 
 	@Query("select count(e.id) from Entry e where e.groupId = :groupId and e.approvalStatus = :status")
 	long countByGroupIdAndStatus(@Param("groupId") Long groupId, @Param("status") ApprovalStatus status);
+
+	/**
+	 * 일자별 승인 내역 합계. 대시보드의 최근 14일 캘린더 카드와 「캘린더 전체보기」가 쓴다.
+	 *
+	 * <p>금액이 없는 날은 결과에 나오지 않는다 — 화면도 "금액 데이터가 없는 날은 금액 표기 X" 라
+	 * 빈 날짜를 서버가 채워 보낼 이유가 없다.
+	 */
+	@Query("""
+			select e.occurredOn, e.type, coalesce(sum(e.amount), 0)
+			from Entry e
+			where e.groupId = :groupId
+			  and e.approvalStatus = com.billage.entry.ApprovalStatus.APPROVED
+			  and e.occurredOn between :from and :to
+			group by e.occurredOn, e.type
+			order by e.occurredOn asc
+			""")
+	List<Object[]> sumApprovedByDayRaw(@Param("groupId") Long groupId,
+			@Param("from") LocalDate from, @Param("to") LocalDate to);
+
+	/** 날짜 → (유형 → 합계). 날짜 순서를 지키려 {@link LinkedHashMap} 을 쓴다. */
+	default Map<LocalDate, Map<EntryType, Long>> sumApprovedByDay(Long groupId, LocalDate from, LocalDate to) {
+		Map<LocalDate, Map<EntryType, Long>> byDay = new LinkedHashMap<>();
+		for (Object[] row : sumApprovedByDayRaw(groupId, from, to)) {
+			byDay.computeIfAbsent((LocalDate) row[0], key -> new EnumMap<>(EntryType.class))
+					.put((EntryType) row[1], (Long) row[2]);
+		}
+		return byDay;
+	}
+
+	/**
+	 * 「통계/분석」의 활성 장부 판정. 최근 며칠 안에 <b>등록된</b> 내역 수를 장부별로 센다.
+	 *
+	 * <p>발생일이 아니라 생성일 기준이다 — 화면 문구가 "최근 7일간 {N}건의 내역이 추가됨"이라
+	 * 과거 날짜로 몰아 넣은 내역도 '요즘 활발한' 신호로 본다.
+	 */
+	@Query("""
+			select e.ledger.id, count(e.id)
+			from Entry e
+			where e.groupId = :groupId
+			  and e.approvalStatus = com.billage.entry.ApprovalStatus.APPROVED
+			  and e.createdAt >= :since
+			group by e.ledger.id
+			order by count(e.id) desc, e.ledger.id asc
+			""")
+	List<Object[]> countRecentByLedger(@Param("groupId") Long groupId,
+			@Param("since") java.time.LocalDateTime since);
 
 	/** 모임 최근 내역. 장부명을 함께 쓰므로 fetch join 으로 N+1 을 피한다. */
 	@Query("""
