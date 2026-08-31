@@ -21,6 +21,8 @@ import com.billage.dues.dto.PaymentStatusBulkUpdateRequest;
 import com.billage.dues.dto.PaymentStatusUpdateRequest;
 import com.billage.entry.ApprovalStatus;
 import com.billage.entry.EntryRepository;
+import com.billage.entry.EntryService;
+import com.billage.entry.dto.EntryDetailResponse;
 import com.billage.entry.EntryType;
 import com.billage.folder.FolderService;
 import com.billage.folder.dto.FolderCreateRequest;
@@ -58,6 +60,8 @@ class DuesServiceTest extends IntegrationTest {
 	DuesRepository duesRepository;
 	@Autowired
 	EntryRepository entryRepository;
+	@Autowired
+	EntryService entryService;
 	@Autowired
 	UserRepository userRepository;
 	@Autowired
@@ -374,6 +378,38 @@ class DuesServiceTest extends IntegrationTest {
 			assertThat(dues.targetCount()).isEqualTo(2);
 			assertThat(dues.ledgerName()).isEqualTo("운영 장부");
 		});
+	}
+
+	// --- 마감 회비와 내역의 연결 (내역 상세의 납부관리 화면) ---
+
+	@Test
+	void 마감으로_생긴_수입_내역은_회비를_가리키고_납부자_명단을_보여_준다() {
+		Long duesId = closeWithAllPaid();
+		Long entryId = duesService.getDetail(duesId, ownerId).generatedEntryId();
+
+		var detail = entryService.getDetail(entryId, ownerId);
+
+		assertThat(detail.duesId()).isEqualTo(duesId);
+		assertThat(detail.duesTitle()).isEqualTo("2학기 회비");
+		assertThat(detail.duesExists()).isTrue();
+		assertThat(detail.payerCount()).isEqualTo(2);
+		assertThat(detail.payers()).extracting(EntryDetailResponse.Payer::amount)
+				.containsOnly(30_000L);
+	}
+
+	@Test
+	void 회비를_지워도_내역은_회비명을_들고_있고_상세보기만_닫힌다() {
+		Long duesId = closeWithAllPaid();
+		Long entryId = duesService.getDetail(duesId, ownerId).generatedEntryId();
+
+		duesService.delete(duesId, ownerId);
+
+		var detail = entryService.getDetail(entryId, ownerId);
+		// 마감 시점 값이라 회비가 사라져도 이름은 남는다.
+		assertThat(detail.duesTitle()).isEqualTo("2학기 회비");
+		// 다만 이동할 곳이 없으므로 화면은 '회비 상세보기' 버튼을 숨긴다.
+		assertThat(detail.duesExists()).isFalse();
+		assertThat(detail.payers()).isEmpty();
 	}
 
 	// --- 납부 예정(시작일 전) ---

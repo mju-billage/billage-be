@@ -393,7 +393,7 @@ class FolderServiceTest extends IntegrationTest {
 				new LedgerCreateRequest("예산 장부", 1_000_000L)).ledgerId();
 		ledgerService.create(folderId, ownerId, new LedgerCreateRequest("예산 없는 장부", null));
 		entryService.create(budgeted, ownerId, new EntryCreateRequest(EntryType.EXPENSE, "대관료", 250_000L,
-				LocalDate.of(2026, 7, 20), null, null));
+				LocalDate.of(2026, 7, 20), null, null, null));
 
 		var byId = ledgerService.getGroupLedgers(groupId, ownerId, null).stream()
 				.collect(java.util.stream.Collectors.toMap(GroupLedgerResponse::ledgerId, l -> l));

@@ -79,6 +79,27 @@ public class Entry {
 	@Column(name = "created_by_name", nullable = false, length = 10, updatable = false)
 	private String createdByName;
 
+	/**
+	 * 담당자 — 이 지출·수입의 주체가 되는 모임 관리자. 작성자와 달리 등록 후에도 바꿀 수 있다.
+	 * 그 사람이 모임을 떠나도 표시가 깨지지 않도록 이름을 함께 스냅샷한다.
+	 */
+	@Column(name = "manager_user_id")
+	private Long managerUserId;
+
+	@Column(name = "manager_name", length = 10)
+	private String managerName;
+
+	/**
+	 * 마감된 회비가 만든 수입 내역이면 그 회비 ID. FK 가 아니다 —
+	 * 마감 즉시 회비와 내역은 서로 독립된 데이터가 되므로 한쪽을 지워도 다른 쪽은 남는다.
+	 * 회비가 사라진 뒤에도 이름을 보여 줄 수 있도록 제목도 마감 시점 값으로 함께 들고 있는다.
+	 */
+	@Column(name = "dues_id")
+	private Long duesId;
+
+	@Column(name = "dues_title", length = 20)
+	private String duesTitle;
+
 	@Column(name = "approved_by_user_id")
 	private Long approvedByUserId;
 
@@ -98,7 +119,8 @@ public class Entry {
 	private Long version;
 
 	private Entry(Ledger ledger, EntryType type, String title, Long amount, LocalDate occurredOn, String memo,
-			ApprovalStatus approvalStatus, Long createdByUserId, String createdByName) {
+			ApprovalStatus approvalStatus, Long createdByUserId, String createdByName,
+			Long managerUserId, String managerName) {
 		this.groupId = ledger.getGroup().getId();
 		this.ledger = ledger;
 		this.type = type;
@@ -109,6 +131,8 @@ public class Entry {
 		this.approvalStatus = approvalStatus;
 		this.createdByUserId = createdByUserId;
 		this.createdByName = createdByName;
+		this.managerUserId = managerUserId;
+		this.managerName = managerName;
 	}
 
 	/**
@@ -117,9 +141,19 @@ public class Entry {
 	 */
 	public static Entry create(Ledger ledger, GroupMembership author, String authorName, EntryType type,
 			String title, Long amount, LocalDate occurredOn, String memo) {
+		return create(ledger, author, authorName, type, title, amount, occurredOn, memo,
+				author.getUserId(), authorName);
+	}
+
+	/**
+	 * 담당자를 지정해 등록한다. 화면은 담당자 기본값을 등록자 본인으로 두고 관리자 명단에서 바꿀 수 있게 한다.
+	 */
+	public static Entry create(Ledger ledger, GroupMembership author, String authorName, EntryType type,
+			String title, Long amount, LocalDate occurredOn, String memo,
+			Long managerUserId, String managerName) {
 		Entry entry = new Entry(ledger, type, title, amount, occurredOn, memo,
 				author.isOwner() ? ApprovalStatus.APPROVED : ApprovalStatus.PENDING,
-				author.getUserId(), authorName);
+				author.getUserId(), authorName, managerUserId, managerName);
 		if (author.isOwner()) {
 			entry.approvedByUserId = author.getUserId();
 			entry.approvedByName = authorName;
@@ -150,6 +184,18 @@ public class Entry {
 		if (memo != null) {
 			this.memo = memo;
 		}
+	}
+
+	/** 담당자 변경. 이름은 그 시점 값으로 다시 스냅샷한다. */
+	public void changeManager(Long managerUserId, String managerName) {
+		this.managerUserId = managerUserId;
+		this.managerName = managerName;
+	}
+
+	/** 회비 마감으로 만들어진 수입 내역임을 표시한다. 제목은 마감 시점 값으로 굳는다. */
+	public void linkDues(Long duesId, String duesTitle) {
+		this.duesId = duesId;
+		this.duesTitle = duesTitle;
 	}
 
 	/**

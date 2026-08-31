@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -224,12 +225,30 @@ public class DuesService {
 		long collected = dues.totalCollectedAmount();
 		Long generatedEntryId = null;
 		if (collected > 0) {
-			generatedEntryId = entryRepository.save(Entry.create(ledger, owner, userName(userId), EntryType.INCOME,
-					dues.getTitle(), collected, LocalDate.now(KoreanTime.ZONE), null)).getId();
+			Entry entry = entryRepository.save(Entry.create(ledger, owner, userName(userId), EntryType.INCOME,
+					dues.getTitle(), collected, LocalDate.now(KoreanTime.ZONE), null));
+			// 내역 쪽에도 회비를 표시해 둔다. 목록의 납부관리 아이콘과 상세 화면 분기가 이 값을 본다.
+			entry.linkDues(dues.getId(), dues.getTitle());
+			generatedEntryId = entry.getId();
 		}
 		dues.close(generatedEntryId);
 
 		return DuesCloseResponse.from(dues);
+	}
+
+	/**
+	 * 마감된 회비의 납부자 명단. 내역 상세(「상세 내역_납부관리_수입내역」)가 쓴다.
+	 *
+	 * <p>회비가 이미 삭제됐으면 {@link Optional#empty()} 다 — 마감 즉시 회비와 내역은 독립된 데이터가
+	 * 되므로 내역만 남아 있는 상태가 정상이며, 이때 화면은 '회비 상세보기' 버튼을 숨긴다.
+	 */
+	@Transactional(readOnly = true)
+	public Optional<List<DuesPayerView>> findPayers(Long duesId) {
+		return duesRepository.findById(duesId)
+				.map(dues -> duesMemberRepository.findTargets(duesId, PaymentStatus.PAID, null).stream()
+						.map(target -> new DuesPayerView(target.getMember().getId(), target.getMember().getName(),
+								dues.getAmount()))
+						.toList());
 	}
 
 	/** 모임원을 명단에서 지울 때 그 사람의 회비 참여 데이터도 함께 지운다. */

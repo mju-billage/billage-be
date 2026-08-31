@@ -159,6 +159,6 @@ class DashboardServiceTest extends IntegrationTest {
 
 	private void createEntry(Long ledgerId, Long userId, EntryType type, String title, long amount,
 			LocalDate occurredOn) {
-		entryService.create(ledgerId, userId, new EntryCreateRequest(type, title, amount, occurredOn, null, null));
+		entryService.create(ledgerId, userId, new EntryCreateRequest(type, title, amount, occurredOn, null, null, null));
 	}
 }
