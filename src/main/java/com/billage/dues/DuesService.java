@@ -62,7 +62,7 @@ public class DuesService {
 
 	@Transactional(readOnly = true)
 	public PageResponse<DuesSummaryResponse> getDuesList(Long groupId, Long userId, DuesStatus status,
-			String keyword, Pageable pageable) {
+			Pageable pageable) {
 		guard.requireMembership(groupId, userId);
 
 		// 화면의 '납부 예정' 탭은 저장 상태가 아니라 시작일로 갈린다 — DuesRepository.search 주석 참고.
@@ -73,9 +73,7 @@ public class DuesService {
 			case OPEN -> Boolean.TRUE;
 			case CLOSED -> null;
 		};
-		String normalizedKeyword = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
-
-		Page<Dues> page = duesRepository.search(groupId, persistedStatus, started, normalizedKeyword,
+		Page<Dues> page = duesRepository.search(groupId, persistedStatus, started,
 				LocalDate.now(KoreanTime.ZONE), pageable);
 		List<Long> duesIds = page.getContent().stream().map(Dues::getId).toList();
 		Map<Long, Map<PaymentStatus, Long>> counts = duesMemberRepository.countByDues(duesIds);
