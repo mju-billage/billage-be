@@ -25,7 +25,7 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
-      # 테스트는 Testcontainers(MySQL)가 필요해 별도 CI에서 돌린다.
+      # 테스트는 ci.yml 이 PR 과 develop push 에서 돌린다.
       # 배포 파이프라인은 실행 가능한 jar 생성까지만 책임진다.
       - name: Build bootJar
         run: ./gradlew clean bootJar --no-daemon

@@ -11,6 +11,7 @@ import java.util.stream.Collectors;
 
 import org.springframework.core.io.Resource;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -19,8 +20,11 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
+import com.billage.common.response.PageResponse;
 import com.billage.entry.Entry;
+import com.billage.entry.EntryType;
 import com.billage.file.dto.FileResponse;
+import com.billage.file.dto.ReceiptAlbumItemResponse;
 import com.billage.file.dto.ReceiptFileResponse;
 import com.billage.membership.GroupAccessGuard;
 
@@ -232,6 +236,32 @@ public class FileService {
 		return fileRepository.findByEntryId(entryId).stream()
 				.map(file -> ReceiptFileResponse.of(file, fileUrl(file.getId())))
 				.toList();
+	}
+
+	/**
+	 * 증빙자료 앨범(「더보기 &gt; 증빙자료 앨범」). 모임의 증빙을 원본 내역과 함께 최신 발생일 순으로 모아 본다.
+	 *
+	 * <p>지금까지는 내역을 하나씩 열어야만 증빙을 볼 수 있었다. 필터·검색 조건은 내역 목록과 같은 것을
+	 * 쓴다 — 화면도 "내역 조회 공통 로직과 완벽하게 동일하게 작동"이라 적어 두었다.
+	 *
+	 * <p>승인 대기 내역의 증빙도 함께 담는다. 화면에 승인 상태 표시가 없어 가릴 근거가 없고,
+	 * 가리면 총무가 올린 것과 일반 관리자가 올린 것이 앨범에서 달리 보이게 된다.
+	 */
+	@Transactional(readOnly = true)
+	public PageResponse<ReceiptAlbumItemResponse> getReceiptAlbum(Long groupId, Long userId, List<Long> ledgerIds,
+			EntryType type, LocalDate from, LocalDate to, String keyword, Pageable pageable) {
+		guard.requireMembership(groupId, userId);
+
+		// JPQL 의 in 은 빈 컬렉션을 받으면 문법 오류가 난다. '장부 미선택 = 전체'이므로 조건에서 뺀다.
+		List<Long> targetLedgerIds = (ledgerIds == null || ledgerIds.isEmpty()) ? null : ledgerIds;
+		String normalizedKeyword = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
+		if (from != null && to != null && from.isAfter(to)) {
+			throw new BusinessException(ErrorCode.INVALID_QUERY_PARAMETER);
+		}
+
+		return PageResponse.of(
+				fileRepository.searchReceipts(groupId, targetLedgerIds, type, from, to, normalizedKeyword, pageable),
+				file -> ReceiptAlbumItemResponse.of(file, fileUrl(file.getId())));
 	}
 
 	/** 내역 목록의 receiptCount 를 N+1 없이 채우기 위해 한 번에 조회한다. */

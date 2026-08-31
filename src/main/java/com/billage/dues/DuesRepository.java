@@ -46,6 +46,20 @@ public interface DuesRepository extends JpaRepository<Dues, Long> {
 			@Param("started") Boolean started, @Param("keyword") String keyword,
 			@Param("today") LocalDate today, Pageable pageable);
 
+	/**
+	 * 대시보드의 '회비 현황 카드'. 마감이 임박한 순으로 몇 건만 뽑는다.
+	 *
+	 * <p>마감된 회비는 뺀다 — 이미 장부 내역으로 반영돼 있고 화면도 진행 중인 것만 보여 준다.
+	 * 아직 시작 전(SCHEDULED)인 회비는 저장 상태가 OPEN 이라 함께 나온다. 화면이 D-day 뱃지로
+	 * 구분해 주므로 서버가 걸러 내지 않는다.
+	 */
+	@Query("""
+			select d from Dues d
+			where d.groupId = :groupId and d.status = com.billage.dues.DuesStatus.OPEN
+			order by d.dueDate asc, d.id asc
+			""")
+	List<Dues> findUpcoming(@Param("groupId") Long groupId, Pageable pageable);
+
 	/** 대시보드용. 진행 중인 회비 수. */
 	long countByGroupIdAndStatus(Long groupId, DuesStatus status);
 

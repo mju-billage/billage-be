@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.LocalDate;
+import java.time.YearMonth;
+import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -11,7 +13,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
+import com.billage.common.response.KoreanTime;
 import com.billage.dashboard.dto.DashboardResponse;
+import com.billage.dues.DuesService;
+import com.billage.dues.dto.DuesCreateRequest;
+import com.billage.member.MemberService;
+import com.billage.member.dto.MemberCreateRequest;
 import com.billage.entry.EntryService;
 import com.billage.entry.EntryType;
 import com.billage.entry.dto.EntryCreateRequest;
@@ -43,6 +50,10 @@ class DashboardServiceTest extends IntegrationTest {
 	EntryService entryService;
 	@Autowired
 	DashboardService dashboardService;
+	@Autowired
+	DuesService duesService;
+	@Autowired
+	MemberService memberService;
 	@Autowired
 	UserRepository userRepository;
 
@@ -151,6 +162,107 @@ class DashboardServiceTest extends IntegrationTest {
 		assertThat(dues.totalTargetCount()).isZero();
 		assertThat(dues.paidCount()).isZero();
 		assertThat(dues.unpaidCount()).isZero();
+	}
+
+	// --- 캘린더 ---
+
+	@Test
+	void 캘린더는_오늘_포함_14일을_보고_금액이_없는_날은_담지_않는다() {
+		LocalDate today = LocalDate.now(KoreanTime.ZONE);
+		createEntry(firstLedgerId, ownerId, EntryType.INCOME, "오늘 수입", 100_000L, today);
+		createEntry(firstLedgerId, ownerId, EntryType.EXPENSE, "오늘 지출", 30_000L, today);
+		createEntry(firstLedgerId, ownerId, EntryType.EXPENSE, "13일 전", 50_000L, today.minusDays(13));
+		// 14일을 넘어가면 카드에 들어오지 않는다.
+		createEntry(firstLedgerId, ownerId, EntryType.EXPENSE, "14일 전", 70_000L, today.minusDays(14));
+
+		var calendar = dashboardService.getDashboard(groupId, ownerId, 5).calendar();
+
+		assertThat(calendar.from()).isEqualTo(today.minusDays(13));
+		assertThat(calendar.to()).isEqualTo(today);
+		// 금액이 있는 날만 담긴다 — 사이의 빈 날짜는 아예 없다.
+		assertThat(calendar.days()).hasSize(2);
+		assertThat(calendar.days()).last().satisfies(day -> {
+			assertThat(day.date()).isEqualTo(today);
+			assertThat(day.income()).isEqualTo(100_000L);
+			assertThat(day.expense()).isEqualTo(30_000L);
+		});
+	}
+
+	@Test
+	void 캘린더는_승인된_내역만_센다() {
+		LocalDate today = LocalDate.now(KoreanTime.ZONE);
+		createEntry(firstLedgerId, ownerId, EntryType.EXPENSE, "승인된 지출", 30_000L, today);
+		// 일반 관리자가 올린 건은 승인 대기라 빠진다.
+		createEntry(firstLedgerId, adminId, EntryType.EXPENSE, "승인 대기 지출", 900_000L, today);
+
+		var calendar = dashboardService.getDashboard(groupId, ownerId, 5).calendar();
+
+		assertThat(calendar.days()).singleElement()
+				.satisfies(day -> assertThat(day.expense()).isEqualTo(30_000L));
+	}
+
+	@Test
+	void 월간_캘린더는_그_달만_본다() {
+		createEntry(firstLedgerId, ownerId, EntryType.INCOME, "7월 수입", 100_000L, LocalDate.of(2026, 7, 20));
+		createEntry(firstLedgerId, ownerId, EntryType.INCOME, "8월 수입", 200_000L, LocalDate.of(2026, 8, 3));
+
+		var july = dashboardService.getCalendar(groupId, ownerId, YearMonth.of(2026, 7));
+
+		assertThat(july.from()).isEqualTo(LocalDate.of(2026, 7, 1));
+		assertThat(july.to()).isEqualTo(LocalDate.of(2026, 7, 31));
+		assertThat(july.days()).singleElement()
+				.satisfies(day -> assertThat(day.income()).isEqualTo(100_000L));
+	}
+
+	@Test
+	void 다른_모임_사람은_캘린더를_볼_수_없다() {
+		assertThatThrownBy(() -> dashboardService.getCalendar(groupId, outsiderId, YearMonth.of(2026, 7)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.ACCESS_DENIED);
+	}
+
+	// --- 마감 임박 회비 카드 ---
+
+	@Test
+	void 마감이_임박한_순으로_최대_세_건만_준다() {
+		Long memberId = memberService.addMember(groupId, ownerId,
+				new MemberCreateRequest("김모임원", null, null, null)).memberId();
+		LocalDate today = LocalDate.now(KoreanTime.ZONE);
+		createDues("네번째", today.plusDays(40), memberId);
+		createDues("첫번째", today.plusDays(3), memberId);
+		createDues("두번째", today.plusDays(10), memberId);
+		createDues("세번째", today.plusDays(20), memberId);
+
+		var upcoming = dashboardService.getDashboard(groupId, ownerId, 5).upcomingDues();
+
+		assertThat(upcoming).hasSize(3);
+		assertThat(upcoming).extracting(DashboardResponse.UpcomingDues::title)
+				.containsExactly("첫번째", "두번째", "세번째");
+		assertThat(upcoming.get(0).daysLeft()).isEqualTo(3);
+		assertThat(upcoming.get(0).targetCount()).isEqualTo(1);
+		assertThat(upcoming.get(0).paidCount()).isZero();
+	}
+
+	@Test
+	void 마감된_회비는_카드에_올라오지_않는다() {
+		Long memberId = memberService.addMember(groupId, ownerId,
+				new MemberCreateRequest("김모임원", null, null, null)).memberId();
+		LocalDate today = LocalDate.now(KoreanTime.ZONE);
+		Long duesId = createDues("마감할 회비", today.plusDays(3), memberId);
+		duesService.close(duesId, ownerId);
+
+		assertThat(dashboardService.getDashboard(groupId, ownerId, 5).upcomingDues()).isEmpty();
+	}
+
+	@Test
+	void 알림_도메인이_없어_안읽음_표시는_항상_꺼져_있다() {
+		assertThat(dashboardService.getDashboard(groupId, ownerId, 5).hasUnreadNotification()).isFalse();
+	}
+
+	private Long createDues(String title, LocalDate dueDate, Long memberId) {
+		return duesService.create(groupId, ownerId, new DuesCreateRequest(title, 30_000L,
+				LocalDate.now(KoreanTime.ZONE), dueDate, List.of(memberId), firstLedgerId)).duesId();
 	}
 
 	private void createEntry(Long ledgerId, Long userId, EntryType type, String title, long amount) {

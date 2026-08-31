@@ -1,5 +1,8 @@
 package com.billage.dashboard;
 
+import java.time.LocalDate;
+import java.time.YearMonth;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 
@@ -10,6 +13,8 @@ import org.springframework.transaction.annotation.Transactional;
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
 import com.billage.dashboard.dto.DashboardResponse;
+import com.billage.common.response.KoreanTime;
+import com.billage.dues.Dues;
 import com.billage.dues.DuesMemberRepository;
 import com.billage.dues.DuesRepository;
 import com.billage.dues.DuesStatus;
@@ -31,6 +36,12 @@ public class DashboardService {
 
 	static final int MIN_RECENT_ENTRY_SIZE = 1;
 	static final int MAX_RECENT_ENTRY_SIZE = 20;
+
+	/** 캘린더 카드가 보여 주는 기간. 화면명세 "당일 기준으로 이전 날짜 13일자 표기 (당일포함 14일)". */
+	private static final int CALENDAR_DAYS = 14;
+
+	/** 회비 현황 카드에 올리는 건수. 화면명세 "가장 마감이 임박한 3개". */
+	private static final int UPCOMING_DUES_SIZE = 3;
 
 	private final EntryRepository entryRepository;
 	private final DuesRepository duesRepository;
@@ -67,7 +78,55 @@ public class DashboardService {
 				duesRepository.countByGroupIdAndStatus(groupId, DuesStatus.OPEN),
 				paid + unpaid, paid, unpaid);
 
-		return new DashboardResponse(groupId, summary, approval, dues, recentEntries);
+		LocalDate today = LocalDate.now(KoreanTime.ZONE);
+		DashboardResponse.Calendar calendar = calendarOf(groupId, today.minusDays(CALENDAR_DAYS - 1), today);
+
+		return new DashboardResponse(groupId, summary, approval, dues, recentEntries, calendar,
+				upcomingDuesOf(groupId, today), false);
+	}
+
+	/**
+	 * 「캘린더 전체보기」(월간). 대시보드 카드와 같은 형식이며 기간만 한 달이다.
+	 */
+	@Transactional(readOnly = true)
+	public DashboardResponse.Calendar getCalendar(Long groupId, Long userId, YearMonth yearMonth) {
+		guard.requireMembership(groupId, userId);
+
+		return calendarOf(groupId, yearMonth.atDay(1), yearMonth.atEndOfMonth());
+	}
+
+	private DashboardResponse.Calendar calendarOf(Long groupId, LocalDate from, LocalDate to) {
+		List<DashboardResponse.Calendar.Day> days =
+				entryRepository.sumApprovedByDay(groupId, from, to).entrySet().stream()
+						.map(entry -> new DashboardResponse.Calendar.Day(entry.getKey(),
+								entry.getValue().getOrDefault(EntryType.INCOME, 0L),
+								entry.getValue().getOrDefault(EntryType.EXPENSE, 0L)))
+						.toList();
+
+		return new DashboardResponse.Calendar(from, to, days);
+	}
+
+	/**
+	 * 마감 임박 회비 카드. 대상 인원은 회비마다 세지 않고 한 번에 모아 읽는다(N+1 방지).
+	 */
+	private List<DashboardResponse.UpcomingDues> upcomingDuesOf(Long groupId, LocalDate today) {
+		List<Dues> upcoming = duesRepository.findUpcoming(groupId, PageRequest.of(0, UPCOMING_DUES_SIZE));
+		if (upcoming.isEmpty()) {
+			return List.of();
+		}
+
+		Map<Long, Map<PaymentStatus, Long>> counts = duesMemberRepository.countByDues(
+				upcoming.stream().map(Dues::getId).toList());
+
+		return upcoming.stream()
+				.map(dues -> {
+					Map<PaymentStatus, Long> byStatus = counts.getOrDefault(dues.getId(), Map.of());
+					long paid = byStatus.getOrDefault(PaymentStatus.PAID, 0L);
+					long target = paid + byStatus.getOrDefault(PaymentStatus.UNPAID, 0L);
+					return new DashboardResponse.UpcomingDues(dues.getId(), dues.getTitle(), dues.getDueDate(),
+							ChronoUnit.DAYS.between(today, dues.getDueDate()), paid, target);
+				})
+				.toList();
 	}
 
 	private void validateRecentEntrySize(int size) {

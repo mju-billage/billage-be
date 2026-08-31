@@ -9,6 +9,7 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.mock.web.MockMultipartFile;
 
 import com.billage.common.exception.BusinessException;
@@ -255,6 +256,85 @@ class FileServiceTest extends IntegrationTest {
 		ledgerService.delete(ledgerId, ownerId);
 
 		assertThat(fileRepository.findById(fileId)).isEmpty();
+	}
+
+	// --- 증빙자료 앨범 ---
+
+	@Test
+	void 앨범은_모임의_증빙을_최신_발생일_순으로_모으고_원본_내역을_함께_준다() {
+		Long oldFileId = upload(ownerId, "old.jpg");
+		entryService.create(ledgerId, ownerId, new EntryCreateRequest(EntryType.EXPENSE, "지난 지출", 100_000L,
+				LocalDate.of(2026, 5, 1), null, null, List.of(oldFileId)));
+		Long recentFileId = upload(ownerId, "recent.jpg");
+		Long recentEntryId = entryService.create(ledgerId, ownerId, new EntryCreateRequest(EntryType.EXPENSE,
+				"최근 지출", 200_000L, LocalDate.of(2026, 7, 20), null, null, List.of(recentFileId))).entryId();
+
+		var album = fileService.getReceiptAlbum(groupId, ownerId, null, null, null, null, null,
+				PageRequest.of(0, 20));
+
+		assertThat(album.totalElements()).isEqualTo(2);
+		assertThat(album.content().get(0)).satisfies(item -> {
+			assertThat(item.fileId()).isEqualTo(recentFileId);
+			// 상세 화면이 앱바에 내역명·등록일을 띄우고 하단 버튼으로 내역 상세로 간다.
+			assertThat(item.entryId()).isEqualTo(recentEntryId);
+			assertThat(item.entryTitle()).isEqualTo("최근 지출");
+			assertThat(item.occurredOn()).isEqualTo(LocalDate.of(2026, 7, 20));
+			assertThat(item.ledgerName()).isEqualTo("운영 장부");
+			assertThat(item.fileUrl()).contains("/api/v1/files/" + recentFileId + "/content");
+		});
+	}
+
+	@Test
+	void 앨범_검색은_내역명과_장부명에_걸린다() {
+		createEntryWithReceipts(ownerId, List.of(upload(ownerId, "a.jpg")));
+
+		assertThat(fileService.getReceiptAlbum(groupId, ownerId, null, null, null, null, "대관",
+				PageRequest.of(0, 20)).totalElements()).isEqualTo(1);
+		assertThat(fileService.getReceiptAlbum(groupId, ownerId, null, null, null, null, "운영",
+				PageRequest.of(0, 20)).totalElements()).isEqualTo(1);
+		assertThat(fileService.getReceiptAlbum(groupId, ownerId, null, null, null, null, "없는말",
+				PageRequest.of(0, 20)).totalElements()).isZero();
+	}
+
+	@Test
+	void 앨범은_기간으로_거를_수_있다() {
+		createEntryWithReceipts(ownerId, List.of(upload(ownerId, "a.jpg")));
+
+		var inRange = fileService.getReceiptAlbum(groupId, ownerId, null, null,
+				LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 31), null, PageRequest.of(0, 20));
+		var outOfRange = fileService.getReceiptAlbum(groupId, ownerId, null, null,
+				LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 31), null, PageRequest.of(0, 20));
+
+		assertThat(inRange.totalElements()).isEqualTo(1);
+		assertThat(outOfRange.totalElements()).isZero();
+	}
+
+	@Test
+	void 승인_대기_내역의_증빙도_앨범에_담긴다() {
+		// 화면에 승인 상태 표시가 없어 가릴 근거가 없다.
+		entryService.create(ledgerId, adminId, new EntryCreateRequest(EntryType.EXPENSE, "승인 대기", 100_000L,
+				LocalDate.of(2026, 7, 20), null, null, List.of(upload(adminId, "pending.jpg"))));
+
+		assertThat(fileService.getReceiptAlbum(groupId, ownerId, null, null, null, null, null,
+				PageRequest.of(0, 20)).totalElements()).isEqualTo(1);
+	}
+
+	@Test
+	void 모임_대표_이미지는_앨범에_걸리지_않는다() {
+		MockMultipartFile image = new MockMultipartFile("file", "group.jpg", "image/jpeg", "bytes".getBytes());
+		fileService.upload(ownerId, image, FilePurpose.GROUP_IMAGE);
+
+		assertThat(fileService.getReceiptAlbum(groupId, ownerId, null, null, null, null, null,
+				PageRequest.of(0, 20)).totalElements()).isZero();
+	}
+
+	@Test
+	void 다른_모임_사람은_앨범을_볼_수_없다() {
+		assertThatThrownBy(() -> fileService.getReceiptAlbum(groupId, outsiderId, null, null, null, null, null,
+				PageRequest.of(0, 20)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.ACCESS_DENIED);
 	}
 
 	private Long upload(Long userId, String fileName) {
