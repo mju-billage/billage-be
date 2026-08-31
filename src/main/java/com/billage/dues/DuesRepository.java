@@ -34,7 +34,6 @@ public interface DuesRepository extends JpaRepository<Dues, Long> {
 			  and (:started is null
 			       or (:started = true and d.startDate <= :today)
 			       or (:started = false and d.startDate > :today))
-			  and (:keyword is null or lower(d.title) like lower(concat('%', :keyword, '%')))
 			order by
 			  case when d.status = com.billage.dues.DuesStatus.CLOSED then 2
 			       when d.startDate > :today then 0
@@ -43,8 +42,7 @@ public interface DuesRepository extends JpaRepository<Dues, Long> {
 			  d.id desc
 			""")
 	Page<Dues> search(@Param("groupId") Long groupId, @Param("status") DuesStatus status,
-			@Param("started") Boolean started, @Param("keyword") String keyword,
-			@Param("today") LocalDate today, Pageable pageable);
+			@Param("started") Boolean started, @Param("today") LocalDate today, Pageable pageable);
 
 	/**
 	 * 대시보드의 '회비 현황 카드'. 마감이 임박한 순으로 몇 건만 뽑는다.

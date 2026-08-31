@@ -367,8 +367,8 @@ class DuesServiceTest extends IntegrationTest {
 		pay(open, member1);
 		closeWithAllPaid();
 
-		var all = duesService.getDuesList(groupId, ownerId, null, null, PageRequest.of(0, 20));
-		var openOnly = duesService.getDuesList(groupId, ownerId, DuesStatus.OPEN, null, PageRequest.of(0, 20));
+		var all = duesService.getDuesList(groupId, ownerId, null, PageRequest.of(0, 20));
+		var openOnly = duesService.getDuesList(groupId, ownerId, DuesStatus.OPEN, PageRequest.of(0, 20));
 
 		assertThat(all.totalElements()).isEqualTo(2);
 		assertThat(openOnly.totalElements()).isEqualTo(1);
@@ -443,26 +443,14 @@ class DuesServiceTest extends IntegrationTest {
 		duesService.create(groupId, ownerId, new DuesCreateRequest("다음 학기 회비", 30_000L,
 				LocalDate.now().plusDays(3), LocalDate.now().plusDays(30), List.of(member1), ledgerId));
 
-		var scheduled = duesService.getDuesList(groupId, ownerId, DuesStatus.SCHEDULED, null,
+		var scheduled = duesService.getDuesList(groupId, ownerId, DuesStatus.SCHEDULED,
 				PageRequest.of(0, 20));
-		var open = duesService.getDuesList(groupId, ownerId, DuesStatus.OPEN, null, PageRequest.of(0, 20));
+		var open = duesService.getDuesList(groupId, ownerId, DuesStatus.OPEN, PageRequest.of(0, 20));
 
 		assertThat(scheduled.content()).singleElement()
 				.satisfies(dues -> assertThat(dues.title()).isEqualTo("다음 학기 회비"));
 		assertThat(open.content()).singleElement()
 				.satisfies(dues -> assertThat(dues.title()).isEqualTo("2학기 회비"));
-	}
-
-	@Test
-	void 목록은_제목으로_검색할_수_있다() {
-		createDues(List.of(member1));
-		duesService.create(groupId, ownerId, new DuesCreateRequest("MT 회비", 30_000L, LocalDate.now(),
-				LocalDate.now().plusDays(30), List.of(member1), ledgerId));
-
-		var found = duesService.getDuesList(groupId, ownerId, null, "mt", PageRequest.of(0, 20));
-
-		assertThat(found.content()).singleElement()
-				.satisfies(dues -> assertThat(dues.title()).isEqualTo("MT 회비"));
 	}
 
 	// --- 일괄 납부 처리 ---

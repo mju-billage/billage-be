@@ -33,10 +33,9 @@ public class ReportController {
 	public ResponseEntity<ApiResponse<PageResponse<ReportSummaryResponse>>> getReports(@CurrentUserId Long userId,
 			@PathVariable Long groupId,
 			@RequestParam(required = false) ReportType reportType,
-			@RequestParam(required = false) String keyword,
 			@PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
 		PageResponse<ReportSummaryResponse> reports =
-				reportService.getReports(groupId, userId, reportType, keyword, pageable);
+				reportService.getReports(groupId, userId, reportType, pageable);
 		String message = reports.content().isEmpty() ? "조회된 데이터가 없습니다." : "보고서 목록 조회에 성공했습니다.";
 		return ResponseEntity.ok(ApiResponse.of(reports, message));
 	}

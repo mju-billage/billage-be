@@ -163,7 +163,7 @@ class ReportServiceTest extends IntegrationTest {
 
 		Long reportId = createReport("상반기", List.of(ledgerId)).reportId();
 		assertThat(reportService.getDetail(reportId, adminId).reportId()).isEqualTo(reportId);
-		assertThat(reportService.getReports(groupId, adminId, null, null, PageRequest.of(0, 20)).totalElements()).isEqualTo(1);
+		assertThat(reportService.getReports(groupId, adminId, null, PageRequest.of(0, 20)).totalElements()).isEqualTo(1);
 	}
 
 	@Test
@@ -176,7 +176,7 @@ class ReportServiceTest extends IntegrationTest {
 				.extracting(e -> ((BusinessException) e).getErrorCode())
 				.isEqualTo(ErrorCode.ACCESS_DENIED);
 
-		assertThatThrownBy(() -> reportService.getReports(groupId, outsiderId, null, null, PageRequest.of(0, 20)))
+		assertThatThrownBy(() -> reportService.getReports(groupId, outsiderId, null, PageRequest.of(0, 20)))
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
 				.isEqualTo(ErrorCode.ACCESS_DENIED);
@@ -281,18 +281,19 @@ class ReportServiceTest extends IntegrationTest {
 	}
 
 	@Test
-	void 목록은_유형_탭과_제목_검색으로_거를_수_있다() {
+	void 목록은_유형_탭으로_거를_수_있다() {
 		createEntry(ownerId, EntryType.INCOME, "회비 수입", 1_000_000L, LocalDate.of(2026, 3, 1));
 		createReport("장부별 결산", List.of(ledgerId));
 		createPeriodReport("기간별 결산");
 
-		var byLedger = reportService.getReports(groupId, ownerId, ReportType.BY_LEDGER, null,
+		var byLedger = reportService.getReports(groupId, ownerId, ReportType.BY_LEDGER,
 				PageRequest.of(0, 20));
-		var searched = reportService.getReports(groupId, ownerId, null, "기간별", PageRequest.of(0, 20));
+		var byPeriod = reportService.getReports(groupId, ownerId, ReportType.BY_PERIOD,
+				PageRequest.of(0, 20));
 
 		assertThat(byLedger.content()).singleElement()
 				.satisfies(report -> assertThat(report.title()).isEqualTo("장부별 결산"));
-		assertThat(searched.content()).singleElement()
+		assertThat(byPeriod.content()).singleElement()
 				.satisfies(report -> assertThat(report.title()).isEqualTo("기간별 결산"));
 	}
 

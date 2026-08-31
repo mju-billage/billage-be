@@ -49,10 +49,9 @@ public class DuesController {
 	public ResponseEntity<ApiResponse<PageResponse<DuesSummaryResponse>>> getDuesList(
 			@CurrentUserId Long userId, @PathVariable Long groupId,
 			@RequestParam(required = false) DuesStatus status,
-			@RequestParam(required = false) String keyword,
 			@PageableDefault(size = 20) Pageable pageable) {
 		PageResponse<DuesSummaryResponse> duesList =
-				duesService.getDuesList(groupId, userId, status, keyword, pageable);
+				duesService.getDuesList(groupId, userId, status, pageable);
 		String message = duesList.content().isEmpty() ? "조회된 데이터가 없습니다." : "회비 목록 조회에 성공했습니다.";
 		return ResponseEntity.ok(ApiResponse.of(duesList, message));
 	}

@@ -44,12 +44,10 @@ public class ReportService {
 
 	@Transactional(readOnly = true)
 	public PageResponse<ReportSummaryResponse> getReports(Long groupId, Long userId, ReportType reportType,
-			String keyword, Pageable pageable) {
+			Pageable pageable) {
 		guard.requireMembership(groupId, userId);
 
-		String normalizedKeyword = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
-
-		return PageResponse.of(reportRepository.search(groupId, reportType, normalizedKeyword, pageable),
+		return PageResponse.of(reportRepository.search(groupId, reportType, pageable),
 				ReportSummaryResponse::from);
 	}
 
