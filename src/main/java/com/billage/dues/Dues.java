@@ -7,6 +7,7 @@ import java.util.List;
 
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
+import com.billage.common.response.KoreanTime;
 import com.billage.member.Member;
 
 import jakarta.persistence.CascadeType;
@@ -58,6 +59,10 @@ public class Dues {
 	@Column(nullable = false, updatable = false)
 	private Long amount;
 
+	/** 납부 시작일. 오늘이 이 날짜 전이면 화면에서 '납부 예정'으로 보인다({@link #phase()}). */
+	@Column(name = "start_date", nullable = false)
+	private LocalDate startDate;
+
 	@Column(name = "due_date", nullable = false)
 	private LocalDate dueDate;
 
@@ -88,20 +93,38 @@ public class Dues {
 	@OrderBy("id asc")
 	private List<DuesMember> targets = new ArrayList<>();
 
-	private Dues(Long groupId, String title, Long amount, LocalDate dueDate, Long ledgerId) {
+	private Dues(Long groupId, String title, Long amount, LocalDate startDate, LocalDate dueDate, Long ledgerId) {
 		this.groupId = groupId;
 		this.title = title;
 		this.amount = amount;
+		this.startDate = startDate;
 		this.dueDate = dueDate;
 		this.ledgerId = ledgerId;
 		this.status = DuesStatus.OPEN;
 	}
 
-	public static Dues create(Long groupId, String title, Long amount, LocalDate dueDate, Long ledgerId,
-			List<Member> targets) {
-		Dues dues = new Dues(groupId, title, amount, dueDate, ledgerId);
+	public static Dues create(Long groupId, String title, Long amount, LocalDate startDate, LocalDate dueDate,
+			Long ledgerId, List<Member> targets) {
+		Dues dues = new Dues(groupId, title, amount, startDate, dueDate, ledgerId);
 		targets.forEach(dues::addTarget);
 		return dues;
+	}
+
+	/**
+	 * 화면에 보여 줄 상태. 저장된 {@code status} 는 OPEN|CLOSED 뿐이고, 시작일 전이면 SCHEDULED 로 파생한다.
+	 */
+	public DuesStatus phase() {
+		// 서버 타임존이 아니라 업무 기준 시간대(Asia/Seoul)로 오늘을 정한다. UTC 로 뜬 서버에서
+		// LocalDate.now() 를 쓰면 한국 시간 00~09시 사이에 하루 전 날짜가 나와, 오늘 시작하는 회비가
+		// 오전 내내 '납부 예정'으로 보인다.
+		return DuesStatus.phaseOf(this.status, this.startDate, LocalDate.now(KoreanTime.ZONE));
+	}
+
+	/** 시작일 전이면 아직 걷기 시작하지 않았으므로 납부 상태를 바꿀 수 없다. */
+	public void requireStarted() {
+		if (phase() == DuesStatus.SCHEDULED) {
+			throw new BusinessException(ErrorCode.DUES_NOT_STARTED);
+		}
 	}
 
 	private void addTarget(Member member) {
@@ -124,9 +147,16 @@ public class Dues {
 		this.title = title;
 	}
 
-	public void updateDueDate(LocalDate dueDate) {
+	/** 기간은 시작일과 마감일을 함께 바꾼다. 화면이 달력에서 범위로 골라 오기 때문이다. */
+	public void updatePeriod(LocalDate startDate, LocalDate dueDate) {
 		requireOpen();
-		this.dueDate = dueDate;
+		LocalDate newStart = startDate != null ? startDate : this.startDate;
+		LocalDate newDue = dueDate != null ? dueDate : this.dueDate;
+		if (newStart.isAfter(newDue)) {
+			throw new BusinessException(ErrorCode.INVALID_REQUEST);
+		}
+		this.startDate = newStart;
+		this.dueDate = newDue;
 	}
 
 	public void moveToLedger(Long ledgerId) {
@@ -149,13 +179,24 @@ public class Dues {
 				.forEach(this::addTarget);
 	}
 
-	public void changePaymentStatus(Member member, PaymentStatus status) {
+	/**
+	 * 대상자 한 명의 납부 상태를 바꾼다.
+	 *
+	 * @return 실제로 값이 바뀌었으면 {@code true}. 이미 같은 상태였으면 {@code false} 다 —
+	 *         일괄 변경이 "몇 명이 바뀌었는지" 세는 데 쓴다.
+	 */
+	public boolean changePaymentStatus(Member member, PaymentStatus status) {
 		requireOpen();
-		this.targets.stream()
-				.filter(target -> target.getMember().getId().equals(member.getId()))
+		requireStarted();
+		DuesMember target = this.targets.stream()
+				.filter(t -> t.getMember().getId().equals(member.getId()))
 				.findFirst()
-				.orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_NOT_FOUND))
-				.changeStatus(status);
+				.orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_NOT_FOUND));
+		if (target.getStatus() == status) {
+			return false;
+		}
+		target.changeStatus(status);
+		return true;
 	}
 
 	public long paidCount() {
@@ -171,12 +212,17 @@ public class Dues {
 		return paidCount() * this.amount;
 	}
 
-	/** 대상 전원이 납부해야 마감할 수 있다. */
+	/**
+	 * 회비를 마감한다. <b>미납자가 남아 있어도 마감할 수 있다.</b>
+	 *
+	 * <p>화면명세(DUE-3-MODAL-02-0)의 마감 모달이 "현재 금액이 전체 내역의 수입으로 기록돼요."라고 안내하고,
+	 * 마감된 회비 상세에도 미납부 탭이 그대로 남는다. 전원 납부를 요구하면 한 명이라도 끝내 내지 않는 회비를
+	 * 영원히 마감할 수 없어, 총무에게 남는 복구 경로가 회비 삭제뿐이 된다.
+	 *
+	 * <p>마감 시점의 납부 현황이 그대로 굳는다 — 이후 납부 상태는 바꿀 수 없다({@link #requireOpen()}).
+	 */
 	public void close(Long generatedEntryId) {
 		requireOpen();
-		if (paidCount() != targetCount()) {
-			throw new BusinessException(ErrorCode.UNPAID_MEMBER_EXISTS);
-		}
 		this.status = DuesStatus.CLOSED;
 		this.generatedEntryId = generatedEntryId;
 		this.closedAt = LocalDateTime.now();

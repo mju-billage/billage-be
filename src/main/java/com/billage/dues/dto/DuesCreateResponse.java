@@ -13,6 +13,7 @@ public record DuesCreateResponse(
 		Long groupId,
 		String title,
 		Long amount,
+		LocalDate startDate,
 		LocalDate dueDate,
 		DuesStatus status,
 		long targetCount,
@@ -23,7 +24,7 @@ public record DuesCreateResponse(
 
 	public static DuesCreateResponse from(Dues dues) {
 		return new DuesCreateResponse(dues.getId(), dues.getGroupId(), dues.getTitle(), dues.getAmount(),
-				dues.getDueDate(), dues.getStatus(), dues.targetCount(), dues.paidCount(),
+				dues.getStartDate(), dues.getDueDate(), dues.phase(), dues.targetCount(), dues.paidCount(),
 				dues.getLedgerId(), KoreanTime.toOffset(dues.getCreatedAt()));
 	}
 }
