@@ -1,0 +1,49 @@
+name: CI
+
+# PR 과 develop·main push 에서 전체 테스트를 돌린다.
+# 배포(deploy-dev.yml)는 jar 생성까지만 책임지므로, 테스트 게이트는 여기에 둔다.
+on:
+  pull_request:
+  push:
+    branches: [develop, main]
+
+# 같은 브랜치에 연달아 푸시하면 이전 실행은 취소한다. 마지막 커밋 결과만 의미가 있다.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          # Gradle 의존성 캐시. 테스트가 Testcontainers 를 띄우느라 이미 느려서
+          # 빌드 쪽에서 아낄 수 있는 시간은 아껴 둔다.
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+
+      # Testcontainers 가 MySQL 8.4 를 띄운다. GitHub 호스티드 러너에는 Docker 가 이미 있어
+      # 별도 서비스 컨테이너 설정이 필요 없다.
+      - name: Run tests
+        run: ./gradlew test --no-daemon
+
+      # 실패했을 때 어떤 테스트가 왜 깨졌는지 보려면 리포트가 필요하다.
+      - name: Upload test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: |
+            build/reports/tests/test
+            build/test-results/test
+          retention-days: 7

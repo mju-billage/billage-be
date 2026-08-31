@@ -9,9 +9,11 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
+import com.billage.common.response.KoreanTime;
 import com.billage.entry.EntryService;
 import com.billage.entry.EntryType;
 import com.billage.entry.dto.EntryCreateRequest;
@@ -46,6 +48,8 @@ class StatisticsServiceTest extends IntegrationTest {
 	StatisticsService statisticsService;
 	@Autowired
 	UserRepository userRepository;
+	@Autowired
+	JdbcTemplate jdbcTemplate;
 
 	private Long ownerId;
 	private Long adminId;
@@ -173,6 +177,41 @@ class StatisticsServiceTest extends IntegrationTest {
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
 				.isEqualTo(ErrorCode.ACCESS_DENIED);
+	}
+
+	@Test
+	void 활성_판정은_오늘_포함_7일까지만_본다() {
+		Long recent = ledger("최근", null);
+		Long old = ledger("예전", null);
+		// '예전' 장부에 더 많이 넣되 전부 창 밖으로 밀어 둔다. 창을 하루라도 넓게 잡으면 이쪽이 뽑힌다.
+		expense(recent, "6일 전 지출", 100_000L);
+		backdateEntries(recent, 6);
+		expense(old, "7일 전 지출 1", 100_000L);
+		expense(old, "7일 전 지출 2", 100_000L);
+		backdateEntries(old, 7);
+
+		var active = statisticsService.getStatistics(groupId, ownerId).mostActiveLedger();
+
+		assertThat(active.ledgerId()).isEqualTo(recent);
+		assertThat(active.recentEntryCount()).isEqualTo(1);
+	}
+
+	@Test
+	void 창_밖의_내역만_있으면_활성_장부가_없다() {
+		Long ledgerId = ledger("예전", null);
+		expense(ledgerId, "7일 전 지출", 100_000L);
+		backdateEntries(ledgerId, 7);
+
+		assertThat(statisticsService.getStatistics(groupId, ownerId).mostActiveLedger()).isNull();
+	}
+
+	/**
+	 * 등록 시각을 과거로 돌린다. {@code createdAt} 은 저장 시점에 채워져 테스트에서 지정할 수 없으므로
+	 * 저장한 뒤 직접 고친다. 활성 장부 판정이 이 값을 보기 때문에 경계를 검증하려면 필요하다.
+	 */
+	private void backdateEntries(Long ledgerId, int days) {
+		jdbcTemplate.update("update entry set created_at = ? where ledger_id = ?",
+				LocalDate.now(KoreanTime.ZONE).minusDays(days).atTime(12, 0), ledgerId);
 	}
 
 	private Long ledger(String name, Long budget) {

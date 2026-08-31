@@ -30,7 +30,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class StatisticsService {
 
-	/** 활성 장부 판정 기간. 화면명세 "최근 7일간 {N}건의 내역이 추가됨". */
+	/** 활성 장부 판정 기간. 화면명세 "최근 7일간 {N}건의 내역이 추가됨" — <b>오늘을 포함해</b> 7일이다. */
 	private static final int ACTIVE_WINDOW_DAYS = 7;
 
 	/** 지출 비중 차트에 개별로 올리는 장부 수. 나머지는 '기타'로 묶는다. */
@@ -66,8 +66,9 @@ public class StatisticsService {
 	 */
 	private StatisticsResponse.MostActiveLedger mostActiveLedger(Long groupId, List<Ledger> ledgers,
 			Map<Long, Map<EntryType, Long>> sums, Map<Long, Long> entryCounts) {
+		// 오늘을 포함해 7일이므로 6일 전 0시부터 본다. minusDays(7) 로 잡으면 8일치가 들어온다.
 		List<Object[]> recent = entryRepository.countRecentByLedger(groupId,
-				LocalDate.now(KoreanTime.ZONE).minusDays(ACTIVE_WINDOW_DAYS).atStartOfDay());
+				LocalDate.now(KoreanTime.ZONE).minusDays(ACTIVE_WINDOW_DAYS - 1L).atStartOfDay());
 		if (recent.isEmpty()) {
 			return null;
 		}
