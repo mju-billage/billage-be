@@ -69,7 +69,7 @@ public class ReportService {
 		guard.requireOwner(groupId, userId);
 		String title = requireNonBlank(request.title());
 
-		return request.isByLedger()
+		return request.reportType() == ReportType.BY_LEDGER
 				? createByLedger(groupId, title, request)
 				: createByPeriod(groupId, title, request);
 	}
