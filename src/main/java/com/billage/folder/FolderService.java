@@ -15,6 +15,8 @@ import com.billage.common.exception.ErrorCode;
 import com.billage.folder.dto.FolderCreateRequest;
 import com.billage.folder.dto.FolderCreateResponse;
 import com.billage.folder.dto.FolderItemListResponse;
+import com.billage.folder.dto.FolderItemMoveRequest;
+import com.billage.folder.dto.FolderItemMoveResponse;
 import com.billage.folder.dto.FolderItemResponse;
 import com.billage.folder.dto.FolderTreeResponse;
 import com.billage.folder.dto.FolderUpdateRequest;
@@ -153,6 +155,49 @@ public class FolderService {
 
 		return new FolderTreeResponse(folder.getId(), folder.getName(), folder.getParentId(), children,
 				ledgerCounts.getOrDefault(folder.getId(), 0L));
+	}
+
+	/**
+	 * 폴더·장부 선택 이동(총무 전용). 「폴더 > 메뉴 > 선택 이동」이 쓴다.
+	 *
+	 * <p>폴더 수정·장부 수정으로 하나씩 옮기면 중간에 실패했을 때 절반만 이동한 상태가 남는다.
+	 * 목적지가 없으면({@code targetFolderId == null}) 최상위 영역으로 올린다.
+	 */
+	@Transactional
+	public FolderItemMoveResponse moveItems(Long groupId, Long userId, FolderItemMoveRequest request) {
+		guard.requireOwner(groupId, userId);
+
+		List<Long> folderIds = request.safeFolderIds();
+		List<Long> ledgerIds = request.safeLedgerIds();
+		if (folderIds.isEmpty() && ledgerIds.isEmpty()) {
+			throw new BusinessException(ErrorCode.INVALID_REQUEST, "이동할 항목을 1개 이상 선택해야 합니다.");
+		}
+
+		Folder target = request.targetFolderId() == null
+				? null
+				: findFolderInGroup(request.targetFolderId(), groupId);
+
+		for (Long folderId : folderIds) {
+			Folder folder = findFolderInGroup(folderId, groupId);
+			// 자기 자신이나 자기 하위로 옮기면 순환이 생긴다. 화면도 이동 대상 폴더를 목적지 목록에서
+			// 비활성화하지만, 서버에서도 막아야 한다.
+			folder.moveTo(resolveNewParent(folder, request.targetFolderId()));
+		}
+		for (Long ledgerId : ledgerIds) {
+			findLedgerInGroup(ledgerId, groupId).moveTo(target);
+		}
+
+		return new FolderItemMoveResponse(folderIds.size(), ledgerIds.size(),
+				request.targetFolderId(), target == null ? null : target.getName());
+	}
+
+	private Ledger findLedgerInGroup(Long ledgerId, Long groupId) {
+		Ledger ledger = ledgerRepository.findById(ledgerId)
+				.orElseThrow(() -> new BusinessException(ErrorCode.LEDGER_NOT_FOUND));
+		if (!ledger.getGroup().getId().equals(groupId)) {
+			throw new BusinessException(ErrorCode.GROUP_MISMATCH);
+		}
+		return ledger;
 	}
 
 	private Folder resolveNewParent(Folder folder, Long parentId) {

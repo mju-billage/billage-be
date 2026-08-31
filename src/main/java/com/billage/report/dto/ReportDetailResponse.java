@@ -9,6 +9,7 @@ import com.billage.entry.EntryType;
 import com.billage.report.Report;
 import com.billage.report.ReportEntry;
 import com.billage.report.ReportLedger;
+import com.billage.report.ReportType;
 
 /**
  * 보고서 상세. 웹뷰 렌더링에 필요한 JSON 만 담으며 PDF·Excel 다운로드는 MVP 범위 밖이다.
@@ -18,6 +19,7 @@ public record ReportDetailResponse(
 		Long reportId,
 		Long groupId,
 		String title,
+		ReportType reportType,
 		LocalDate startDate,
 		LocalDate endDate,
 		ReportSummary summary,
@@ -53,6 +55,7 @@ public record ReportDetailResponse(
 
 	public static ReportDetailResponse of(Report report, List<ReportLedger> ledgers) {
 		return new ReportDetailResponse(report.getId(), report.getGroupId(), report.getTitle(),
+				report.getReportType(),
 				report.getStartDate(), report.getEndDate(), ReportSummary.from(report),
 				ledgers.stream().map(LedgerDetail::from).toList(),
 				KoreanTime.toOffset(report.getCreatedAt()));

@@ -237,6 +237,36 @@ public class DuesService {
 	}
 
 	/**
+	 * 한 모임원이 낸 회비 목록. 최신 납부순이며 납부 완료 건만 담는다.
+	 *
+	 * <p>기간은 <b>납부 시각</b> 기준이다. 회비의 마감일이 아니라 총무가 납부를 확인한 시점이
+	 * 이 화면에서 말하는 "언제 냈나"에 해당한다.
+	 */
+	@Transactional(readOnly = true)
+	public List<MemberPaymentView> findPaymentsOf(Long memberId, LocalDate from, LocalDate to) {
+		List<DuesMember> payments = duesMemberRepository.findPaymentsOf(memberId,
+				from == null ? null : from.atStartOfDay(),
+				// to 는 그날 하루를 포함해야 하므로 '다음 날 0시 미만'으로 비교한다.
+				to == null ? null : to.plusDays(1).atStartOfDay());
+
+		Map<Long, String> ledgerNames = ledgerNamesOf(payments.stream().map(DuesMember::getDues).toList());
+
+		return payments.stream()
+				.map(payment -> {
+					Dues dues = payment.getDues();
+					return new MemberPaymentView(dues.getId(), dues.getTitle(), dues.getLedgerId(),
+							ledgerNames.get(dues.getLedgerId()), dues.getAmount(), payment.getPaidAt());
+				})
+				.toList();
+	}
+
+	/** 모임원별 총 납부 금액. 목록에서 여러 명을 한 번에 채울 수 있게 Map 으로 돌려준다. */
+	@Transactional(readOnly = true)
+	public Map<Long, Long> totalPaidAmounts(List<Long> memberIds) {
+		return duesMemberRepository.sumPaidByMember(memberIds);
+	}
+
+	/**
 	 * 마감된 회비의 납부자 명단. 내역 상세(「상세 내역_납부관리_수입내역」)가 쓴다.
 	 *
 	 * <p>회비가 이미 삭제됐으면 {@link Optional#empty()} 다 — 마감 즉시 회비와 내역은 독립된 데이터가

@@ -1,5 +1,6 @@
 package com.billage.report;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -14,6 +15,7 @@ import com.billage.common.exception.ErrorCode;
 import com.billage.common.response.PageResponse;
 import com.billage.entry.Entry;
 import com.billage.entry.EntryRepository;
+import com.billage.entry.EntryType;
 import com.billage.ledger.Ledger;
 import com.billage.ledger.LedgerRepository;
 import com.billage.membership.GroupAccessGuard;
@@ -41,38 +43,96 @@ public class ReportService {
 	private final GroupAccessGuard guard;
 
 	@Transactional(readOnly = true)
-	public PageResponse<ReportSummaryResponse> getReports(Long groupId, Long userId, Pageable pageable) {
+	public PageResponse<ReportSummaryResponse> getReports(Long groupId, Long userId, ReportType reportType,
+			String keyword, Pageable pageable) {
 		guard.requireMembership(groupId, userId);
 
-		return PageResponse.of(reportRepository.findAllByGroupId(groupId, pageable), ReportSummaryResponse::from);
+		String normalizedKeyword = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
+
+		return PageResponse.of(reportRepository.search(groupId, reportType, normalizedKeyword, pageable),
+				ReportSummaryResponse::from);
 	}
 
 	/**
-	 * 보고서 생성. 선택한 장부의 기간 내 <b>승인된</b> 내역만 스냅샷으로 복사한다.
-	 * 기간에 승인된 내역이 하나도 없으면 만들지 않는다.
+	 * 보고서 생성. 승인된 내역만 스냅샷으로 복사하며, 담을 내역이 하나도 없으면 만들지 않는다.
+	 *
+	 * <p>유형에 따라 무엇을 받고 무엇을 서버가 정하는지가 다르다.
+	 * <ul>
+	 *   <li><b>장부별</b> — 장부와 구분을 받고 <b>기간은 서버가 정한다</b>(담긴 내역의 실제 최소~최대 발생일).
+	 *       화면에 기간 입력이 없기 때문이다.</li>
+	 *   <li><b>기간별</b> — 기간을 받고 <b>장부는 서버가 고른다</b>(그 기간에 승인 내역이 있는 장부 전부).
+	 *       화면에 장부 선택이 없기 때문이다.</li>
+	 * </ul>
 	 */
 	@Transactional
 	public ReportCreateResponse create(Long groupId, Long userId, ReportCreateRequest request) {
 		guard.requireOwner(groupId, userId);
+		String title = requireNonBlank(request.title());
+
+		return request.isByLedger()
+				? createByLedger(groupId, title, request)
+				: createByPeriod(groupId, title, request);
+	}
+
+	private ReportCreateResponse createByLedger(Long groupId, String title, ReportCreateRequest request) {
+		if (request.ledgerIds() == null || request.ledgerIds().isEmpty()) {
+			throw new BusinessException(ErrorCode.INVALID_REQUEST, "장부를 1개 이상 선택해야 합니다.");
+		}
+
+		List<Ledger> ledgers = findLedgers(groupId, request.ledgerIds());
+		List<Long> ledgerIds = ledgers.stream().map(Ledger::getId).toList();
+		List<Entry> entries = entryRepository.findApprovedForReport(ledgerIds, request.entryType(), null, null);
+		if (entries.isEmpty()) {
+			throw new BusinessException(ErrorCode.REPORT_RANGE_EMPTY);
+		}
+
+		// 기간 입력이 없는 화면이라, 담긴 내역이 실제로 걸쳐 있는 범위를 기간으로 삼는다.
+		LocalDate startDate = entries.get(0).getOccurredOn();
+		LocalDate endDate = entries.stream().map(Entry::getOccurredOn).max(LocalDate::compareTo).orElseThrow();
+
+		Report report = reportRepository.save(Report.create(groupId, title, ReportType.BY_LEDGER,
+				request.entryType(), startDate, endDate, snapshotsOf(ledgers, entries)));
+
+		return ReportCreateResponse.from(report);
+	}
+
+	private ReportCreateResponse createByPeriod(Long groupId, String title, ReportCreateRequest request) {
+		if (request.startDate() == null || request.endDate() == null) {
+			throw new BusinessException(ErrorCode.INVALID_REQUEST, "조회 기간은 필수입니다.");
+		}
 		if (request.startDate().isAfter(request.endDate())) {
 			throw new BusinessException(ErrorCode.INVALID_REQUEST, "시작일은 종료일보다 늦을 수 없습니다.");
 		}
 
-		List<Ledger> ledgers = findLedgers(groupId, request.ledgerIds());
-		Map<Long, List<Entry>> entriesByLedger = groupEntriesByLedger(ledgers, request);
-
-		List<ReportLedger> snapshots = ledgers.stream()
-				.map(ledger -> ReportLedger.snapshotOf(ledger,
-						entriesByLedger.getOrDefault(ledger.getId(), List.of())))
-				.toList();
-		if (snapshots.stream().mapToInt(ReportLedger::getEntryCount).sum() == 0) {
+		List<Long> ledgerIds = entryRepository.findLedgerIdsWithApprovedEntries(groupId,
+				request.startDate(), request.endDate());
+		if (ledgerIds.isEmpty()) {
 			throw new BusinessException(ErrorCode.REPORT_RANGE_EMPTY);
 		}
 
-		Report report = reportRepository.save(Report.create(groupId, requireNonBlank(request.title()),
-				request.startDate(), request.endDate(), snapshots));
+		List<Ledger> ledgers = ledgerRepository.findAllById(ledgerIds);
+		List<Entry> entries = entryRepository.findApprovedForReport(ledgerIds, null,
+				request.startDate(), request.endDate());
 
-		return ReportCreateResponse.from(report);
+		Report report = Report.create(groupId, title, ReportType.BY_PERIOD, null,
+				request.startDate(), request.endDate(), snapshotsOf(ledgers, entries));
+		// 잔액 흐름 카드는 기간 '직전'까지의 누적 잔액에서 출발한다.
+		Map<EntryType, Long> before = entryRepository.sumApprovedBefore(ledgerIds, request.startDate());
+		report.recordBalanceFlow(before.getOrDefault(EntryType.INCOME, 0L)
+				- before.getOrDefault(EntryType.EXPENSE, 0L));
+
+		return ReportCreateResponse.from(reportRepository.save(report));
+	}
+
+	private List<ReportLedger> snapshotsOf(List<Ledger> ledgers, List<Entry> entries) {
+		Map<Long, List<Entry>> byLedger = new LinkedHashMap<>();
+		entries.forEach(entry -> byLedger
+				.computeIfAbsent(entry.getLedger().getId(), key -> new ArrayList<>())
+				.add(entry));
+
+		return ledgers.stream()
+				.map(ledger -> ReportLedger.snapshotOf(ledger, byLedger.getOrDefault(ledger.getId(), List.of())))
+				.toList();
 	}
 
 	@Transactional(readOnly = true)
@@ -115,14 +175,4 @@ public class ReportService {
 				.toList();
 	}
 
-	private Map<Long, List<Entry>> groupEntriesByLedger(List<Ledger> ledgers, ReportCreateRequest request) {
-		Map<Long, List<Entry>> entriesByLedger = new LinkedHashMap<>();
-		entryRepository.findApprovedInRange(ledgers.stream().map(Ledger::getId).toList(),
-						request.startDate(), request.endDate())
-				.forEach(entry -> entriesByLedger
-						.computeIfAbsent(entry.getLedger().getId(), key -> new ArrayList<>())
-						.add(entry));
-
-		return entriesByLedger;
-	}
 }

@@ -1,5 +1,6 @@
 package com.billage.dues;
 
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -55,6 +56,41 @@ public interface DuesMemberRepository extends JpaRepository<DuesMember, Long> {
 	default Map<PaymentStatus, Long> countOpenTargetsByGroup(Long groupId) {
 		return countOpenTargetsByGroupRaw(groupId).stream()
 				.collect(Collectors.toMap(row -> (PaymentStatus) row[0], row -> (Long) row[1]));
+	}
+
+	/**
+	 * 한 모임원의 납부 완료 기록. 「모임원 상세 > 납부 내역」 화면이 쓴다.
+	 *
+	 * <p>회비명·장부와 함께 보여 주므로 fetch join 으로 회비를 같이 읽는다.
+	 */
+	@Query("""
+			select dm from DuesMember dm
+			join fetch dm.dues d
+			where dm.member.id = :memberId
+			  and dm.status = com.billage.dues.PaymentStatus.PAID
+			  and (:from is null or dm.paidAt >= :from)
+			  and (:to is null or dm.paidAt < :to)
+			order by dm.paidAt desc, dm.id desc
+			""")
+	List<DuesMember> findPaymentsOf(@Param("memberId") Long memberId,
+			@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+	/** 여러 모임원의 총 납부 금액. 모임원 목록에서 N+1 없이 채우려고 한 번에 센다. */
+	@Query("""
+			select dm.member.id, coalesce(sum(d.amount), 0)
+			from DuesMember dm
+			join dm.dues d
+			where dm.member.id in :memberIds and dm.status = com.billage.dues.PaymentStatus.PAID
+			group by dm.member.id
+			""")
+	List<Object[]> sumPaidByMemberRaw(@Param("memberIds") Collection<Long> memberIds);
+
+	default Map<Long, Long> sumPaidByMember(Collection<Long> memberIds) {
+		if (memberIds.isEmpty()) {
+			return Map.of();
+		}
+		return sumPaidByMemberRaw(memberIds).stream()
+				.collect(Collectors.toMap(row -> (Long) row[0], row -> (Long) row[1]));
 	}
 
 	/** 모임원을 명단에서 지울 때 그 사람의 회비 참여 데이터도 함께 지운다(기획 확정). */

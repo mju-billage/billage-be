@@ -80,7 +80,7 @@ class ReportServiceTest extends IntegrationTest {
 	// --- 스냅샷 집계 ---
 
 	@Test
-	void 기간_안의_승인된_내역만_보고서에_담긴다() {
+	void 기간별_보고서는_기간_안의_승인된_내역만_담는다() {
 		createEntry(ownerId, EntryType.INCOME, "회비 수입", 1_000_000L, LocalDate.of(2026, 3, 1));
 		createEntry(ownerId, EntryType.EXPENSE, "대관료", 400_000L, LocalDate.of(2026, 5, 20));
 		// 승인 대기 → 제외
@@ -88,8 +88,9 @@ class ReportServiceTest extends IntegrationTest {
 		// 기간 밖 → 제외
 		createEntry(ownerId, EntryType.EXPENSE, "하반기 지출", 700_000L, LocalDate.of(2026, 7, 1));
 
-		ReportCreateResponse report = createReport("2026년 상반기 결산", List.of(ledgerId));
+		ReportCreateResponse report = createPeriodReport("2026년 상반기 결산");
 
+		assertThat(report.reportType()).isEqualTo(ReportType.BY_PERIOD);
 		assertThat(report.summary().totalIncome()).isEqualTo(1_000_000L);
 		assertThat(report.summary().totalExpense()).isEqualTo(400_000L);
 		assertThat(report.summary().balance()).isEqualTo(600_000L);
@@ -155,14 +156,14 @@ class ReportServiceTest extends IntegrationTest {
 		createEntry(ownerId, EntryType.EXPENSE, "대관료", 400_000L, LocalDate.of(2026, 5, 20));
 
 		assertThatThrownBy(() -> reportService.create(groupId, adminId,
-				new ReportCreateRequest("상반기", List.of(ledgerId), START, END)))
+				new ReportCreateRequest(ReportType.BY_LEDGER, "상반기", List.of(ledgerId), null, null, null)))
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
 				.isEqualTo(ErrorCode.ACCESS_DENIED);
 
 		Long reportId = createReport("상반기", List.of(ledgerId)).reportId();
 		assertThat(reportService.getDetail(reportId, adminId).reportId()).isEqualTo(reportId);
-		assertThat(reportService.getReports(groupId, adminId, PageRequest.of(0, 20)).totalElements()).isEqualTo(1);
+		assertThat(reportService.getReports(groupId, adminId, null, null, PageRequest.of(0, 20)).totalElements()).isEqualTo(1);
 	}
 
 	@Test
@@ -175,7 +176,7 @@ class ReportServiceTest extends IntegrationTest {
 				.extracting(e -> ((BusinessException) e).getErrorCode())
 				.isEqualTo(ErrorCode.ACCESS_DENIED);
 
-		assertThatThrownBy(() -> reportService.getReports(groupId, outsiderId, PageRequest.of(0, 20)))
+		assertThatThrownBy(() -> reportService.getReports(groupId, outsiderId, null, null, PageRequest.of(0, 20)))
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
 				.isEqualTo(ErrorCode.ACCESS_DENIED);
@@ -194,10 +195,105 @@ class ReportServiceTest extends IntegrationTest {
 	@Test
 	void 시작일이_종료일보다_늦으면_생성할_수_없다() {
 		assertThatThrownBy(() -> reportService.create(groupId, ownerId,
-				new ReportCreateRequest("거꾸로", List.of(ledgerId), END, START)))
+				new ReportCreateRequest(ReportType.BY_PERIOD, "거꾸로", null, null, END, START)))
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
 				.isEqualTo(ErrorCode.INVALID_REQUEST);
+	}
+
+	// --- 유형별 생성 규칙 ---
+
+	@Test
+	void 장부별_보고서는_기간을_받지_않고_담긴_내역의_실제_범위를_기간으로_삼는다() {
+		createEntry(ownerId, EntryType.INCOME, "회비 수입", 1_000_000L, LocalDate.of(2026, 3, 1));
+		createEntry(ownerId, EntryType.EXPENSE, "하반기 지출", 700_000L, LocalDate.of(2026, 9, 15));
+
+		ReportCreateResponse report = createReport("운영 장부 결산", List.of(ledgerId));
+
+		assertThat(report.reportType()).isEqualTo(ReportType.BY_LEDGER);
+		// 기간을 준 적이 없지만 상세 화면이 "기간 YYYY.MM.DD - YYYY.MM.DD" 를 보여 줘야 한다.
+		assertThat(report.startDate()).isEqualTo(LocalDate.of(2026, 3, 1));
+		assertThat(report.endDate()).isEqualTo(LocalDate.of(2026, 9, 15));
+		assertThat(report.summary().entryCount()).isEqualTo(2);
+	}
+
+	@Test
+	void 장부별_보고서는_구분으로_수입만_또는_지출만_담을_수_있다() {
+		createEntry(ownerId, EntryType.INCOME, "회비 수입", 1_000_000L, LocalDate.of(2026, 3, 1));
+		createEntry(ownerId, EntryType.EXPENSE, "대관료", 400_000L, LocalDate.of(2026, 5, 20));
+
+		ReportCreateResponse incomeOnly = reportService.create(groupId, ownerId, new ReportCreateRequest(
+				ReportType.BY_LEDGER, "수입만", List.of(ledgerId), EntryType.INCOME, null, null));
+
+		assertThat(incomeOnly.summary().totalIncome()).isEqualTo(1_000_000L);
+		assertThat(incomeOnly.summary().totalExpense()).isZero();
+		assertThat(incomeOnly.summary().entryCount()).isEqualTo(1);
+	}
+
+	@Test
+	void 장부별_보고서에_장부를_고르지_않으면_거부한다() {
+		assertThatThrownBy(() -> reportService.create(groupId, ownerId,
+				new ReportCreateRequest(ReportType.BY_LEDGER, "장부 없음", List.of(), null, null, null)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.INVALID_REQUEST);
+	}
+
+	@Test
+	void 기간별_보고서는_그_기간에_내역이_있는_장부를_서버가_모은다() {
+		Long otherLedgerId = createLedger(groupId, ownerId, "MT 장부");
+		createEntry(ownerId, EntryType.INCOME, "회비 수입", 1_000_000L, LocalDate.of(2026, 3, 1));
+		entryService.create(otherLedgerId, ownerId, new EntryCreateRequest(EntryType.EXPENSE, "숙소비", 300_000L,
+				LocalDate.of(2026, 4, 1), null, null, null));
+		// 기간 밖에만 내역이 있는 장부는 포함되지 않는다.
+		Long outOfRangeLedgerId = createLedger(groupId, ownerId, "하반기 장부");
+		entryService.create(outOfRangeLedgerId, ownerId, new EntryCreateRequest(EntryType.EXPENSE, "하반기", 100_000L,
+				LocalDate.of(2026, 9, 1), null, null, null));
+
+		ReportCreateResponse report = createPeriodReport("상반기 결산");
+
+		assertThat(report.ledgers()).hasSize(2);
+		assertThat(report.ledgers()).extracting(ReportCreateResponse.LedgerSummary::ledgerName)
+				.containsExactlyInAnyOrder("운영 장부", "MT 장부");
+	}
+
+	@Test
+	void 기간별_보고서는_기간_직전까지의_누적_잔액에서_출발하는_잔액_흐름을_담는다() {
+		// 기간 전에 이미 쌓여 있던 잔액.
+		createEntry(ownerId, EntryType.INCOME, "이월금", 500_000L, LocalDate.of(2025, 12, 20));
+		createEntry(ownerId, EntryType.INCOME, "회비 수입", 1_000_000L, LocalDate.of(2026, 3, 1));
+		createEntry(ownerId, EntryType.EXPENSE, "대관료", 400_000L, LocalDate.of(2026, 5, 20));
+
+		ReportCreateResponse report = createPeriodReport("상반기 결산");
+
+		assertThat(report.summary().openingBalance()).isEqualTo(500_000L);
+		assertThat(report.summary().closingBalance()).isEqualTo(1_100_000L);
+	}
+
+	@Test
+	void 장부별_보고서에는_잔액_흐름이_없다() {
+		createEntry(ownerId, EntryType.INCOME, "회비 수입", 1_000_000L, LocalDate.of(2026, 3, 1));
+
+		ReportCreateResponse report = createReport("운영 장부 결산", List.of(ledgerId));
+
+		assertThat(report.summary().openingBalance()).isNull();
+		assertThat(report.summary().closingBalance()).isNull();
+	}
+
+	@Test
+	void 목록은_유형_탭과_제목_검색으로_거를_수_있다() {
+		createEntry(ownerId, EntryType.INCOME, "회비 수입", 1_000_000L, LocalDate.of(2026, 3, 1));
+		createReport("장부별 결산", List.of(ledgerId));
+		createPeriodReport("기간별 결산");
+
+		var byLedger = reportService.getReports(groupId, ownerId, ReportType.BY_LEDGER, null,
+				PageRequest.of(0, 20));
+		var searched = reportService.getReports(groupId, ownerId, null, "기간별", PageRequest.of(0, 20));
+
+		assertThat(byLedger.content()).singleElement()
+				.satisfies(report -> assertThat(report.title()).isEqualTo("장부별 결산"));
+		assertThat(searched.content()).singleElement()
+				.satisfies(report -> assertThat(report.title()).isEqualTo("기간별 결산"));
 	}
 
 	private Long createLedger(Long groupId, Long userId, String name) {
@@ -211,7 +307,15 @@ class ReportServiceTest extends IntegrationTest {
 				new EntryCreateRequest(type, title, amount, occurredOn, null, null, null));
 	}
 
+	/** 장부별 보고서. 기간을 받지 않으며 담긴 내역의 실제 범위가 기간이 된다. */
 	private ReportCreateResponse createReport(String title, List<Long> ledgerIds) {
-		return reportService.create(groupId, ownerId, new ReportCreateRequest(title, ledgerIds, START, END));
+		return reportService.create(groupId, ownerId,
+				new ReportCreateRequest(ReportType.BY_LEDGER, title, ledgerIds, null, null, null));
+	}
+
+	/** 기간별 보고서. 장부를 받지 않으며 그 기간에 내역이 있는 장부를 서버가 모은다. */
+	private ReportCreateResponse createPeriodReport(String title) {
+		return reportService.create(groupId, ownerId,
+				new ReportCreateRequest(ReportType.BY_PERIOD, title, null, null, START, END));
 	}
 }
