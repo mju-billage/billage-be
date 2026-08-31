@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
+import com.billage.common.response.KoreanTime;
 import com.billage.common.response.PageResponse;
 import com.billage.dues.dto.DuesCloseResponse;
 import com.billage.dues.dto.DuesCreateRequest;
@@ -74,7 +75,7 @@ public class DuesService {
 		String normalizedKeyword = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
 
 		Page<Dues> page = duesRepository.search(groupId, persistedStatus, started, normalizedKeyword,
-				LocalDate.now(), pageable);
+				LocalDate.now(KoreanTime.ZONE), pageable);
 		List<Long> duesIds = page.getContent().stream().map(Dues::getId).toList();
 		Map<Long, Map<PaymentStatus, Long>> counts = duesMemberRepository.countByDues(duesIds);
 		Map<Long, String> ledgerNames = ledgerNamesOf(page.getContent());
@@ -224,7 +225,7 @@ public class DuesService {
 		Long generatedEntryId = null;
 		if (collected > 0) {
 			generatedEntryId = entryRepository.save(Entry.create(ledger, owner, userName(userId), EntryType.INCOME,
-					dues.getTitle(), collected, LocalDate.now(), null)).getId();
+					dues.getTitle(), collected, LocalDate.now(KoreanTime.ZONE), null)).getId();
 		}
 		dues.close(generatedEntryId);
 

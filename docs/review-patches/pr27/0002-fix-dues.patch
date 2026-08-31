@@ -1,0 +1,65 @@
+From bb8f655248038641f05e7aca57cdccddafe054fc Mon Sep 17 00:00:00 2001
+From: Gopistol <rhrjs0131@naver.com>
+Date: Mon, 31 Aug 2026 02:30:13 +0900
+Subject: [PATCH 2/2] =?UTF-8?q?fix(dues):=20=EB=82=A9=EB=B6=80=EC=9E=90=20?=
+ =?UTF-8?q?=EB=AA=85=EB=8B=A8=20=EC=A1=B0=ED=9A=8C=EC=97=90=20=EB=AA=A8?=
+ =?UTF-8?q?=EC=9E=84=20=EC=86=8C=EC=86=8D=20=ED=99=95=EC=9D=B8=20=EC=B6=94?=
+ =?UTF-8?q?=EA=B0=80?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+findPayers 는 duesId 만 받아 소유권을 전혀 보지 않았다. 지금은 호출부(EntryService)가
+내역의 모임을 먼저 확인해 실제 문제는 없지만, entry.dues_id 는 FK 가 없는 스냅샷 값이라
+가리키는 회비가 같은 모임 것이라는 보장이 코드 어디에도 없다. 소유권 검증은 Service
+계층에서 한다는 규칙대로 회비 쪽에서도 모임을 확인한다.
+
+모임이 다르면 회비가 지워진 경우와 같게 Optional.empty() 다 — 화면은 두 경우 모두
+'회비 상세보기' 버튼을 숨긴다.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Lad3SzRZHt5ihy2NZAFERJ
+---
+ src/main/java/com/billage/dues/DuesService.java   | 9 ++++++---
+ src/main/java/com/billage/entry/EntryService.java | 2 +-
+ 2 files changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/src/main/java/com/billage/dues/DuesService.java b/src/main/java/com/billage/dues/DuesService.java
+index 9e942e7..e531150 100644
+--- a/src/main/java/com/billage/dues/DuesService.java
++++ b/src/main/java/com/billage/dues/DuesService.java
+@@ -239,12 +239,15 @@ public class DuesService {
+ 	/**
+ 	 * 마감된 회비의 납부자 명단. 내역 상세(「상세 내역_납부관리_수입내역」)가 쓴다.
+ 	 *
+-	 * <p>회비가 이미 삭제됐으면 {@link Optional#empty()} 다 — 마감 즉시 회비와 내역은 독립된 데이터가
+-	 * 되므로 내역만 남아 있는 상태가 정상이며, 이때 화면은 '회비 상세보기' 버튼을 숨긴다.
++	 * <p>회비가 이미 삭제됐거나 이 모임 것이 아니면 {@link Optional#empty()} 다 — 마감 즉시 회비와
++	 * 내역은 독립된 데이터가 되므로 내역만 남아 있는 상태가 정상이며, 이때 화면은 '회비 상세보기' 버튼을 숨긴다.
+ 	 */
+ 	@Transactional(readOnly = true)
+-	public Optional<List<DuesPayerView>> findPayers(Long duesId) {
++	public Optional<List<DuesPayerView>> findPayers(Long groupId, Long duesId) {
+ 		return duesRepository.findById(duesId)
++				// 호출부가 이미 내역의 모임을 검증했더라도, 회비가 그 모임 것인지는 여기서 확인한다 —
++				// duesId 는 FK 가 없는 스냅샷 값이라 다른 모임의 회비를 가리키게 될 여지를 남기지 않는다.
++				.filter(dues -> dues.getGroupId().equals(groupId))
+ 				.map(dues -> duesMemberRepository.findTargets(duesId, PaymentStatus.PAID, null).stream()
+ 						.map(target -> new DuesPayerView(target.getMember().getId(), target.getMember().getName(),
+ 								dues.getAmount()))
+diff --git a/src/main/java/com/billage/entry/EntryService.java b/src/main/java/com/billage/entry/EntryService.java
+index 81b965a..5096525 100644
+--- a/src/main/java/com/billage/entry/EntryService.java
++++ b/src/main/java/com/billage/entry/EntryService.java
+@@ -127,7 +127,7 @@ public class EntryService {
+ 
+ 		// 마감된 회비가 만든 수입 내역이면 납부자 명단을 함께 보여 준다.
+ 		// 회비가 이미 지워졌으면 명단은 없고 제목만 마감 시점 값으로 남는다.
+-		var payerViews = duesService.findPayers(entry.getDuesId());
++		var payerViews = duesService.findPayers(entry.getGroupId(), entry.getDuesId());
+ 		List<EntryDetailResponse.Payer> payers = payerViews
+ 				.map(views -> views.stream()
+ 						.map(view -> new EntryDetailResponse.Payer(view.memberId(), view.name(), view.amount()))
+-- 
+2.39.2 (Apple Git-143)
+
