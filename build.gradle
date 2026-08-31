@@ -57,3 +57,10 @@ dependencies {
 tasks.named('test') {
 	useJUnitPlatform()
 }
+
+// 배포는 실행 가능한 bootJar 하나만 쓴다. `build` 가 라이브러리용 plain jar 까지 만들면
+// build/libs 에 jar 가 둘이 되어, 배포 스크립트가 어느 쪽을 집는지가 glob 패턴에 좌우된다.
+// 쓰지 않는 산출물이므로 아예 만들지 않는다.
+tasks.named('jar') {
+	enabled = false
+}
