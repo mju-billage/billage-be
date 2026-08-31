@@ -7,6 +7,7 @@ import java.util.List;
 
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
+import com.billage.common.response.KoreanTime;
 import com.billage.member.Member;
 
 import jakarta.persistence.CascadeType;
@@ -113,7 +114,10 @@ public class Dues {
 	 * 화면에 보여 줄 상태. 저장된 {@code status} 는 OPEN|CLOSED 뿐이고, 시작일 전이면 SCHEDULED 로 파생한다.
 	 */
 	public DuesStatus phase() {
-		return DuesStatus.phaseOf(this.status, this.startDate, LocalDate.now());
+		// 서버 타임존이 아니라 업무 기준 시간대(Asia/Seoul)로 오늘을 정한다. UTC 로 뜬 서버에서
+		// LocalDate.now() 를 쓰면 한국 시간 00~09시 사이에 하루 전 날짜가 나와, 오늘 시작하는 회비가
+		// 오전 내내 '납부 예정'으로 보인다.
+		return DuesStatus.phaseOf(this.status, this.startDate, LocalDate.now(KoreanTime.ZONE));
 	}
 
 	/** 시작일 전이면 아직 걷기 시작하지 않았으므로 납부 상태를 바꿀 수 없다. */
