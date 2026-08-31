@@ -1,5 +1,7 @@
 package com.billage.entry;
 
+import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 
 import org.springframework.data.domain.Page;
@@ -17,6 +19,8 @@ import com.billage.entry.dto.EntryDetailResponse;
 import com.billage.entry.dto.EntrySummaryResponse;
 import com.billage.entry.dto.EntryUpdateRequest;
 import com.billage.entry.dto.EntryUpdateResponse;
+import com.billage.entry.dto.GroupEntryListResponse;
+import com.billage.entry.dto.GroupEntrySummaryResponse;
 import com.billage.file.FileService;
 import com.billage.ledger.Ledger;
 import com.billage.ledger.LedgerRepository;
@@ -56,6 +60,38 @@ public class EntryService {
 
 		return PageResponse.of(entries,
 				entry -> EntrySummaryResponse.of(entry, receiptCounts.getOrDefault(entry.getId(), 0L)));
+	}
+
+	/**
+	 * 모임 전체 내역 목록(GNB 「내역」 탭). 장부를 여러 개 고를 수 있고, 검색은 내역명과 <b>장부명</b>을 훑는다.
+	 *
+	 * <p>상단 잔액 카드가 쓸 합계를 함께 낸다. 합계는 페이지가 아니라 <b>조건 전체</b>를 대상으로 하고
+	 * 승인된 내역만 넣으므로, 목록과 같은 결과를 재활용할 수 없어 집계 쿼리를 따로 돌린다.
+	 */
+	@Transactional(readOnly = true)
+	public GroupEntryListResponse getGroupEntries(Long groupId, Long userId, List<Long> ledgerIds, EntryType type,
+			ApprovalStatus status, LocalDate from, LocalDate to, String keyword, Pageable pageable) {
+		guard.requireMembership(groupId, userId);
+
+		// JPQL 의 in 은 빈 컬렉션을 받으면 문법 오류가 난다. '장부 미선택 = 전체'이므로 조건에서 뺀다.
+		List<Long> targetLedgerIds = (ledgerIds == null || ledgerIds.isEmpty()) ? null : ledgerIds;
+		String normalizedKeyword = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
+		if (from != null && to != null && from.isAfter(to)) {
+			throw new BusinessException(ErrorCode.INVALID_QUERY_PARAMETER);
+		}
+
+		Page<Entry> entries = entryRepository.searchInGroup(groupId, targetLedgerIds, type, status,
+				from, to, normalizedKeyword, pageable);
+		Map<Long, Long> receiptCounts = fileService.countReceipts(
+				entries.getContent().stream().map(Entry::getId).toList());
+
+		Map<EntryType, Long> sums = entryRepository.sumApprovedInGroup(groupId, targetLedgerIds, type,
+				from, to, normalizedKeyword);
+		GroupEntryListResponse.Summary summary = GroupEntryListResponse.Summary.of(
+				sums.getOrDefault(EntryType.INCOME, 0L), sums.getOrDefault(EntryType.EXPENSE, 0L));
+
+		return new GroupEntryListResponse(summary, PageResponse.of(entries,
+				entry -> GroupEntrySummaryResponse.of(entry, receiptCounts.getOrDefault(entry.getId(), 0L))));
 	}
 
 	/**

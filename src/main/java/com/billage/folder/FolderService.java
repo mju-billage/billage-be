@@ -14,6 +14,8 @@ import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
 import com.billage.folder.dto.FolderCreateRequest;
 import com.billage.folder.dto.FolderCreateResponse;
+import com.billage.folder.dto.FolderItemListResponse;
+import com.billage.folder.dto.FolderItemResponse;
 import com.billage.folder.dto.FolderTreeResponse;
 import com.billage.folder.dto.FolderUpdateRequest;
 import com.billage.folder.dto.FolderUpdateResponse;
@@ -56,6 +58,42 @@ public class FolderService {
 		return roots.stream()
 				.map(root -> toTree(root, childrenByParent, ledgerCounts))
 				.toList();
+	}
+
+	/**
+	 * 폴더 화면의 한 계층. 폴더와 장부를 <b>한 목록에 섞어</b> 돌려준다.
+	 *
+	 * <p>{@code folderId} 가 null 이면 최상위 영역이다 — 폴더를 해제하면 그 안의 장부가 여기로 올라오는데,
+	 * 폴더 트리와 {@code /folders/{id}/ledgers} 만으로는 이 장부들을 볼 방법이 없었다.
+	 *
+	 * <p>화면이 두 목록을 합치고 개수를 따로 세지 않도록 합산 개수까지 함께 낸다.
+	 * 그리드/리스트 뷰 전환은 클라이언트 표시 설정이라 서버는 관여하지 않는다.
+	 */
+	@Transactional(readOnly = true)
+	public FolderItemListResponse getFolderItems(Long groupId, Long userId, Long folderId, String keyword) {
+		guard.requireMembership(groupId, userId);
+		if (folderId != null) {
+			// 다른 모임의 폴더 ID 로 남의 장부 목록을 들여다볼 수 없게 소속을 확인한다.
+			findFolderInGroup(folderId, groupId);
+		}
+
+		String normalizedKeyword = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
+		Map<Long, Long> childFolderCounts = folderRepository.countByParent(groupId);
+		Map<Long, Long> ledgerCounts = ledgerRepository.countByFolder(groupId);
+
+		List<FolderItemResponse> items = new ArrayList<>();
+		for (Folder folder : folderRepository.findInLevel(groupId, folderId, normalizedKeyword)) {
+			// 화면의 "{N}개의 항목" 은 하위 폴더와 하위 장부를 함께 센 값이다.
+			long childCount = childFolderCounts.getOrDefault(folder.getId(), 0L)
+					+ ledgerCounts.getOrDefault(folder.getId(), 0L);
+			items.add(FolderItemResponse.of(folder, childCount));
+		}
+		// 폴더를 먼저, 그 다음 장부. 각 묶음 안에서는 이름 오름차순(쿼리 정렬 그대로).
+		ledgerRepository.findInLevel(groupId, folderId, normalizedKeyword).stream()
+				.map(FolderItemResponse::of)
+				.forEach(items::add);
+
+		return FolderItemListResponse.of(items);
 	}
 
 	@Transactional

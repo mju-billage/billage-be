@@ -2,6 +2,7 @@ package com.billage.ledger;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,6 +16,7 @@ import com.billage.folder.Folder;
 import com.billage.folder.FolderRepository;
 import com.billage.ledger.dto.BudgetUpdateRequest;
 import com.billage.ledger.dto.BudgetUpdateResponse;
+import com.billage.ledger.dto.GroupLedgerResponse;
 import com.billage.ledger.dto.LedgerCreateRequest;
 import com.billage.ledger.dto.LedgerCreateResponse;
 import com.billage.ledger.dto.LedgerDetailResponse;
@@ -40,8 +42,31 @@ public class LedgerService {
 		Folder folder = findFolder(folderId);
 		guard.requireMembership(folder.getGroup().getId(), userId);
 
-		return ledgerRepository.findAllByFolderId(folderId).stream()
-				.map(ledger -> LedgerSummaryResponse.of(ledger, statsOf(ledger)))
+		List<Ledger> ledgers = ledgerRepository.findAllByFolderId(folderId);
+		Map<Long, LedgerStats> stats = statsOf(ledgers);
+
+		return ledgers.stream()
+				.map(ledger -> LedgerSummaryResponse.of(ledger, stats.get(ledger.getId())))
+				.toList();
+	}
+
+	/**
+	 * 모임의 모든 장부. 폴더 구조와 무관하게 평평한 목록이 필요한 화면들이 쓴다 —
+	 * 예산 설정, 내역 추가·필터·회비 생성의 장부 선택 바텀시트.
+	 *
+	 * <p>폴더 트리를 받아 폴더마다 {@link #getLedgers} 를 부르면 폴더 수만큼 호출이 늘고,
+	 * 무엇보다 <b>최상위 영역으로 올라온 장부가 빠진다</b>.
+	 */
+	@Transactional(readOnly = true)
+	public List<GroupLedgerResponse> getGroupLedgers(Long groupId, Long userId, String keyword) {
+		guard.requireMembership(groupId, userId);
+
+		String normalizedKeyword = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
+		List<Ledger> ledgers = ledgerRepository.findAllInGroup(groupId, normalizedKeyword);
+		Map<Long, LedgerStats> stats = statsOf(ledgers);
+
+		return ledgers.stream()
+				.map(ledger -> GroupLedgerResponse.of(ledger, stats.get(ledger.getId())))
 				.toList();
 	}
 
@@ -125,6 +150,22 @@ public class LedgerService {
 				approvedSums.getOrDefault(EntryType.INCOME, 0L),
 				approvedSums.getOrDefault(EntryType.EXPENSE, 0L),
 				entryRepository.countByLedgerId(ledger.getId()));
+	}
+
+	/**
+	 * 여러 장부의 집계를 한 번에. 장부마다 {@link #statsOf(Ledger)} 를 부르면 장부 수의 두 배만큼
+	 * 쿼리가 나간다(합계 + 건수). 내역이 하나도 없는 장부도 0 으로 채워 돌려준다.
+	 */
+	private Map<Long, LedgerStats> statsOf(List<Ledger> ledgers) {
+		List<Long> ledgerIds = ledgers.stream().map(Ledger::getId).toList();
+		Map<Long, Map<EntryType, Long>> sums = entryRepository.sumApprovedByLedger(ledgerIds);
+		Map<Long, Long> counts = entryRepository.countByLedgers(ledgerIds);
+
+		return ledgerIds.stream().collect(Collectors.toMap(id -> id, id -> {
+			Map<EntryType, Long> sum = sums.getOrDefault(id, Map.of());
+			return new LedgerStats(sum.getOrDefault(EntryType.INCOME, 0L),
+					sum.getOrDefault(EntryType.EXPENSE, 0L), counts.getOrDefault(id, 0L));
+		}));
 	}
 
 	private void validateBudget(Long budget) {
