@@ -1,0 +1,256 @@
+From e5b9acf59023716db99d8f8afb338b1cfc7ba770 Mon Sep 17 00:00:00 2001
+From: Gopistol <rhrjs0131@naver.com>
+Date: Mon, 31 Aug 2026 02:27:20 +0900
+Subject: [PATCH] =?UTF-8?q?fix(dues,dashboard):=20=EB=82=A9=EB=B6=80=20?=
+ =?UTF-8?q?=EC=98=88=EC=A0=95=20=ED=9A=8C=EB=B9=84=EA=B0=80=20=EB=8C=80?=
+ =?UTF-8?q?=EC=8B=9C=EB=B3=B4=EB=93=9C=20=EC=A7=91=EA=B3=84=EC=99=80=20?=
+ =?UTF-8?q?=ED=83=80=EC=9E=84=EC=A1=B4=20=EA=B2=BD=EA=B3=84=EB=A5=BC=20?=
+ =?UTF-8?q?=ED=9D=90=EB=A6=AC=EB=8A=94=20=EB=AC=B8=EC=A0=9C?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+## 대시보드가 아직 시작도 안 한 회비를 '진행 중'으로 셌다
+
+SCHEDULED 는 컬럼에 없고 시작일로 파생하는 값이라, 저장된 status 만 보는 대시보드
+집계에는 납부 예정 회비가 그대로 OPEN 으로 잡혔다. 시작일이 오지 않아 아무도 낼 수
+없는 회비라 대상자 전원이 미납으로 세어져 미납 인원까지 부풀렸다.
+
+- DuesRepository.countByGroupIdAndStatus → countStarted(groupId, today)
+- DuesMemberRepository.countOpenTargetsByGroup 에 시작일 조건 추가
+
+## 상태 경계가 서버 기본 타임존을 따랐다
+
+phase() 와 목록 필터가 LocalDate.now() 를 썼다. 이 저장소는 KoreanTime.ZONE 으로
+한국 시각을 못박아 두는데 TZ 를 고정하는 설정이 어디에도 없어, 서버가 UTC 로 뜨면
+한국 시각 자정~오전 9시 사이에는 '어제'가 오늘이 된다. 시작일이 오늘인 회비가 그
+9시간 동안 납부 예정으로 남아 납부 처리가 DUES_NOT_STARTED 로 막힌다.
+마감이 만드는 수입 내역의 발생일도 하루 밀린다.
+
+LocalDate.now(KoreanTime.ZONE) 으로 고정했다.
+
+테스트 2건 추가(둘 다 수정 전 실패 확인).
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Lad3SzRZHt5ihy2NZAFERJ
+---
+ .../billage/dashboard/DashboardService.java   | 12 ++++----
+ src/main/java/com/billage/dues/Dues.java      |  3 +-
+ .../billage/dues/DuesMemberRepository.java    | 18 +++++++----
+ .../java/com/billage/dues/DuesRepository.java | 16 ++++++++--
+ .../java/com/billage/dues/DuesService.java    |  5 ++--
+ .../com/billage/dues/DuesServiceTest.java     | 30 +++++++++++++++++++
+ 6 files changed, 69 insertions(+), 15 deletions(-)
+
+diff --git a/src/main/java/com/billage/dashboard/DashboardService.java b/src/main/java/com/billage/dashboard/DashboardService.java
+index 8254635..d2a6788 100644
+--- a/src/main/java/com/billage/dashboard/DashboardService.java
++++ b/src/main/java/com/billage/dashboard/DashboardService.java
+@@ -1,5 +1,6 @@
+ package com.billage.dashboard;
+ 
++import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Map;
+ 
+@@ -9,10 +10,10 @@ import org.springframework.transaction.annotation.Transactional;
+ 
+ import com.billage.common.exception.BusinessException;
+ import com.billage.common.exception.ErrorCode;
++import com.billage.common.response.KoreanTime;
+ import com.billage.dashboard.dto.DashboardResponse;
+ import com.billage.dues.DuesMemberRepository;
+ import com.billage.dues.DuesRepository;
+-import com.billage.dues.DuesStatus;
+ import com.billage.dues.PaymentStatus;
+ import com.billage.entry.ApprovalStatus;
+ import com.billage.entry.EntryRepository;
+@@ -59,13 +60,14 @@ public class DashboardService {
+ 						.map(DashboardResponse.RecentEntry::from)
+ 						.toList();
+ 
+-		// 진행 중(OPEN)인 회비만 집계한다 — 마감된 회비는 이미 장부 내역으로 반영돼 있다.
+-		Map<PaymentStatus, Long> duesCounts = duesMemberRepository.countOpenTargetsByGroup(groupId);
++		// 실제로 걷고 있는 회비만 집계한다 — 마감된 회비는 이미 장부 내역으로 반영돼 있고,
++		// 시작일이 오지 않은 '납부 예정' 회비는 아직 아무도 낼 수 없어 미납 인원만 부풀린다.
++		LocalDate today = LocalDate.now(KoreanTime.ZONE);
++		Map<PaymentStatus, Long> duesCounts = duesMemberRepository.countOpenTargetsByGroup(groupId, today);
+ 		long paid = duesCounts.getOrDefault(PaymentStatus.PAID, 0L);
+ 		long unpaid = duesCounts.getOrDefault(PaymentStatus.UNPAID, 0L);
+ 		DashboardResponse.Dues dues = new DashboardResponse.Dues(
+-				duesRepository.countByGroupIdAndStatus(groupId, DuesStatus.OPEN),
+-				paid + unpaid, paid, unpaid);
++				duesRepository.countStarted(groupId, today), paid + unpaid, paid, unpaid);
+ 
+ 		return new DashboardResponse(groupId, summary, approval, dues, recentEntries);
+ 	}
+diff --git a/src/main/java/com/billage/dues/Dues.java b/src/main/java/com/billage/dues/Dues.java
+index 255c00b..550bb53 100644
+--- a/src/main/java/com/billage/dues/Dues.java
++++ b/src/main/java/com/billage/dues/Dues.java
+@@ -7,6 +7,7 @@ import java.util.List;
+ 
+ import com.billage.common.exception.BusinessException;
+ import com.billage.common.exception.ErrorCode;
++import com.billage.common.response.KoreanTime;
+ import com.billage.member.Member;
+ 
+ import jakarta.persistence.CascadeType;
+@@ -113,7 +114,7 @@ public class Dues {
+ 	 * 화면에 보여 줄 상태. 저장된 {@code status} 는 OPEN|CLOSED 뿐이고, 시작일 전이면 SCHEDULED 로 파생한다.
+ 	 */
+ 	public DuesStatus phase() {
+-		return DuesStatus.phaseOf(this.status, this.startDate, LocalDate.now());
++		return DuesStatus.phaseOf(this.status, this.startDate, LocalDate.now(KoreanTime.ZONE));
+ 	}
+ 
+ 	/** 시작일 전이면 아직 걷기 시작하지 않았으므로 납부 상태를 바꿀 수 없다. */
+diff --git a/src/main/java/com/billage/dues/DuesMemberRepository.java b/src/main/java/com/billage/dues/DuesMemberRepository.java
+index ab02410..91f1116 100644
+--- a/src/main/java/com/billage/dues/DuesMemberRepository.java
++++ b/src/main/java/com/billage/dues/DuesMemberRepository.java
+@@ -1,5 +1,6 @@
+ package com.billage.dues;
+ 
++import java.time.LocalDate;
+ import java.util.Collection;
+ import java.util.List;
+ import java.util.Map;
+@@ -43,17 +44,24 @@ public interface DuesMemberRepository extends JpaRepository<DuesMember, Long> {
+ 			@Param("status") PaymentStatus status,
+ 			@Param("keyword") String keyword);
+ 
+-	/** 대시보드용. 진행 중(OPEN) 회비의 납부 상태별 인원을 모임 단위로 센다. */
++	/**
++	 * 대시보드용. <b>실제로 걷고 있는</b> 회비의 납부 상태별 인원을 모임 단위로 센다.
++	 *
++	 * <p>시작일이 아직 오지 않은 '납부 예정' 회비는 아무도 낼 수 없으므로 전원이 미납으로 잡힌다.
++	 * 그대로 세면 대시보드 미납 인원이 부풀려지므로 시작일 조건을 함께 건다.
++	 */
+ 	@Query("""
+ 			select dm.status, count(dm.id)
+ 			from DuesMember dm
+-			where dm.dues.groupId = :groupId and dm.dues.status = com.billage.dues.DuesStatus.OPEN
++			where dm.dues.groupId = :groupId
++			  and dm.dues.status = com.billage.dues.DuesStatus.OPEN
++			  and dm.dues.startDate <= :today
+ 			group by dm.status
+ 			""")
+-	List<Object[]> countOpenTargetsByGroupRaw(@Param("groupId") Long groupId);
++	List<Object[]> countOpenTargetsByGroupRaw(@Param("groupId") Long groupId, @Param("today") LocalDate today);
+ 
+-	default Map<PaymentStatus, Long> countOpenTargetsByGroup(Long groupId) {
+-		return countOpenTargetsByGroupRaw(groupId).stream()
++	default Map<PaymentStatus, Long> countOpenTargetsByGroup(Long groupId, LocalDate today) {
++		return countOpenTargetsByGroupRaw(groupId, today).stream()
+ 				.collect(Collectors.toMap(row -> (PaymentStatus) row[0], row -> (Long) row[1]));
+ 	}
+ 
+diff --git a/src/main/java/com/billage/dues/DuesRepository.java b/src/main/java/com/billage/dues/DuesRepository.java
+index 2365b5c..e984d58 100644
+--- a/src/main/java/com/billage/dues/DuesRepository.java
++++ b/src/main/java/com/billage/dues/DuesRepository.java
+@@ -46,8 +46,20 @@ public interface DuesRepository extends JpaRepository<Dues, Long> {
+ 			@Param("started") Boolean started, @Param("keyword") String keyword,
+ 			@Param("today") LocalDate today, Pageable pageable);
+ 
+-	/** 대시보드용. 진행 중인 회비 수. */
+-	long countByGroupIdAndStatus(Long groupId, DuesStatus status);
++	/**
++	 * 대시보드용. <b>실제로 걷고 있는</b> 회비 수.
++	 *
++	 * <p>저장된 {@code status} 만 보면 아직 시작일이 오지 않은 '납부 예정' 회비까지 세어 버린다 —
++	 * SCHEDULED 는 컬럼에 없고 시작일로 파생하는 값이기 때문이다({@link DuesStatus}).
++	 * 대시보드가 말하는 '진행 중'은 화면의 진행 중 탭과 같은 뜻이라 시작일 조건을 함께 건다.
++	 */
++	@Query("""
++			select count(d.id) from Dues d
++			where d.groupId = :groupId
++			  and d.status = com.billage.dues.DuesStatus.OPEN
++			  and d.startDate <= :today
++			""")
++	long countStarted(@Param("groupId") Long groupId, @Param("today") LocalDate today);
+ 
+ 	/** 모임 삭제용. 대상자(dues_member)는 cascade + orphanRemoval 로 함께 지워진다. */
+ 	List<Dues> findAllByGroupId(Long groupId);
+diff --git a/src/main/java/com/billage/dues/DuesService.java b/src/main/java/com/billage/dues/DuesService.java
+index e5ea4db..8eaac14 100644
+--- a/src/main/java/com/billage/dues/DuesService.java
++++ b/src/main/java/com/billage/dues/DuesService.java
+@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
+ 
+ import com.billage.common.exception.BusinessException;
+ import com.billage.common.exception.ErrorCode;
++import com.billage.common.response.KoreanTime;
+ import com.billage.common.response.PageResponse;
+ import com.billage.dues.dto.DuesCloseResponse;
+ import com.billage.dues.dto.DuesCreateRequest;
+@@ -74,7 +75,7 @@ public class DuesService {
+ 		String normalizedKeyword = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
+ 
+ 		Page<Dues> page = duesRepository.search(groupId, persistedStatus, started, normalizedKeyword,
+-				LocalDate.now(), pageable);
++				LocalDate.now(KoreanTime.ZONE), pageable);
+ 		List<Long> duesIds = page.getContent().stream().map(Dues::getId).toList();
+ 		Map<Long, Map<PaymentStatus, Long>> counts = duesMemberRepository.countByDues(duesIds);
+ 		Map<Long, String> ledgerNames = ledgerNamesOf(page.getContent());
+@@ -224,7 +225,7 @@ public class DuesService {
+ 		Long generatedEntryId = null;
+ 		if (collected > 0) {
+ 			generatedEntryId = entryRepository.save(Entry.create(ledger, owner, userName(userId), EntryType.INCOME,
+-					dues.getTitle(), collected, LocalDate.now(), null)).getId();
++					dues.getTitle(), collected, LocalDate.now(KoreanTime.ZONE), null)).getId();
+ 		}
+ 		dues.close(generatedEntryId);
+ 
+diff --git a/src/test/java/com/billage/dues/DuesServiceTest.java b/src/test/java/com/billage/dues/DuesServiceTest.java
+index c701a20..f20f936 100644
+--- a/src/test/java/com/billage/dues/DuesServiceTest.java
++++ b/src/test/java/com/billage/dues/DuesServiceTest.java
+@@ -14,6 +14,7 @@ import org.springframework.data.domain.PageRequest;
+ 
+ import com.billage.common.exception.BusinessException;
+ import com.billage.common.exception.ErrorCode;
++import com.billage.common.response.KoreanTime;
+ import com.billage.dues.dto.DuesCloseResponse;
+ import com.billage.dues.dto.DuesCreateRequest;
+ import com.billage.dues.dto.DuesUpdateRequest;
+@@ -489,6 +490,35 @@ class DuesServiceTest extends IntegrationTest {
+ 				});
+ 	}
+ 
++	@Test
++	void 회비_상태_경계는_서버_기본_타임존이_아니라_한국_시각을_따른다() {
++		// 서버가 UTC 로 떠 있으면 한국 시각 자정~오전 9시 사이에는 LocalDate.now() 가 '어제'다.
++		// 그 사이에 시작일이 오늘인 회비가 '납부 예정'으로 남아 납부 처리가 막히면 안 된다.
++		LocalDate todayInKorea = LocalDate.now(KoreanTime.ZONE);
++		Long duesId = duesService.create(groupId, ownerId, new DuesCreateRequest("오늘 시작 회비", 30_000L,
++				todayInKorea, todayInKorea.plusDays(30), List.of(member1), ledgerId)).duesId();
++
++		assertThat(duesService.getDetail(duesId, ownerId).status()).isEqualTo(DuesStatus.OPEN);
++		pay(duesId, member1);
++		assertThat(duesService.getDetail(duesId, ownerId).paidCount()).isEqualTo(1);
++	}
++
++	// --- 대시보드 집계 ---
++
++	@Test
++	void 대시보드의_진행_중_회비는_아직_시작하지_않은_회비를_세지_않는다() {
++		// 시작일이 미래라 화면에서는 '납부 예정'인 회비. 저장된 status 는 OPEN 이다.
++		duesService.create(groupId, ownerId, new DuesCreateRequest("다음 학기 회비", 30_000L,
++				LocalDate.now().plusDays(3), LocalDate.now().plusDays(30), List.of(member1, member2), ledgerId));
++
++		var dues = dashboardService.getDashboard(groupId, ownerId, 5).dues();
++
++		// 아직 걷기 시작도 안 한 회비이므로 '진행 중'에도, 납부 현황에도 들어가면 안 된다.
++		assertThat(dues.activeDuesCount()).isZero();
++		assertThat(dues.totalTargetCount()).isZero();
++		assertThat(dues.unpaidCount()).isZero();
++	}
++
+ 	private DuesCreateRequest createRequest(List<Long> memberIds) {
+ 		return new DuesCreateRequest("2학기 회비", 30_000L, LocalDate.now(), LocalDate.of(2026, 9, 30), memberIds,
+ 				ledgerId);
+-- 
+2.39.2 (Apple Git-143)
+

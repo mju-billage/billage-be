@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
+import com.billage.common.response.KoreanTime;
 import com.billage.common.response.PageResponse;
 import com.billage.dues.dto.DuesCloseResponse;
 import com.billage.dues.dto.DuesCreateRequest;
@@ -75,7 +76,7 @@ public class DuesService {
 		String normalizedKeyword = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
 
 		Page<Dues> page = duesRepository.search(groupId, persistedStatus, started, normalizedKeyword,
-				LocalDate.now(), pageable);
+				LocalDate.now(KoreanTime.ZONE), pageable);
 		List<Long> duesIds = page.getContent().stream().map(Dues::getId).toList();
 		Map<Long, Map<PaymentStatus, Long>> counts = duesMemberRepository.countByDues(duesIds);
 		Map<Long, String> ledgerNames = ledgerNamesOf(page.getContent());
@@ -225,7 +226,7 @@ public class DuesService {
 		Long generatedEntryId = null;
 		if (collected > 0) {
 			Entry entry = entryRepository.save(Entry.create(ledger, owner, userName(userId), EntryType.INCOME,
-					dues.getTitle(), collected, LocalDate.now(), null));
+					dues.getTitle(), collected, LocalDate.now(KoreanTime.ZONE), null));
 			// 내역 쪽에도 회비를 표시해 둔다. 목록의 납부관리 아이콘과 상세 화면 분기가 이 값을 본다.
 			entry.linkDues(dues.getId(), dues.getTitle());
 			generatedEntryId = entry.getId();
