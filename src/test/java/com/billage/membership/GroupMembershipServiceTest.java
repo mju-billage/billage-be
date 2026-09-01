@@ -239,6 +239,18 @@ class GroupMembershipServiceTest extends IntegrationTest {
 	}
 
 	@Test
+	void 유효한_코드가_없으면_일반_관리자는_발급하지_못한다() {
+		joinWithInvitation(adminId);
+		groupInvitationRepository.deleteAll();
+
+		assertThatThrownBy(() -> groupMembershipService.currentInvitation(groupId, adminId))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.INVITATION_NOT_FOUND);
+		assertThat(groupInvitationRepository.count()).isZero();
+	}
+
+	@Test
 	void 기존_코드가_만료됐으면_새_코드를_발급한다() {
 		GroupSpace expiredGroup = groupSpaceRepository.findById(groupId).orElseThrow();
 		groupInvitationRepository.save(GroupInvitation.issue(expiredGroup, "OLDCODE123", ownerId,

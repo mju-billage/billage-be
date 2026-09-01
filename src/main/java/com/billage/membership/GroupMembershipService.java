@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
 import com.billage.group.GroupSpace;
+import com.billage.group.GroupSpaceRepository;
 import com.billage.membership.dto.InvitationResponse;
 import com.billage.membership.dto.JoinGroupResponse;
 import com.billage.membership.dto.MembershipResponse;
@@ -41,6 +42,7 @@ public class GroupMembershipService {
 
 	private final GroupMembershipRepository groupMembershipRepository;
 	private final GroupInvitationRepository groupInvitationRepository;
+	private final GroupSpaceRepository groupSpaceRepository;
 	private final UserRepository userRepository;
 	private final GroupAccessGuard guard;
 
@@ -68,13 +70,22 @@ public class GroupMembershipService {
 	 */
 	@Transactional
 	public InvitationResponse createInvitation(Long groupId, Long userId) {
-		GroupSpace group = guard.requireOwner(groupId, userId).getGroup();
-		return issueIfAbsent(group, userId);
+		guard.requireOwner(groupId, userId);
+		return issueIfAbsent(groupId, userId);
 	}
 
-	private InvitationResponse issueIfAbsent(GroupSpace group, Long userId) {
+	/**
+	 * 유효한 코드가 없을 때만 새로 만든다.
+	 *
+	 * <p>모임 행을 먼저 잠근다 — 잠그지 않으면 두 요청이 동시에 "코드 없음"을 읽고 각자 코드를 만들어
+	 * 멱등성이 깨진다(앱이 화면 진입마다 부르므로 실제로 겹칠 수 있다).
+	 */
+	private InvitationResponse issueIfAbsent(Long groupId, Long userId) {
+		GroupSpace group = groupSpaceRepository.findByIdForUpdate(groupId)
+				.orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
+
 		return groupInvitationRepository
-				.findFirstByGroupIdAndExpiresAtAfterOrderByExpiresAtDesc(group.getId(), LocalDateTime.now())
+				.findFirstByGroupIdAndExpiresAtAfterOrderByExpiresAtDesc(groupId, LocalDateTime.now())
 				.map(InvitationResponse::from)
 				.orElseGet(() -> {
 					GroupInvitation issued = GroupInvitation.issue(group, generateUniqueCode(), userId,
@@ -84,13 +95,25 @@ public class GroupMembershipService {
 	}
 
 	/**
-	 * 현재 초대 코드 조회. 유효한 코드가 있으면 그것을, 없거나 만료됐으면 새로 만들어 돌려준다
-	 * (노션 명세 7번). 화면에 "코드 생성" 버튼이 따로 없어 조회와 발급을 나눌 수 없다.
+	 * 현재 초대 코드 조회. 유효한 코드가 있으면 그대로 돌려준다.
+	 *
+	 * <p>코드가 없을 때 <b>새로 만드는 것은 총무만</b>이다 — 화면에 발급 버튼이 없어 조회와 발급을
+	 * 한 API 로 합쳤지만, 그렇다고 일반 관리자에게 발급 권한이 생기면 안 된다(발급은 {@code OWNER} 전용).
+	 * 일반 관리자가 코드 없는 상태에서 부르면 {@code INVITATION_NOT_FOUND} 로 응답한다.
 	 */
 	@Transactional
 	public InvitationResponse currentInvitation(Long groupId, Long userId) {
-		GroupSpace group = guard.requireMembership(groupId, userId).getGroup();
-		return issueIfAbsent(group, userId);
+		GroupMembership me = guard.requireMembership(groupId, userId);
+
+		return groupInvitationRepository
+				.findFirstByGroupIdAndExpiresAtAfterOrderByExpiresAtDesc(groupId, LocalDateTime.now())
+				.map(InvitationResponse::from)
+				.orElseGet(() -> {
+					if (!me.isOwner()) {
+						throw new BusinessException(ErrorCode.INVITATION_NOT_FOUND);
+					}
+					return issueIfAbsent(groupId, userId);
+				});
 	}
 
 	/**

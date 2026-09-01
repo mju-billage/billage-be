@@ -39,6 +39,7 @@ public enum ErrorCode {
 	ALREADY_GROUP_MEMBER("ALREADY_GROUP_MEMBER", HttpStatus.CONFLICT, "이미 참여 중인 모임입니다."),
 	INVALID_INVITATION_CODE("INVALID_INVITATION_CODE", HttpStatus.BAD_REQUEST, "초대 코드가 올바르지 않습니다."),
 	INVITATION_EXPIRED("INVITATION_EXPIRED", HttpStatus.GONE, "만료된 초대 코드입니다."),
+	INVITATION_NOT_FOUND("INVITATION_NOT_FOUND", HttpStatus.NOT_FOUND, "유효한 초대 코드가 없습니다."),
 
 	// 폴더·장부
 	FOLDER_NOT_FOUND("FOLDER_NOT_FOUND", HttpStatus.NOT_FOUND, "폴더를 찾을 수 없습니다."),
