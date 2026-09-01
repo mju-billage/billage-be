@@ -18,7 +18,6 @@ import com.billage.membership.dto.InvitationResponse;
 import com.billage.membership.dto.JoinGroupResponse;
 import com.billage.membership.dto.MembershipResponse;
 import com.billage.membership.dto.RoleUpdateRequest;
-import com.billage.membership.dto.RoleUpdateResponse;
 import com.billage.user.User;
 import com.billage.user.UserRepository;
 
@@ -57,13 +56,41 @@ public class GroupMembershipService {
 				.toList();
 	}
 
+	/**
+	 * 초대 코드 발급. <b>유효한 코드가 이미 있으면 그것을 그대로 돌려준다</b>(멱등).
+	 *
+	 * <p>화면(ETC-2-PAGE-03-0)에는 발급 버튼이 없고 코드가 상시 표시된다 — 즉 "진입하면 코드가 이미 있다"가
+	 * 전제라 클라이언트가 화면을 열 때마다 이 API 를 부른다. 호출마다 새 코드를 만들면 앱을 껐다 켤 때마다
+	 * 코드가 쌓이고, 사용자가 이미 공유해 둔 코드가 살아 있는지도 알 수 없게 된다.
+	 *
+	 * <p>기존 코드를 무효화하지는 않는다 — 이미 여러 명에게 공유됐을 수 있고, 코드는 만료 전까지
+	 * 여러 번 쓸 수 있는 값이다({@link GroupInvitation}).
+	 */
 	@Transactional
 	public InvitationResponse createInvitation(Long groupId, Long userId) {
 		GroupSpace group = guard.requireOwner(groupId, userId).getGroup();
-		GroupInvitation invitation = GroupInvitation.issue(group, generateUniqueCode(), userId,
-				LocalDateTime.now().plus(INVITATION_VALIDITY));
+		return issueIfAbsent(group, userId);
+	}
 
-		return InvitationResponse.from(groupInvitationRepository.save(invitation));
+	private InvitationResponse issueIfAbsent(GroupSpace group, Long userId) {
+		return groupInvitationRepository
+				.findFirstByGroupIdAndExpiresAtAfterOrderByExpiresAtDesc(group.getId(), LocalDateTime.now())
+				.map(InvitationResponse::from)
+				.orElseGet(() -> {
+					GroupInvitation issued = GroupInvitation.issue(group, generateUniqueCode(), userId,
+							LocalDateTime.now().plus(INVITATION_VALIDITY));
+					return InvitationResponse.from(groupInvitationRepository.save(issued));
+				});
+	}
+
+	/**
+	 * 현재 초대 코드 조회. 유효한 코드가 있으면 그것을, 없거나 만료됐으면 새로 만들어 돌려준다
+	 * (노션 명세 7번). 화면에 "코드 생성" 버튼이 따로 없어 조회와 발급을 나눌 수 없다.
+	 */
+	@Transactional
+	public InvitationResponse currentInvitation(Long groupId, Long userId) {
+		GroupSpace group = guard.requireMembership(groupId, userId).getGroup();
+		return issueIfAbsent(group, userId);
 	}
 
 	/**
@@ -96,7 +123,7 @@ public class GroupMembershipService {
 	 * 관리자 권한 수정. 마지막 총무의 권한은 해제할 수 없다.
 	 */
 	@Transactional
-	public RoleUpdateResponse changeRole(Long groupId, Long userId, Long membershipId, RoleUpdateRequest request) {
+	public MembershipResponse changeRole(Long groupId, Long userId, Long membershipId, RoleUpdateRequest request) {
 		guard.requireOwner(groupId, userId);
 		GroupRole newRole = request.toGroupRole();
 
@@ -107,7 +134,9 @@ public class GroupMembershipService {
 		}
 		target.changeRole(newRole);
 
-		return RoleUpdateResponse.of(target, userName(target.getUserId()));
+		// 목록 조회와 같은 형태로 돌려준다 — 클라이언트가 응답으로 목록 캐시를 갱신하므로
+		// 필드가 좁으면 email·joinedAt 이 지워진다.
+		return MembershipResponse.of(target, userRepository.findById(target.getUserId()).orElse(null));
 	}
 
 	/**
@@ -158,11 +187,6 @@ public class GroupMembershipService {
 		List<Long> userIds = memberships.stream().map(GroupMembership::getUserId).toList();
 		return userRepository.findAllById(userIds).stream()
 				.collect(Collectors.toMap(User::getId, user -> user));
-	}
-
-	private String userName(Long userId) {
-		return userRepository.findById(userId).map(User::getName)
-				.orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
 	}
 
 	private String generateUniqueCode() {

@@ -107,13 +107,21 @@ public class FileService {
 		fileStorage.delete(file.getStorageKey());
 	}
 
+	/** 내역 하나에 붙일 수 있는 증빙 장수. 화면의 증빙 자료 카운터가 {@code 0/10} 이다. */
+	static final int MAX_RECEIPTS = 10;
+
 	/**
 	 * 증빙 파일을 내역에 연결한다. 업로더 본인의 RECEIPT 파일이면서 아직 연결되지 않은 것만 허용한다.
+	 * 이미 붙어 있는 증빙까지 합쳐 {@value #MAX_RECEIPTS} 장을 넘길 수 없다.
 	 */
 	@Transactional
 	public void linkReceipts(Entry entry, List<Long> fileIds, Long userId) {
 		if (fileIds == null || fileIds.isEmpty()) {
 			return;
+		}
+		if (fileRepository.countByEntryId(entry.getId()) + fileIds.size() > MAX_RECEIPTS) {
+			throw new BusinessException(ErrorCode.INVALID_REQUEST,
+					"증빙 자료는 최대 " + MAX_RECEIPTS + "장까지 첨부할 수 있습니다.");
 		}
 		for (Long fileId : fileIds) {
 			UploadedFile file = fileRepository.findById(fileId)

@@ -58,6 +58,9 @@ public interface FileRepository extends JpaRepository<UploadedFile, Long> {
 	@Query("select f from UploadedFile f where f.entry.id = :entryId order by f.id asc")
 	List<UploadedFile> findByEntryId(@Param("entryId") Long entryId);
 
+	@Query("select count(f.id) from UploadedFile f where f.entry.id = :entryId")
+	long countByEntryId(@Param("entryId") Long entryId);
+
 	@Query("select f.entry.id, count(f.id) from UploadedFile f where f.entry.id in :entryIds group by f.entry.id")
 	List<Object[]> countByEntryIdsRaw(@Param("entryIds") List<Long> entryIds);
 
