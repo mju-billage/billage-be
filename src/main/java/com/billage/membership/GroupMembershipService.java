@@ -84,8 +84,9 @@ public class GroupMembershipService {
 		GroupSpace group = groupSpaceRepository.findByIdForUpdate(groupId)
 				.orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
 
-		return groupInvitationRepository
-				.findFirstByGroupIdAndExpiresAtAfterOrderByExpiresAtDesc(groupId, LocalDateTime.now())
+		// 잠금 읽기여야 한다 — 일반 읽기는 스냅샷을 보므로 먼저 들어온 요청이 만든 코드를 놓친다.
+		return groupInvitationRepository.findValidForUpdate(groupId, LocalDateTime.now()).stream()
+				.findFirst()
 				.map(InvitationResponse::from)
 				.orElseGet(() -> {
 					GroupInvitation issued = GroupInvitation.issue(group, generateUniqueCode(), userId,
