@@ -22,6 +22,7 @@ import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
 import com.billage.common.response.PageResponse;
 import com.billage.entry.Entry;
+import com.billage.entry.EntryRepository;
 import com.billage.entry.EntryType;
 import com.billage.file.dto.FileResponse;
 import com.billage.file.dto.ReceiptAlbumItemResponse;
@@ -45,6 +46,7 @@ public class FileService {
 	private static final DateTimeFormatter KEY_DATE = DateTimeFormatter.ofPattern("yyyy/MM/dd");
 
 	private final FileRepository fileRepository;
+	private final EntryRepository entryRepository;
 	private final FileStorage fileStorage;
 	private final FileProperties properties;
 	private final FileUrlResolver fileUrlResolver;
@@ -119,7 +121,9 @@ public class FileService {
 		if (fileIds == null || fileIds.isEmpty()) {
 			return;
 		}
-		if (fileRepository.countByEntryId(entry.getId()) + fileIds.size() > MAX_RECEIPTS) {
+		// 내역 행을 먼저 잠가 "세고 나서 붙이는" 사이에 다른 요청이 끼어들지 못하게 한다.
+		entryRepository.findByIdForUpdate(entry.getId());
+		if (fileRepository.findByEntryIdForUpdate(entry.getId()).size() + fileIds.size() > MAX_RECEIPTS) {
 			throw new BusinessException(ErrorCode.INVALID_REQUEST,
 					"증빙 자료는 최대 " + MAX_RECEIPTS + "장까지 첨부할 수 있습니다.");
 		}
