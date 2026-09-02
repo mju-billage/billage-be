@@ -5,6 +5,7 @@ import java.util.Collection;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Optional;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -12,10 +13,21 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import jakarta.persistence.LockModeType;
+
 public interface EntryRepository extends JpaRepository<Entry, Long> {
+
+	/**
+	 * 내역 행을 잠그고 가져온다. 증빙 상한처럼 "현재 상태를 세고 나서 바꾸는" 작업을
+	 * 내역 단위로 직렬화할 때 쓴다.
+	 */
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select e from Entry e where e.id = :entryId")
+	Optional<Entry> findByIdForUpdate(@Param("entryId") Long entryId);
 
 	/**
 	 * 장부의 내역 목록. type·status·keyword 는 선택값이며 null 이면 조건에서 제외된다.

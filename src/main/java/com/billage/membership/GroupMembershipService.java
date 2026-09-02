@@ -14,11 +14,11 @@ import org.springframework.transaction.annotation.Transactional;
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
 import com.billage.group.GroupSpace;
+import com.billage.group.GroupSpaceRepository;
 import com.billage.membership.dto.InvitationResponse;
 import com.billage.membership.dto.JoinGroupResponse;
 import com.billage.membership.dto.MembershipResponse;
 import com.billage.membership.dto.RoleUpdateRequest;
-import com.billage.membership.dto.RoleUpdateResponse;
 import com.billage.user.User;
 import com.billage.user.UserRepository;
 
@@ -42,6 +42,7 @@ public class GroupMembershipService {
 
 	private final GroupMembershipRepository groupMembershipRepository;
 	private final GroupInvitationRepository groupInvitationRepository;
+	private final GroupSpaceRepository groupSpaceRepository;
 	private final UserRepository userRepository;
 	private final GroupAccessGuard guard;
 
@@ -57,13 +58,63 @@ public class GroupMembershipService {
 				.toList();
 	}
 
+	/**
+	 * 초대 코드 발급. <b>유효한 코드가 이미 있으면 그것을 그대로 돌려준다</b>(멱등).
+	 *
+	 * <p>화면(ETC-2-PAGE-03-0)에는 발급 버튼이 없고 코드가 상시 표시된다 — 즉 "진입하면 코드가 이미 있다"가
+	 * 전제라 클라이언트가 화면을 열 때마다 이 API 를 부른다. 호출마다 새 코드를 만들면 앱을 껐다 켤 때마다
+	 * 코드가 쌓이고, 사용자가 이미 공유해 둔 코드가 살아 있는지도 알 수 없게 된다.
+	 *
+	 * <p>기존 코드를 무효화하지는 않는다 — 이미 여러 명에게 공유됐을 수 있고, 코드는 만료 전까지
+	 * 여러 번 쓸 수 있는 값이다({@link GroupInvitation}).
+	 */
 	@Transactional
 	public InvitationResponse createInvitation(Long groupId, Long userId) {
-		GroupSpace group = guard.requireOwner(groupId, userId).getGroup();
-		GroupInvitation invitation = GroupInvitation.issue(group, generateUniqueCode(), userId,
-				LocalDateTime.now().plus(INVITATION_VALIDITY));
+		guard.requireOwner(groupId, userId);
+		return issueIfAbsent(groupId, userId);
+	}
 
-		return InvitationResponse.from(groupInvitationRepository.save(invitation));
+	/**
+	 * 유효한 코드가 없을 때만 새로 만든다.
+	 *
+	 * <p>모임 행을 먼저 잠근다 — 잠그지 않으면 두 요청이 동시에 "코드 없음"을 읽고 각자 코드를 만들어
+	 * 멱등성이 깨진다(앱이 화면 진입마다 부르므로 실제로 겹칠 수 있다).
+	 */
+	private InvitationResponse issueIfAbsent(Long groupId, Long userId) {
+		GroupSpace group = groupSpaceRepository.findByIdForUpdate(groupId)
+				.orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
+
+		// 잠금 읽기여야 한다 — 일반 읽기는 스냅샷을 보므로 먼저 들어온 요청이 만든 코드를 놓친다.
+		return groupInvitationRepository.findValidForUpdate(groupId, LocalDateTime.now()).stream()
+				.findFirst()
+				.map(InvitationResponse::from)
+				.orElseGet(() -> {
+					GroupInvitation issued = GroupInvitation.issue(group, generateUniqueCode(), userId,
+							LocalDateTime.now().plus(INVITATION_VALIDITY));
+					return InvitationResponse.from(groupInvitationRepository.save(issued));
+				});
+	}
+
+	/**
+	 * 현재 초대 코드 조회. 유효한 코드가 있으면 그대로 돌려준다.
+	 *
+	 * <p>코드가 없을 때 <b>새로 만드는 것은 총무만</b>이다 — 화면에 발급 버튼이 없어 조회와 발급을
+	 * 한 API 로 합쳤지만, 그렇다고 일반 관리자에게 발급 권한이 생기면 안 된다(발급은 {@code OWNER} 전용).
+	 * 일반 관리자가 코드 없는 상태에서 부르면 {@code INVITATION_NOT_FOUND} 로 응답한다.
+	 */
+	@Transactional
+	public InvitationResponse currentInvitation(Long groupId, Long userId) {
+		GroupMembership me = guard.requireMembership(groupId, userId);
+
+		return groupInvitationRepository
+				.findFirstByGroupIdAndExpiresAtAfterOrderByExpiresAtDesc(groupId, LocalDateTime.now())
+				.map(InvitationResponse::from)
+				.orElseGet(() -> {
+					if (!me.isOwner()) {
+						throw new BusinessException(ErrorCode.INVITATION_NOT_FOUND);
+					}
+					return issueIfAbsent(groupId, userId);
+				});
 	}
 
 	/**
@@ -96,7 +147,7 @@ public class GroupMembershipService {
 	 * 관리자 권한 수정. 마지막 총무의 권한은 해제할 수 없다.
 	 */
 	@Transactional
-	public RoleUpdateResponse changeRole(Long groupId, Long userId, Long membershipId, RoleUpdateRequest request) {
+	public MembershipResponse changeRole(Long groupId, Long userId, Long membershipId, RoleUpdateRequest request) {
 		guard.requireOwner(groupId, userId);
 		GroupRole newRole = request.toGroupRole();
 
@@ -107,7 +158,9 @@ public class GroupMembershipService {
 		}
 		target.changeRole(newRole);
 
-		return RoleUpdateResponse.of(target, userName(target.getUserId()));
+		// 목록 조회와 같은 형태로 돌려준다 — 클라이언트가 응답으로 목록 캐시를 갱신하므로
+		// 필드가 좁으면 email·joinedAt 이 지워진다.
+		return MembershipResponse.of(target, userRepository.findById(target.getUserId()).orElse(null));
 	}
 
 	/**
@@ -158,11 +211,6 @@ public class GroupMembershipService {
 		List<Long> userIds = memberships.stream().map(GroupMembership::getUserId).toList();
 		return userRepository.findAllById(userIds).stream()
 				.collect(Collectors.toMap(User::getId, user -> user));
-	}
-
-	private String userName(Long userId) {
-		return userRepository.findById(userId).map(User::getName)
-				.orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
 	}
 
 	private String generateUniqueCode() {

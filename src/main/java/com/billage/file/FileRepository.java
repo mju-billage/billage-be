@@ -8,9 +8,12 @@ import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+
+import jakarta.persistence.LockModeType;
 
 import com.billage.entry.EntryType;
 
@@ -57,6 +60,14 @@ public interface FileRepository extends JpaRepository<UploadedFile, Long> {
 
 	@Query("select f from UploadedFile f where f.entry.id = :entryId order by f.id asc")
 	List<UploadedFile> findByEntryId(@Param("entryId") Long entryId);
+
+	/**
+	 * 증빙 상한 검사용 <b>잠금 읽기</b>. 일반 읽기는 트랜잭션 스냅샷을 보므로 동시 요청이 서로의
+	 * 증빙을 세지 못해 10장을 넘길 수 있다({@code GroupInvitationRepository.findValidForUpdate} 와 같은 이유).
+	 */
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select f from UploadedFile f where f.entry.id = :entryId")
+	List<UploadedFile> findByEntryIdForUpdate(@Param("entryId") Long entryId);
 
 	@Query("select f.entry.id, count(f.id) from UploadedFile f where f.entry.id in :entryIds group by f.entry.id")
 	List<Object[]> countByEntryIdsRaw(@Param("entryIds") List<Long> entryIds);

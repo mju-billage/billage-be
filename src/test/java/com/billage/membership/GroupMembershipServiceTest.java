@@ -126,6 +126,19 @@ class GroupMembershipServiceTest extends IntegrationTest {
 	}
 
 	@Test
+	void 권한_수정_응답은_목록과_같은_형태다() {
+		joinWithInvitation(adminId);
+
+		var response = groupMembershipService.changeRole(groupId, ownerId, membershipIdOf(adminId),
+				new RoleUpdateRequest("OWNER"));
+
+		// 클라이언트가 이 응답으로 목록 캐시를 갱신하므로 email·joinedAt 이 빠지면 안 된다.
+		assertThat(response.role()).isEqualTo(GroupRole.OWNER);
+		assertThat(response.email()).isNotNull();
+		assertThat(response.joinedAt()).isNotNull();
+	}
+
+	@Test
 	void 마지막_총무는_탈퇴할_수_없다() {
 		assertThatThrownBy(() -> groupMembershipService.leave(groupId, ownerId))
 				.isInstanceOf(BusinessException.class)
@@ -205,6 +218,48 @@ class GroupMembershipServiceTest extends IntegrationTest {
 	}
 
 	// --- 초대 코드 ---
+
+	@Test
+	void 유효한_코드가_있으면_재발급하지_않고_같은_코드를_준다() {
+		var first = groupMembershipService.createInvitation(groupId, ownerId);
+		var second = groupMembershipService.createInvitation(groupId, ownerId);
+
+		assertThat(second.invitationCode()).isEqualTo(first.invitationCode());
+		assertThat(groupInvitationRepository.count()).isEqualTo(1);
+	}
+
+	@Test
+	void 조회는_발급과_같은_코드를_주고_일반_관리자도_읽을_수_있다() {
+		joinWithInvitation(adminId);
+		String issued = groupMembershipService.createInvitation(groupId, ownerId).invitationCode();
+
+		var read = groupMembershipService.currentInvitation(groupId, adminId);
+
+		assertThat(read.invitationCode()).isEqualTo(issued);
+	}
+
+	@Test
+	void 유효한_코드가_없으면_일반_관리자는_발급하지_못한다() {
+		joinWithInvitation(adminId);
+		groupInvitationRepository.deleteAll();
+
+		assertThatThrownBy(() -> groupMembershipService.currentInvitation(groupId, adminId))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.INVITATION_NOT_FOUND);
+		assertThat(groupInvitationRepository.count()).isZero();
+	}
+
+	@Test
+	void 기존_코드가_만료됐으면_새_코드를_발급한다() {
+		GroupSpace expiredGroup = groupSpaceRepository.findById(groupId).orElseThrow();
+		groupInvitationRepository.save(GroupInvitation.issue(expiredGroup, "OLDCODE123", ownerId,
+				LocalDateTime.now().minusMinutes(1)));
+
+		var issued = groupMembershipService.createInvitation(groupId, ownerId);
+
+		assertThat(issued.invitationCode()).isNotEqualTo("OLDCODE123");
+	}
 
 	@Test
 	void 이미_참여한_모임에는_다시_참여할_수_없다() {

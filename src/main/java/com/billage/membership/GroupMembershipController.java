@@ -21,7 +21,6 @@ import com.billage.membership.dto.JoinGroupRequest;
 import com.billage.membership.dto.JoinGroupResponse;
 import com.billage.membership.dto.MembershipResponse;
 import com.billage.membership.dto.RoleUpdateRequest;
-import com.billage.membership.dto.RoleUpdateResponse;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -48,6 +47,17 @@ public class GroupMembershipController {
 				.body(ApiResponse.of(response, "초대 코드 생성에 성공했습니다."));
 	}
 
+	/**
+	 * 모임 관리자 화면 상단의 초대 코드 카드. 유효한 코드가 있으면 그대로 주고 없으면 새로 만든다 —
+	 * 화면에 발급 버튼이 없어 진입할 때마다 이 API 를 부르기 때문이다.
+	 */
+	@GetMapping("/{groupId}/invitations/current")
+	public ResponseEntity<ApiResponse<InvitationResponse>> currentInvitation(@CurrentUserId Long userId,
+			@PathVariable Long groupId) {
+		InvitationResponse response = groupMembershipService.currentInvitation(groupId, userId);
+		return ResponseEntity.ok(ApiResponse.of(response, "초대 코드 조회에 성공했습니다."));
+	}
+
 	@PostMapping("/join")
 	public ResponseEntity<ApiResponse<JoinGroupResponse>> join(@CurrentUserId Long userId,
 			@Valid @RequestBody JoinGroupRequest request) {
@@ -57,10 +67,10 @@ public class GroupMembershipController {
 	}
 
 	@PatchMapping("/{groupId}/memberships/{membershipId}")
-	public ResponseEntity<ApiResponse<RoleUpdateResponse>> changeRole(@CurrentUserId Long userId,
+	public ResponseEntity<ApiResponse<MembershipResponse>> changeRole(@CurrentUserId Long userId,
 			@PathVariable Long groupId, @PathVariable Long membershipId,
 			@Valid @RequestBody RoleUpdateRequest request) {
-		RoleUpdateResponse response = groupMembershipService.changeRole(groupId, userId, membershipId, request);
+		MembershipResponse response = groupMembershipService.changeRole(groupId, userId, membershipId, request);
 		return ResponseEntity.ok(ApiResponse.of(response, "관리자 권한 수정에 성공했습니다."));
 	}
 

@@ -181,6 +181,18 @@ class FileServiceTest extends IntegrationTest {
 	}
 
 	@Test
+	void 증빙은_한_내역에_열_장까지만_붙는다() {
+		List<Long> eleven = java.util.stream.IntStream.rangeClosed(1, 11)
+				.mapToObj(i -> upload(ownerId, "receipt" + i + ".jpg"))
+				.toList();
+
+		assertThatThrownBy(() -> createEntryWithReceipts(ownerId, eleven))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.INVALID_REQUEST);
+	}
+
+	@Test
 	void 증빙_용도가_아닌_파일은_연결할_수_없다() {
 		MockMultipartFile image = new MockMultipartFile("file", "profile.png", "image/png", "image".getBytes());
 		Long fileId = fileService.upload(ownerId, image, FilePurpose.PROFILE_IMAGE).fileId();

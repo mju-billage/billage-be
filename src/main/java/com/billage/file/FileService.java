@@ -22,6 +22,7 @@ import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
 import com.billage.common.response.PageResponse;
 import com.billage.entry.Entry;
+import com.billage.entry.EntryRepository;
 import com.billage.entry.EntryType;
 import com.billage.file.dto.FileResponse;
 import com.billage.file.dto.ReceiptAlbumItemResponse;
@@ -45,6 +46,7 @@ public class FileService {
 	private static final DateTimeFormatter KEY_DATE = DateTimeFormatter.ofPattern("yyyy/MM/dd");
 
 	private final FileRepository fileRepository;
+	private final EntryRepository entryRepository;
 	private final FileStorage fileStorage;
 	private final FileProperties properties;
 	private final FileUrlResolver fileUrlResolver;
@@ -107,13 +109,23 @@ public class FileService {
 		fileStorage.delete(file.getStorageKey());
 	}
 
+	/** 내역 하나에 붙일 수 있는 증빙 장수. 화면의 증빙 자료 카운터가 {@code 0/10} 이다. */
+	static final int MAX_RECEIPTS = 10;
+
 	/**
 	 * 증빙 파일을 내역에 연결한다. 업로더 본인의 RECEIPT 파일이면서 아직 연결되지 않은 것만 허용한다.
+	 * 이미 붙어 있는 증빙까지 합쳐 {@value #MAX_RECEIPTS} 장을 넘길 수 없다.
 	 */
 	@Transactional
 	public void linkReceipts(Entry entry, List<Long> fileIds, Long userId) {
 		if (fileIds == null || fileIds.isEmpty()) {
 			return;
+		}
+		// 내역 행을 먼저 잠가 "세고 나서 붙이는" 사이에 다른 요청이 끼어들지 못하게 한다.
+		entryRepository.findByIdForUpdate(entry.getId());
+		if (fileRepository.findByEntryIdForUpdate(entry.getId()).size() + fileIds.size() > MAX_RECEIPTS) {
+			throw new BusinessException(ErrorCode.INVALID_REQUEST,
+					"증빙 자료는 최대 " + MAX_RECEIPTS + "장까지 첨부할 수 있습니다.");
 		}
 		for (Long fileId : fileIds) {
 			UploadedFile file = fileRepository.findById(fileId)
