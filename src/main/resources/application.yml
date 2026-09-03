@@ -35,6 +35,20 @@ spring:
       use-null-for-missing-reference-values: true
 
 billage:
+  mail:
+    # LOG(로그로만 남김) | SES. 로컬·테스트는 LOG, dev·prod 는 SES.
+    sender: ${BILLAGE_MAIL_SENDER:LOG}
+    # SES 에서 검증된 발신 주소. 도메인 검증 전에는 개별 주소를 검증해 쓴다.
+    from: ${BILLAGE_MAIL_FROM:no-reply@billage.app}
+  auth:
+    email-verification:
+      # 화면 타이머(03:00)와 같은 값이어야 한다.
+      ttl-seconds: 180
+      max-attempts: 5
+      max-sends: 5
+      send-window-minutes: 60
+      # 프론트가 인증 화면을 붙이면 true 로 바꾼다. 그전까지 켜면 기존 가입 흐름이 막힌다.
+      required-for-signup: ${BILLAGE_EMAIL_VERIFICATION_REQUIRED:false}
   file:
     # LOCAL(서버 디스크) | S3. 로컬 개발은 LOCAL, dev·prod 는 S3.
     storage: ${BILLAGE_FILE_STORAGE:LOCAL}
@@ -91,6 +105,20 @@ spring:
 
 # dev(배포) 서버에서 Swagger 노출 — 배포 서버 API 확인·테스트용
 billage:
+  mail:
+    # LOG(로그로만 남김) | SES. 로컬·테스트는 LOG, dev·prod 는 SES.
+    sender: ${BILLAGE_MAIL_SENDER:LOG}
+    # SES 에서 검증된 발신 주소. 도메인 검증 전에는 개별 주소를 검증해 쓴다.
+    from: ${BILLAGE_MAIL_FROM:no-reply@billage.app}
+  auth:
+    email-verification:
+      # 화면 타이머(03:00)와 같은 값이어야 한다.
+      ttl-seconds: 180
+      max-attempts: 5
+      max-sends: 5
+      send-window-minutes: 60
+      # 프론트가 인증 화면을 붙이면 true 로 바꾼다. 그전까지 켜면 기존 가입 흐름이 막힌다.
+      required-for-signup: ${BILLAGE_EMAIL_VERIFICATION_REQUIRED:false}
   file:
     # LOCAL(서버 디스크) | S3. 로컬 개발은 LOCAL, dev·prod 는 S3.
     storage: ${BILLAGE_FILE_STORAGE:LOCAL}
@@ -121,6 +149,20 @@ spring:
     password: ${DB_PASSWORD}
 
 billage:
+  mail:
+    # LOG(로그로만 남김) | SES. 로컬·테스트는 LOG, dev·prod 는 SES.
+    sender: ${BILLAGE_MAIL_SENDER:LOG}
+    # SES 에서 검증된 발신 주소. 도메인 검증 전에는 개별 주소를 검증해 쓴다.
+    from: ${BILLAGE_MAIL_FROM:no-reply@billage.app}
+  auth:
+    email-verification:
+      # 화면 타이머(03:00)와 같은 값이어야 한다.
+      ttl-seconds: 180
+      max-attempts: 5
+      max-sends: 5
+      send-window-minutes: 60
+      # 프론트가 인증 화면을 붙이면 true 로 바꾼다. 그전까지 켜면 기존 가입 흐름이 막힌다.
+      required-for-signup: ${BILLAGE_EMAIL_VERIFICATION_REQUIRED:false}
   file:
     # LOCAL(서버 디스크) | S3. 로컬 개발은 LOCAL, dev·prod 는 S3.
     storage: ${BILLAGE_FILE_STORAGE:LOCAL}

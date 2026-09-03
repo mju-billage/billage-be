@@ -28,6 +28,15 @@ public enum ErrorCode {
 	REFRESH_TOKEN_REUSED("REFRESH_TOKEN_REUSED", HttpStatus.UNAUTHORIZED, "이미 사용된 Refresh Token 입니다. 다시 로그인해 주세요."),
 	SOCIAL_TOKEN_INVALID("SOCIAL_TOKEN_INVALID", HttpStatus.UNAUTHORIZED, "소셜 로그인 토큰이 유효하지 않습니다."),
 	TERMS_NOT_AGREED("TERMS_NOT_AGREED", HttpStatus.BAD_REQUEST, "약관 동의가 필요합니다."),
+	EMAIL_NOT_VERIFIED("EMAIL_NOT_VERIFIED", HttpStatus.BAD_REQUEST, "이메일 인증이 필요합니다."),
+	VERIFICATION_NOT_FOUND("VERIFICATION_NOT_FOUND", HttpStatus.NOT_FOUND, "인증 요청을 찾을 수 없습니다. 코드를 다시 받아 주세요."),
+	VERIFICATION_CODE_MISMATCH("VERIFICATION_CODE_MISMATCH", HttpStatus.BAD_REQUEST, "인증 코드가 올바르지 않습니다."),
+	VERIFICATION_CODE_EXPIRED("VERIFICATION_CODE_EXPIRED", HttpStatus.GONE, "인증 코드가 만료되었습니다. 다시 받아 주세요."),
+	VERIFICATION_ATTEMPT_EXCEEDED("VERIFICATION_ATTEMPT_EXCEEDED", HttpStatus.TOO_MANY_REQUESTS,
+			"인증 시도 횟수를 초과했습니다. 코드를 다시 받아 주세요."),
+	VERIFICATION_SEND_LIMIT_EXCEEDED("VERIFICATION_SEND_LIMIT_EXCEEDED", HttpStatus.TOO_MANY_REQUESTS,
+			"인증 코드를 너무 자주 요청했습니다. 잠시 후 다시 시도해 주세요."),
+	MAIL_SEND_FAILED("MAIL_SEND_FAILED", HttpStatus.INTERNAL_SERVER_ERROR, "메일 발송에 실패했습니다. 잠시 후 다시 시도해 주세요."),
 
 	// 모임·모임원
 	ACCESS_DENIED("ACCESS_DENIED", HttpStatus.FORBIDDEN, "해당 모임에 대한 권한이 없습니다."),
