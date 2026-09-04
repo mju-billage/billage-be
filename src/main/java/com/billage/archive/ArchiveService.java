@@ -13,6 +13,7 @@ import com.billage.archive.dto.ArchiveDetailResponse;
 import com.billage.archive.dto.ArchiveSummaryResponse;
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
+import com.billage.dues.Dues;
 import com.billage.dues.DuesRepository;
 import com.billage.dues.DuesStatus;
 import com.billage.entry.Entry;
@@ -70,9 +71,12 @@ public class ArchiveService {
 			throw new BusinessException(ErrorCode.ARCHIVE_EMPTY);
 		}
 
-		Archive archive = snapshot(groupId, title.trim(), ledgers, entries);
+		Map<Long, ArchiveEntry> archived = new LinkedHashMap<>();
+		Archive archive = snapshot(groupId, title.trim(), ledgers, entries, archived);
 		archiveRepository.save(archive);
 
+		// 증빙은 지우지 않고 주인만 보관 기록으로 옮긴다 — 보관인데 이미지가 사라지면 안 된다.
+		fileService.moveReceiptsToArchive(archived);
 		clearGroup(groupId);
 
 		return ArchiveSummaryResponse.from(archive);
@@ -93,7 +97,12 @@ public class ArchiveService {
 		guard.requireMembership(archive.getGroupId(), userId);
 		// 내역은 장부마다 지연 로딩된다 — 목록 화면이 아니라 한 건을 펼쳐 보는 화면이라 N+1 이 아니다.
 		archive.getLedgers().forEach(ledger -> ledger.getEntries().size());
-		return ArchiveDetailResponse.from(archive);
+
+		List<Long> archiveEntryIds = archive.getLedgers().stream()
+				.flatMap(ledger -> ledger.getEntries().stream())
+				.map(ArchiveEntry::getId)
+				.toList();
+		return ArchiveDetailResponse.from(archive, fileService.getArchiveReceipts(archiveEntryIds));
 	}
 
 	/** 제목 변경. 담긴 내용은 바꿀 수 없다. */
@@ -115,16 +124,26 @@ public class ArchiveService {
 	public void delete(Long archiveId, Long userId) {
 		Archive archive = findArchive(archiveId);
 		guard.requireOwner(archive.getGroupId(), userId);
+		// 보관된 증빙은 이 기록에만 매달려 있다. 기록보다 먼저 지워야 외래키가 걸리지 않는다.
+		fileService.deleteByArchive(archiveId);
 		archiveRepository.delete(archive);
+	}
+
+	/** 모임 삭제 시 보관된 증빙도 함께 지운다. */
+	private void deleteReceiptsOf(Archive archive) {
+		fileService.deleteByArchive(archive.getId());
 	}
 
 	/** 모임 삭제용. 자식 스냅샷은 cascade + orphanRemoval 로 함께 지워진다. */
 	@Transactional
 	public void deleteByGroup(Long groupId) {
-		archiveRepository.deleteAll(archiveRepository.findAllByGroupId(groupId));
+		List<Archive> archives = archiveRepository.findAllByGroupId(groupId);
+		archives.forEach(this::deleteReceiptsOf);
+		archiveRepository.deleteAll(archives);
 	}
 
-	private Archive snapshot(Long groupId, String title, List<Ledger> ledgers, List<Entry> entries) {
+	private Archive snapshot(Long groupId, String title, List<Ledger> ledgers, List<Entry> entries,
+			Map<Long, ArchiveEntry> archivedByEntryId) {
 		Map<Long, List<Entry>> byLedger = new LinkedHashMap<>();
 		for (Entry entry : entries) {
 			byLedger.computeIfAbsent(entry.getLedger().getId(), key -> new java.util.ArrayList<>()).add(entry);
@@ -144,20 +163,25 @@ public class ArchiveService {
 					ledger.getFolder() == null ? null : ledger.getFolder().getName(),
 					ledger.getName(), ledger.getBudget(),
 					sum(ledgerEntries, EntryType.INCOME), sum(ledgerEntries, EntryType.EXPENSE));
-			ledgerEntries.forEach(entry -> archiveLedger.addEntry(ArchiveEntry.of(entry.getType(), entry.getTitle(),
-					entry.getAmount(), entry.getOccurredOn(), entry.getMemo(), entry.getApprovalStatus(),
-					entry.getCreatedByName())));
+			for (Entry entry : ledgerEntries) {
+				ArchiveEntry archiveEntry = ArchiveEntry.of(entry.getType(), entry.getTitle(), entry.getAmount(),
+						entry.getOccurredOn(), entry.getMemo(), entry.getApprovalStatus(), entry.getCreatedByName());
+				archiveLedger.addEntry(archiveEntry);
+				archivedByEntryId.put(entry.getId(), archiveEntry);
+			}
 			archive.addLedger(archiveLedger);
 		}
 		return archive;
 	}
 
 	/**
-	 * 원본을 비운다. 증빙 → 내역 → 장부 → 폴더 순으로 참조를 따라 지운다(모임 삭제와 같은 순서).
-	 * 마감된 회비는 남긴다 — 마감 시점에 회비와 내역은 이미 각각 독립 데이터다.
+	 * 원본을 비운다. 내역 → 장부 → 폴더 순으로 참조를 따라 지운다.
+	 *
+	 * <p>증빙은 지우지 않는다 — 이미 보관 기록으로 주인을 옮겨 두었다.
+	 * 마감된 회비는 남기되, 그 회비가 들고 있던 수입 내역 ID 는 끊는다(그 내역이 방금 사라졌다).
 	 */
 	private void clearGroup(Long groupId) {
-		fileService.deleteByGroup(groupId);
+		duesRepository.findAllByGroupId(groupId).forEach(Dues::detachGeneratedEntry);
 		entryRepository.deleteAllByGroupId(groupId);
 		ledgerRepository.deleteAllByGroupId(groupId);
 		folderRepository.deleteDeepestFirst(folderRepository.findAllByGroupId(groupId));

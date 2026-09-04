@@ -61,6 +61,18 @@ public interface FileRepository extends JpaRepository<UploadedFile, Long> {
 	@Query("select f from UploadedFile f where f.entry.id = :entryId order by f.id asc")
 	List<UploadedFile> findByEntryId(@Param("entryId") Long entryId);
 
+	/** 여러 내역에 붙은 증빙을 한 번에. 기록 보관이 주인을 옮길 때 쓴다. */
+	@Query("select f from UploadedFile f where f.entry.id in :entryIds order by f.id asc")
+	List<UploadedFile> findByEntryIds(@Param("entryIds") Collection<Long> entryIds);
+
+	/** 보관된 내역들에 붙은 증빙. 보관 상세가 이미지를 함께 보여 줄 때 쓴다. */
+	@Query("select f from UploadedFile f where f.archiveEntry.id in :archiveEntryIds order by f.id asc")
+	List<UploadedFile> findByArchiveEntryIds(@Param("archiveEntryIds") Collection<Long> archiveEntryIds);
+
+	/** 보관 기록을 지울 때 함께 지울 증빙. */
+	@Query("select f from UploadedFile f where f.archiveEntry.archiveLedger.archive.id = :archiveId")
+	List<UploadedFile> findByArchiveId(@Param("archiveId") Long archiveId);
+
 	/**
 	 * 증빙 상한 검사용 <b>잠금 읽기</b>. 일반 읽기는 트랜잭션 스냅샷을 보므로 동시 요청이 서로의
 	 * 증빙을 세지 못해 10장을 넘길 수 있다({@code GroupInvitationRepository.findValidForUpdate} 와 같은 이유).

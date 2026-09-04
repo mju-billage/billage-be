@@ -9,10 +9,15 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.mock.web.MockMultipartFile;
 
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
 import com.billage.dues.DuesService;
+import com.billage.dues.dto.PaymentStatusUpdateRequest;
+import com.billage.file.FilePurpose;
+import com.billage.file.FileRepository;
+import com.billage.file.FileService;
 import com.billage.dues.dto.DuesCreateRequest;
 import com.billage.entry.ApprovalStatus;
 import com.billage.entry.EntryRepository;
@@ -62,6 +67,10 @@ class ArchiveServiceTest extends IntegrationTest {
 	EntryRepository entryRepository;
 	@Autowired
 	FolderRepository folderRepository;
+	@Autowired
+	FileService fileService;
+	@Autowired
+	FileRepository fileRepository;
 	@Autowired
 	UserRepository userRepository;
 
@@ -126,6 +135,53 @@ class ArchiveServiceTest extends IntegrationTest {
 			assertThat(ledger.entries()).extracting(e -> e.createdByName())
 					.containsExactly("총무", "일반관리자");
 		});
+	}
+
+	@Test
+	void 보관해도_증빙_이미지는_남고_상세에서_볼_수_있다() {
+		Long fileId = fileService.upload(ownerId,
+				new MockMultipartFile("file", "receipt.jpg", "image/jpeg", "image".getBytes()),
+				FilePurpose.RECEIPT).fileId();
+		entryService.create(ledgerId, ownerId, new EntryCreateRequest(EntryType.EXPENSE, "대관료",
+				200_000L, LocalDate.of(2026, 5, 20), null, null, List.of(fileId)));
+
+		Long archiveId = archiveService.create(groupId, ownerId, "보관").archiveId();
+
+		var detail = archiveService.getDetail(archiveId, ownerId);
+		assertThat(detail.ledgers()).singleElement().satisfies(ledger ->
+				assertThat(ledger.entries()).singleElement().satisfies(entry ->
+						assertThat(entry.receiptFiles()).singleElement()
+								.satisfies(receipt -> assertThat(receipt.fileId()).isEqualTo(fileId))));
+		assertThat(fileRepository.findById(fileId)).isPresent();
+	}
+
+	@Test
+	void 보관_기록을_지우면_그_안의_증빙도_사라진다() {
+		Long fileId = fileService.upload(ownerId,
+				new MockMultipartFile("file", "receipt.jpg", "image/jpeg", "image".getBytes()),
+				FilePurpose.RECEIPT).fileId();
+		entryService.create(ledgerId, ownerId, new EntryCreateRequest(EntryType.EXPENSE, "대관료",
+				200_000L, LocalDate.of(2026, 5, 20), null, null, List.of(fileId)));
+		Long archiveId = archiveService.create(groupId, ownerId, "보관").archiveId();
+
+		archiveService.delete(archiveId, ownerId);
+
+		assertThat(fileRepository.findById(fileId)).isEmpty();
+	}
+
+	@Test
+	void 마감된_회비가_들고_있던_내역_참조는_보관하며_끊는다() {
+		Long memberId = memberService.addMember(groupId, ownerId,
+				new MemberCreateRequest("김모임원", null, null, null)).memberId();
+		Long duesId = duesService.create(groupId, ownerId, new DuesCreateRequest("2학기 회비", 30_000L,
+				LocalDate.now().minusDays(1), LocalDate.now().plusDays(30), List.of(memberId), ledgerId)).duesId();
+		duesService.changePaymentStatus(duesId, memberId, ownerId, new PaymentStatusUpdateRequest("PAID"));
+		duesService.close(duesId, ownerId);
+
+		archiveService.create(groupId, ownerId, "보관");
+
+		// 회비는 남지만, 사라진 내역을 가리키고 있으면 안 된다.
+		assertThat(duesService.getDetail(duesId, ownerId).generatedEntryId()).isNull();
 	}
 
 	@Test
