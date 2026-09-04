@@ -135,6 +135,39 @@ class EmailVerificationServiceTest extends IntegrationTest {
 	}
 
 	@Test
+	void 처음_보내는_이메일에_동시_요청이_와도_실패하지_않는다() throws Exception {
+		var start = new java.util.concurrent.CountDownLatch(1);
+		var failures = new java.util.concurrent.atomic.AtomicInteger();
+		var reasons = java.util.concurrent.ConcurrentHashMap.<String>newKeySet();
+		var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+		try {
+			for (int i = 0; i < 2; i++) {
+				pool.submit(() -> {
+					try {
+						start.await();
+						emailVerificationService.send(EMAIL);
+					} catch (InterruptedException e) {
+						Thread.currentThread().interrupt();
+					} catch (RuntimeException e) {
+						failures.incrementAndGet();
+						reasons.add(e.getClass().getName() + ": " + e.getMessage());
+					}
+				});
+			}
+			start.countDown();
+			pool.shutdown();
+			assertThat(pool.awaitTermination(30, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+		} finally {
+			pool.shutdownNow();
+		}
+
+		// 둘 다 정상 처리돼야 하고, 행은 하나만 남는다.
+		assertThat(failures.get()).as("실패 사유: %s", reasons).isZero();
+		assertThat(repository.findByEmail(EMAIL)).isPresent();
+		assertThat(repository.count()).isEqualTo(1);
+	}
+
+	@Test
 	void 이미_가입된_이메일에는_코드를_보내지_않는다() {
 		userRepository.save(User.create(EMAIL, "encoded", "기존회원"));
 

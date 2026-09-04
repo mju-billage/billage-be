@@ -28,21 +28,33 @@ public class LogMailSender implements MailSender {
 
 	private final Environment environment;
 
+	/** 로컬·테스트처럼 실제 사용자가 없는 환경. 이때만 본문(인증 코드)을 로그에 남긴다. */
+	private boolean offline;
+
 	@PostConstruct
 	void guardAgainstSilentProduction() {
 		List<String> active = List.of(environment.getActiveProfiles());
+		this.offline = active.stream().anyMatch(OFFLINE_PROFILES::contains);
 		if (active.contains("prod")) {
 			throw new IllegalStateException(
 					"운영 환경에서 메일이 로그로만 남습니다. billage.mail.sender=SES 로 설정하세요.");
 		}
-		if (active.stream().noneMatch(OFFLINE_PROFILES::contains)) {
+		if (!offline) {
 			log.warn("메일이 실제로 발송되지 않습니다(LOG 모드). 인증 코드는 로그에만 남습니다. "
 					+ "실제 발송이 필요하면 billage.mail.sender=SES 로 설정하세요. activeProfiles={}", active);
 		}
 	}
 
+	/**
+	 * 로컬·테스트에서만 본문을 남긴다. 본문에는 인증 코드가 들어 있어, 배포 환경 로그에 찍히면
+	 * 로그를 볼 수 있는 사람이 남의 가입을 가로챌 수 있다.
+	 */
 	@Override
 	public void send(String to, String subject, String body) {
-		log.info("[메일 발송 생략 - LOG 모드] to={} subject={}\n{}", to, subject, body);
+		if (offline) {
+			log.info("[메일 발송 생략 - LOG 모드] to={} subject={}\n{}", to, subject, body);
+			return;
+		}
+		log.warn("[메일 발송 생략 - LOG 모드] to={} subject={} (본문은 남기지 않습니다)", to, subject);
 	}
 }

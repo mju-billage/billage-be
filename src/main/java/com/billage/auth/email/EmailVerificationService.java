@@ -3,6 +3,8 @@ package com.billage.auth.email;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 
+import org.springframework.dao.CannotAcquireLockException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,12 +36,15 @@ public class EmailVerificationService {
 	private final MailSender mailSender;
 	private final PasswordEncoder passwordEncoder;
 	private final EmailVerificationVerifier verifier;
+	private final EmailVerificationIssuer issuer;
 	private final EmailVerificationProperties properties;
 
 	/**
 	 * 코드 발송. 재전송도 이 메서드를 다시 부르며, 그때마다 이전 코드는 무효가 되고 3분이 새로 시작된다.
+	 *
+	 * <p>트랜잭션은 {@link EmailVerificationIssuer} 안에서 끝난다 — 동시 삽입 충돌을 여기서 한 번 더
+	 * 시도해 넘기기 위해서다. 메일은 그 트랜잭션이 커밋된 뒤에 나가므로, 저장에 실패한 코드가 발송되지 않는다.
 	 */
-	@Transactional
 	public EmailVerificationSendResponse send(String rawEmail) {
 		String email = normalize(rawEmail);
 		if (userRepository.existsByEmail(email)) {
@@ -50,16 +55,15 @@ public class EmailVerificationService {
 		LocalDateTime expiresAt = now.plusSeconds(properties.ttlSeconds());
 		String code = generateCode();
 
-		EmailVerification verification = repository.findByEmailForUpdate(email)
-				.map(found -> {
-					if (found.sendLimitExceeded(now, properties.sendWindowMinutes(), properties.maxSends())) {
-						throw new BusinessException(ErrorCode.VERIFICATION_SEND_LIMIT_EXCEEDED);
-					}
-					found.reissue(passwordEncoder.encode(code), expiresAt, now, properties.sendWindowMinutes());
-					return found;
-				})
-				.orElseGet(() -> repository.save(
-						EmailVerification.issue(email, passwordEncoder.encode(code), expiresAt, now)));
+		String codeHash = passwordEncoder.encode(code);
+		EmailVerification verification;
+		try {
+			verification = issuer.issue(email, codeHash, expiresAt, now);
+		} catch (DataIntegrityViolationException | CannotAcquireLockException e) {
+			// 동시에 들어온 다른 요청이 방금 이 이메일의 행을 만들었다(중복 키), 또는 두 삽입이 맞물렸다(데드락).
+			// 두 번째 시도에서는 상대가 만든 행이 보이므로 정상적으로 재발송된다.
+			verification = issuer.issue(email, codeHash, expiresAt, now);
+		}
 
 		mailSender.send(email, "[빌리지] 이메일 인증 코드", body(code));
 
