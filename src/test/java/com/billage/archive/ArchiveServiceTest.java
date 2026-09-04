@@ -125,8 +125,13 @@ class ArchiveServiceTest extends IntegrationTest {
 		Long archiveId = archiveService.create(groupId, ownerId, "보관").archiveId();
 		var detail = archiveService.getDetail(archiveId, ownerId);
 
+		// 승인 대기 내역은 목록에 남되 금액은 합계에 섞이지 않는다(재무 데이터 처리 규칙).
 		assertThat(detail.summary().entryCount()).isEqualTo(2);
+		assertThat(detail.summary().totalIncome()).isEqualTo(500_000L);
+		assertThat(detail.summary().totalExpense()).isZero();
+		assertThat(detail.summary().balance()).isEqualTo(500_000L);
 		assertThat(detail.ledgers()).singleElement().satisfies(ledger -> {
+			assertThat(ledger.totalExpense()).isZero();
 			assertThat(ledger.folderName()).isEqualTo("2025");
 			assertThat(ledger.ledgerName()).isEqualTo("운영 장부");
 			assertThat(ledger.budget()).isEqualTo(1_000_000L);

@@ -16,6 +16,7 @@ import com.billage.common.exception.ErrorCode;
 import com.billage.dues.Dues;
 import com.billage.dues.DuesRepository;
 import com.billage.dues.DuesStatus;
+import com.billage.entry.ApprovalStatus;
 import com.billage.entry.Entry;
 import com.billage.entry.EntryRepository;
 import com.billage.entry.EntryType;
@@ -187,8 +188,13 @@ public class ArchiveService {
 		folderRepository.deleteDeepestFirst(folderRepository.findAllByGroupId(groupId));
 	}
 
+	/**
+	 * 합계는 <b>승인된 내역만</b> 센다(재무 데이터 처리 규칙). 승인 대기 내역도 보관 목록에는 남지만,
+	 * 아직 장부에 반영되지 않은 금액이라 수입·지출·잔액에 섞이면 안 된다.
+	 */
 	private long sum(List<Entry> entries, EntryType type) {
 		return entries.stream()
+				.filter(entry -> entry.getApprovalStatus() == ApprovalStatus.APPROVED)
 				.filter(entry -> entry.getType() == type)
 				.mapToLong(Entry::getAmount)
 				.sum();

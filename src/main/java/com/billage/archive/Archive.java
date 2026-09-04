@@ -53,6 +53,7 @@ public class Archive {
 	@Column(name = "total_expense", nullable = false, updatable = false)
 	private Long totalExpense;
 
+	/** 담긴 내역 수. 승인 대기 내역도 세지만 위의 합계에는 들어가지 않는다. */
 	@Column(name = "entry_count", nullable = false, updatable = false)
 	private Long entryCount;
 
