@@ -2,6 +2,7 @@ package com.billage.file;
 
 import java.time.LocalDateTime;
 
+import com.billage.archive.ArchiveEntry;
 import com.billage.entry.Entry;
 
 import jakarta.persistence.Column;
@@ -61,6 +62,14 @@ public class UploadedFile {
 	private Entry entry;
 
 	/**
+	 * 보관된 내역. 기록 보관은 원본 내역을 지우므로 증빙의 주인을 이쪽으로 옮긴다 —
+	 * 옮기지 않으면 "보관"인데 증빙이 사라진다.
+	 */
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "archive_entry_id")
+	private ArchiveEntry archiveEntry;
+
+	/**
 	 * 대표 이미지로 쓰이는 모임. 증빙이 {@code entry} 로 주인을 적는 것과 같은 자리다.
 	 * 값이 있으면 그 모임의 대표 이미지이며, 모임당 하나만 가질 수 있다(uk_file_group).
 	 */
@@ -87,11 +96,17 @@ public class UploadedFile {
 
 	/** 어딘가에 쓰이고 있는 파일. 지우려면 먼저 연결을 끊어야 한다. */
 	public boolean isLinked() {
-		return this.entry != null || this.groupId != null;
+		return this.entry != null || this.groupId != null || this.archiveEntry != null;
 	}
 
 	public void linkTo(Entry entry) {
 		this.entry = entry;
+	}
+
+	/** 기록 보관. 원본 내역에서 손을 떼고 보관된 내역에 붙는다. */
+	public void moveToArchive(ArchiveEntry archiveEntry) {
+		this.entry = null;
+		this.archiveEntry = archiveEntry;
 	}
 
 	public boolean isUploadedBy(Long userId) {

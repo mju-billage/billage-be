@@ -221,6 +221,14 @@ public class Dues {
 	 *
 	 * <p>마감 시점의 납부 현황이 그대로 굳는다 — 이후 납부 상태는 바꿀 수 없다({@link #requireOpen()}).
 	 */
+	/**
+	 * 마감 때 만든 수입 내역과의 연결을 끊는다. 기록 보관으로 그 내역이 사라졌을 때 쓴다 —
+	 * 없는 내역을 가리키고 있으면 화면이 "회비가 만든 내역 보기"로 들어갔다가 404 를 만난다.
+	 */
+	public void detachGeneratedEntry() {
+		this.generatedEntryId = null;
+	}
+
 	public void close(Long generatedEntryId) {
 		requireOpen();
 		this.status = DuesStatus.CLOSED;

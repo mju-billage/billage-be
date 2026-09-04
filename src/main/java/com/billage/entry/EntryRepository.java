@@ -329,6 +329,10 @@ public interface EntryRepository extends JpaRepository<Entry, Long> {
 	@Query("delete from Entry e where e.ledger.id = :ledgerId")
 	void deleteAllByLedgerId(@Param("ledgerId") Long ledgerId);
 
+	/** 기록 보관이 스냅샷을 뜰 때 쓴다. 승인 대기 내역도 함께 담으므로 상태로 거르지 않는다. */
+	@Query("select e from Entry e join fetch e.ledger where e.groupId = :groupId order by e.occurredOn asc, e.id asc")
+	List<Entry> findAllByGroupId(@Param("groupId") Long groupId);
+
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
 	@Query("delete from Entry e where e.groupId = :groupId")
 	void deleteAllByGroupId(@Param("groupId") Long groupId);

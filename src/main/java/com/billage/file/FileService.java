@@ -3,6 +3,7 @@ package com.billage.file;
 import java.net.URI;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -21,6 +22,7 @@ import org.springframework.web.multipart.MultipartFile;
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
 import com.billage.common.response.PageResponse;
+import com.billage.archive.ArchiveEntry;
 import com.billage.entry.Entry;
 import com.billage.entry.EntryRepository;
 import com.billage.entry.EntryType;
@@ -72,6 +74,10 @@ public class FileService {
 
 		if (file.getEntry() != null) {
 			guard.requireMembership(file.getEntry().getGroupId(), userId);
+		} else if (file.getArchiveEntry() != null) {
+			// 보관된 증빙도 그 모임 관리자 전원이 볼 수 있어야 한다 — 보관하면서 entry 연결이 끊기는데,
+			// 여기서 걸러 내지 않으면 "업로더 본인만" 규칙에 걸려 보관함 상세의 이미지가 남에게 안 열린다.
+			guard.requireMembership(archiveGroupIdOf(file), userId);
 		} else if (file.getGroupId() != null) {
 			// 모임 대표 이미지는 그 모임 관리자 전원이 볼 수 있어야 한다(업로더 본인만이면 목록 화면이 깨진다).
 			guard.requireMembership(file.getGroupId(), userId);
@@ -79,6 +85,10 @@ public class FileService {
 			throw new BusinessException(ErrorCode.ACCESS_DENIED);
 		}
 		return file;
+	}
+
+	private Long archiveGroupIdOf(UploadedFile file) {
+		return file.getArchiveEntry().getArchiveLedger().getArchive().getGroupId();
 	}
 
 	@Transactional(readOnly = true)
@@ -296,6 +306,41 @@ public class FileService {
 	@Transactional
 	public void deleteByGroup(Long groupId) {
 		deleteAll(fileRepository.findReceiptsByGroupId(groupId));
+	}
+
+	/**
+	 * 기록 보관 시 증빙의 주인을 원본 내역에서 보관된 내역으로 옮긴다.
+	 * 옮기지 않고 원본을 지우면 "보관"인데 증빙 이미지가 사라진다.
+	 */
+	@Transactional
+	public void moveReceiptsToArchive(Map<Long, ArchiveEntry> archiveEntryByEntryId) {
+		if (archiveEntryByEntryId.isEmpty()) {
+			return;
+		}
+		for (UploadedFile file : fileRepository.findByEntryIds(archiveEntryByEntryId.keySet())) {
+			ArchiveEntry target = archiveEntryByEntryId.get(file.getEntry().getId());
+			if (target != null) {
+				file.moveToArchive(target);
+			}
+		}
+	}
+
+	/** 보관 상세가 쓰는 증빙 목록. 보관된 내역 ID 로 묶어서 준다. */
+	@Transactional(readOnly = true)
+	public Map<Long, List<ReceiptFileResponse>> getArchiveReceipts(Collection<Long> archiveEntryIds) {
+		if (archiveEntryIds.isEmpty()) {
+			return Map.of();
+		}
+		return fileRepository.findByArchiveEntryIds(archiveEntryIds).stream()
+				.collect(Collectors.groupingBy(file -> file.getArchiveEntry().getId(),
+						Collectors.mapping(file -> ReceiptFileResponse.of(file, fileUrl(file.getId())),
+								Collectors.toList())));
+	}
+
+	/** 보관 기록 삭제. 그 안에 담긴 증빙도 저장소에서 함께 지운다. */
+	@Transactional
+	public void deleteByArchive(Long archiveId) {
+		deleteAll(fileRepository.findByArchiveId(archiveId));
 	}
 
 	/**

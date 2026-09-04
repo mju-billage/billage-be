@@ -62,6 +62,12 @@ public enum ErrorCode {
 
 	// 보고서
 	REPORT_NOT_FOUND("REPORT_NOT_FOUND", HttpStatus.NOT_FOUND, "보고서를 찾을 수 없습니다."),
+
+	// 기록 보관
+	ARCHIVE_NOT_FOUND("ARCHIVE_NOT_FOUND", HttpStatus.NOT_FOUND, "보관 기록을 찾을 수 없습니다."),
+	ARCHIVE_EMPTY("ARCHIVE_EMPTY", HttpStatus.UNPROCESSABLE_ENTITY, "보관할 장부나 내역이 없습니다."),
+	ARCHIVE_BLOCKED_BY_OPEN_DUES("ARCHIVE_BLOCKED_BY_OPEN_DUES", HttpStatus.CONFLICT,
+			"진행 중인 회비를 먼저 마감해 주세요."),
 	REPORT_RANGE_EMPTY("REPORT_RANGE_EMPTY", HttpStatus.UNPROCESSABLE_ENTITY, "선택한 기간에 보고서로 만들 내역이 없습니다."),
 
 	// 파일

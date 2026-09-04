@@ -7,6 +7,7 @@ import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.billage.archive.ArchiveService;
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
 import com.billage.dues.DuesService;
@@ -46,6 +47,7 @@ public class GroupService {
 	private final LedgerRepository ledgerRepository;
 	private final FolderRepository folderRepository;
 	private final ReportRepository reportRepository;
+	private final ArchiveService archiveService;
 	private final GroupAccessGuard guard;
 
 	@Transactional(readOnly = true)
@@ -137,8 +139,9 @@ public class GroupService {
 		// 회비가 납부 명단을 참조하므로 명단보다 먼저 지운다.
 		duesService.deleteByGroup(groupId);
 		memberRepository.deleteByGroupId(groupId);
-		// 보고서는 스냅샷이라 장부·내역과 독립적이다. 자식 스냅샷은 cascade 로 함께 지워진다.
+		// 보고서·보관 기록은 스냅샷이라 장부·내역과 독립적이다. 자식 스냅샷은 cascade 로 함께 지워진다.
 		reportRepository.deleteAll(reportRepository.findAllByGroupId(groupId));
+		archiveService.deleteByGroup(groupId);
 		// 증빙 → 내역 → 장부 → 폴더 순으로 참조를 따라 지운다.
 		fileService.deleteByGroup(groupId);
 		entryRepository.deleteAllByGroupId(groupId);
