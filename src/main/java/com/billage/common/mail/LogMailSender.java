@@ -1,10 +1,10 @@
 package com.billage.common.mail;
 
 import java.util.List;
-import java.util.Set;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
@@ -24,24 +24,35 @@ import lombok.extern.slf4j.Slf4j;
 @ConditionalOnProperty(name = "billage.mail.sender", havingValue = "LOG", matchIfMissing = true)
 public class LogMailSender implements MailSender {
 
-	private static final Set<String> OFFLINE_PROFILES = Set.of("local", "test");
+	/**
+	 * 실제 사용자가 없는 환경. {@code acceptsProfiles} 로 판정해야 한다 —
+	 * 로컬은 {@code spring.profiles.default: local} 로 도는 경우가 많아 <b>활성 프로필 배열이 비어 있고</b>,
+	 * 활성 목록만 보면 로컬을 배포 환경으로 오인해 인증 코드를 로그에서 감춰 버린다.
+	 */
+	private static final Profiles OFFLINE = Profiles.of("local", "test");
+	private static final Profiles PRODUCTION = Profiles.of("prod");
 
 	private final Environment environment;
 
 	/** 로컬·테스트처럼 실제 사용자가 없는 환경. 이때만 본문(인증 코드)을 로그에 남긴다. */
 	private boolean offline;
 
+	/** 인증 코드가 로그에 남는 환경인지. */
+	boolean leavesBodyInLog() {
+		return offline;
+	}
+
 	@PostConstruct
 	void guardAgainstSilentProduction() {
-		List<String> active = List.of(environment.getActiveProfiles());
-		this.offline = active.stream().anyMatch(OFFLINE_PROFILES::contains);
-		if (active.contains("prod")) {
+		this.offline = environment.acceptsProfiles(OFFLINE);
+		if (environment.acceptsProfiles(PRODUCTION)) {
 			throw new IllegalStateException(
 					"운영 환경에서 메일이 로그로만 남습니다. billage.mail.sender=SES 로 설정하세요.");
 		}
 		if (!offline) {
-			log.warn("메일이 실제로 발송되지 않습니다(LOG 모드). 인증 코드는 로그에만 남습니다. "
-					+ "실제 발송이 필요하면 billage.mail.sender=SES 로 설정하세요. activeProfiles={}", active);
+			log.warn("메일이 실제로 발송되지 않습니다(LOG 모드). 실제 발송이 필요하면 "
+					+ "billage.mail.sender=SES 로 설정하세요. activeProfiles={}",
+					List.of(environment.getActiveProfiles()));
 		}
 	}
 

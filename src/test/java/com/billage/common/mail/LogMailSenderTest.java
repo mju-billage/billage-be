@@ -1,5 +1,6 @@
 package com.billage.common.mail;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -29,6 +30,30 @@ class LogMailSenderTest {
 
 		assertThatCode(() -> new LogMailSender(local).guardAgainstSilentProduction())
 				.doesNotThrowAnyException();
+	}
+
+	@Test
+	void 활성_프로필이_없고_기본이_local_이면_본문을_남긴다() {
+		// 로컬은 spring.profiles.default: local 로 돌아 활성 프로필 배열이 비어 있다.
+		// 활성 목록만 보면 배포 환경으로 오인해 인증 코드를 감춰 버린다.
+		MockEnvironment defaulted = new MockEnvironment();
+		defaulted.setDefaultProfiles("local");
+		LogMailSender sender = new LogMailSender(defaulted);
+		sender.guardAgainstSilentProduction();
+
+		assertThatCode(() -> sender.send("a@example.com", "제목", "인증 코드는 123456 입니다."))
+				.doesNotThrowAnyException();
+		assertThat(sender.leavesBodyInLog()).isTrue();
+	}
+
+	@Test
+	void 배포_환경에서는_본문을_남기지_않는다() {
+		MockEnvironment dev = new MockEnvironment();
+		dev.setActiveProfiles("dev");
+		LogMailSender sender = new LogMailSender(dev);
+		sender.guardAgainstSilentProduction();
+
+		assertThat(sender.leavesBodyInLog()).isFalse();
 	}
 
 	@Test
