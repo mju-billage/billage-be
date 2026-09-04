@@ -39,6 +39,8 @@ public class SecurityConfig {
 								"/api/v1/auth/login",
 								"/api/v1/auth/social/login",
 								"/api/v1/auth/social/signup",
+								"/api/v1/auth/email-verifications",
+								"/api/v1/auth/email-verifications/confirm",
 								"/api/v1/auth/refresh",
 								"/api/v1/auth/logout").permitAll()
 						.requestMatchers(

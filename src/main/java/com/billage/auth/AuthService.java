@@ -18,6 +18,7 @@ import com.billage.auth.token.RefreshToken;
 import com.billage.auth.token.RefreshTokenGenerator;
 import com.billage.auth.token.RefreshTokenRepository;
 import com.billage.auth.token.TokenHasher;
+import com.billage.auth.email.EmailVerificationService;
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
 import com.billage.user.User;
@@ -36,6 +37,7 @@ public class AuthService {
 	private final JwtProperties jwtProperties;
 	private final RefreshTokenGenerator refreshTokenGenerator;
 	private final TokenHasher tokenHasher;
+	private final EmailVerificationService emailVerificationService;
 
 	private record IssuedRefreshToken(RefreshToken entity, String rawToken) {
 	}
@@ -48,6 +50,8 @@ public class AuthService {
 	 */
 	@Transactional
 	public SignupResponse signup(String email, String rawPassword, String name) {
+		// 인증 요구는 설정으로 켠다 — 프론트가 인증 화면을 붙이기 전까지는 꺼 둔 채로 둔다.
+		emailVerificationService.requireVerified(email);
 		if (userRepository.existsByEmail(email)) {
 			throw new BusinessException(ErrorCode.EMAIL_ALREADY_EXISTS);
 		}
