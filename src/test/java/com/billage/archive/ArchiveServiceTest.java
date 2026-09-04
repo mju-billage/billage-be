@@ -156,6 +156,25 @@ class ArchiveServiceTest extends IntegrationTest {
 	}
 
 	@Test
+	void 보관된_증빙은_모임_관리자_누구나_열_수_있다() {
+		Long fileId = fileService.upload(ownerId,
+				new MockMultipartFile("file", "receipt.jpg", "image/jpeg", "image".getBytes()),
+				FilePurpose.RECEIPT).fileId();
+		entryService.create(ledgerId, ownerId, new EntryCreateRequest(EntryType.EXPENSE, "대관료",
+				200_000L, LocalDate.of(2026, 5, 20), null, null, List.of(fileId)));
+		archiveService.create(groupId, ownerId, "보관");
+
+		// 보관하면 entry 연결이 끊긴다. 올린 사람이 아니어도 같은 모임 관리자면 열려야 한다.
+		assertThat(fileService.getAccessibleFile(fileId, adminId).getId()).isEqualTo(fileId);
+
+		Long outsiderId = userRepository.save(User.create("out@example.com", "encoded", "남")).getId();
+		assertThatThrownBy(() -> fileService.getAccessibleFile(fileId, outsiderId))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.ACCESS_DENIED);
+	}
+
+	@Test
 	void 보관_기록을_지우면_그_안의_증빙도_사라진다() {
 		Long fileId = fileService.upload(ownerId,
 				new MockMultipartFile("file", "receipt.jpg", "image/jpeg", "image".getBytes()),
