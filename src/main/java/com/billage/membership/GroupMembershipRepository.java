@@ -22,12 +22,19 @@ public interface GroupMembershipRepository extends JpaRepository<GroupMembership
 
 	long countByGroupIdAndRole(Long groupId, GroupRole role);
 
-	/** 관리자 목록. role 은 문자열로 저장돼 정렬 순서가 뒤집히므로 총무를 앞으로 명시한다. */
+	/**
+	 * 관리자 목록. 화면명세 「모임 관리자」의 "'ㄱ,ㄴ,ㄷ' 정렬 및 총무 우선 정렬"을 따른다.
+	 *
+	 * <p>role 은 문자열로 저장돼 정렬 순서가 뒤집히므로 총무를 앞으로 명시한다. 이름은 User 에 있어
+	 * 연관관계 없이 조인한다 — {@code left join} 이어야 한다. 탈퇴 등으로 사용자를 찾지 못한 관리자도
+	 * 목록에서 사라지면 안 되고(이름만 null), 그런 행은 뒤로 보낸다.
+	 */
 	@Query("""
 			select ms from GroupMembership ms
+			left join User u on u.id = ms.userId
 			where ms.group.id = :groupId
 			order by case when ms.role = com.billage.membership.GroupRole.OWNER then 0 else 1 end,
-			         ms.joinedAt asc
+			         u.name asc nulls last
 			""")
 	List<GroupMembership> findByGroupId(@Param("groupId") Long groupId);
 

@@ -29,6 +29,7 @@ import com.billage.member.MemberRepository;
 import com.billage.member.MemberService;
 import com.billage.member.dto.MemberCreateRequest;
 import com.billage.member.dto.MemberUpdateRequest;
+import com.billage.membership.dto.MembershipResponse;
 import com.billage.membership.dto.RoleUpdateRequest;
 import com.billage.support.IntegrationTest;
 import com.billage.user.User;
@@ -110,6 +111,20 @@ class GroupMembershipServiceTest extends IntegrationTest {
 
 		assertThat(groupMembershipRepository.existsByGroupIdAndUserId(groupId, adminId)).isFalse();
 		assertThat(memberRepository.countByGroupId(groupId)).isEqualTo(1);
+	}
+
+	@Test
+	void 관리자_목록은_총무_먼저_그다음_이름_오름차순이다() {
+		Long naId = userRepository.save(User.create("na@example.com", "encoded", "나관리")).getId();
+		Long gaId = userRepository.save(User.create("ga@example.com", "encoded", "가관리")).getId();
+		joinWithInvitation(naId);
+		joinWithInvitation(gaId);
+		// 총무(setUp 의 "총무")는 이름이 뒤여도 맨 앞이어야 한다.
+
+		var memberships = groupMembershipService.getMemberships(groupId, ownerId);
+
+		assertThat(memberships).extracting(MembershipResponse::name)
+				.containsExactly("총무", "가관리", "나관리");
 	}
 
 	// --- 총무 최소 1명 ---
