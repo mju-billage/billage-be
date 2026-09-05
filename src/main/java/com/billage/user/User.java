@@ -42,6 +42,10 @@ public class User {
 	@Column(name = "terms_agreed_at")
 	private LocalDateTime termsAgreedAt;
 
+	/** 선택 항목인 마케팅 수신 동의 시각. 동의하지 않았으면 null 이다. */
+	@Column(name = "marketing_agreed_at")
+	private LocalDateTime marketingAgreedAt;
+
 	@Column(name = "created_at", nullable = false, updatable = false)
 	private LocalDateTime createdAt;
 
@@ -75,6 +79,28 @@ public class User {
 		if (this.termsAgreedAt == null) {
 			this.termsAgreedAt = at;
 		}
+	}
+
+	/** 내 프로필 수정. 이름만 바꾼다 — 이메일 변경은 MVP 범위 밖이다. */
+	public void changeName(String name) {
+		this.name = name;
+	}
+
+	/**
+	 * @param encodedPassword 반드시 BCrypt로 인코딩된 값
+	 */
+	public void changePassword(String encodedPassword) {
+		this.password = encodedPassword;
+	}
+
+	/** 소셜 전용 계정에는 앱 비밀번호가 없다. 비밀번호 변경·재설정은 이 계정에 적용할 수 없다. */
+	public boolean hasPassword() {
+		return this.password != null;
+	}
+
+	/** 가입 시 받은 마케팅 수신 동의. 동의한 경우에만 시각을 남긴다. */
+	public void recordMarketingAgreement(boolean agreed, LocalDateTime at) {
+		this.marketingAgreedAt = agreed ? at : null;
 	}
 
 	@PrePersist

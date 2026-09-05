@@ -6,6 +6,7 @@ import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -34,4 +35,9 @@ public interface GroupInvitationRepository extends JpaRepository<GroupInvitation
 	boolean existsByCode(String code);
 
 	void deleteByGroupId(Long groupId);
+
+	/** 탈퇴한 총무가 발급한 코드에서 발급자 표시만 지운다. 코드는 만료까지 그대로 쓰인다. */
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("update GroupInvitation i set i.createdBy = null where i.createdBy = :userId")
+	int clearCreatedBy(@Param("userId") Long userId);
 }

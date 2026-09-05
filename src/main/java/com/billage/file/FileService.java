@@ -78,6 +78,11 @@ public class FileService {
 			// 보관된 증빙도 그 모임 관리자 전원이 볼 수 있어야 한다 — 보관하면서 entry 연결이 끊기는데,
 			// 여기서 걸러 내지 않으면 "업로더 본인만" 규칙에 걸려 보관함 상세의 이미지가 남에게 안 열린다.
 			guard.requireMembership(archiveGroupIdOf(file), userId);
+		} else if (file.getUserId() != null) {
+			// 프로필 이미지는 본인만 연다. 남의 프로필을 보여 주는 화면이 아직 없다.
+			if (!file.getUserId().equals(userId)) {
+				throw new BusinessException(ErrorCode.ACCESS_DENIED);
+			}
 		} else if (file.getGroupId() != null) {
 			// 모임 대표 이미지는 그 모임 관리자 전원이 볼 수 있어야 한다(업로더 본인만이면 목록 화면이 깨진다).
 			guard.requireMembership(file.getGroupId(), userId);
@@ -196,6 +201,71 @@ public class FileService {
 		}
 		// 이미 다른 모임(또는 내역)이 쓰는 파일이다. 공유하면 한쪽이 지울 때 다른 쪽 참조가 깨진다.
 		throw new BusinessException(ErrorCode.FILE_IN_USE);
+	}
+
+	/**
+	 * 프로필 이미지 지정. 아직 임자가 없는 본인의 PROFILE_IMAGE 파일만 쓸 수 있다.
+	 * 실패 이유를 구분해 돌려주는 것까지 {@link #claimGroupImage} 와 같다.
+	 */
+	@Transactional
+	public void claimProfileImage(Long fileId, Long userId) {
+		try {
+			if (fileRepository.claimProfileImage(fileId, userId) == 1) {
+				return;
+			}
+		} catch (DataIntegrityViolationException e) {
+			// 같은 사용자가 두 기기에서 동시에 프로필을 바꾸면 uk_file_user 에 걸린다. 500 대신 409.
+			throw new BusinessException(ErrorCode.FILE_IN_USE);
+		}
+		UploadedFile file = fileRepository.findById(fileId)
+				.orElseThrow(() -> new BusinessException(ErrorCode.FILE_NOT_FOUND));
+		if (file.getPurpose() != FilePurpose.PROFILE_IMAGE) {
+			throw new BusinessException(ErrorCode.INVALID_FILE_PURPOSE);
+		}
+		if (!file.isUploadedBy(userId)) {
+			throw new BusinessException(ErrorCode.ACCESS_DENIED);
+		}
+		throw new BusinessException(ErrorCode.FILE_IN_USE);
+	}
+
+	/** 사용자의 현재 프로필 이미지. 바뀌는지 판단할 때 쓴다. */
+	@Transactional(readOnly = true)
+	public Optional<UploadedFile> findProfileImage(Long userId) {
+		return fileRepository.findProfileImage(userId);
+	}
+
+	/**
+	 * 프로필 이미지를 사용자에게서 떼어내기만 한다(파일은 남는다). 교체 중간 단계로 쓴다.
+	 * 저장소 객체를 여기서 지우지 않는 이유는 {@link #detachGroupImage} 와 같다.
+	 */
+	@Transactional
+	public Optional<UploadedFile> detachProfileImage(Long userId) {
+		Optional<UploadedFile> current = fileRepository.findProfileImage(userId);
+		if (current.isPresent() && fileRepository.detachProfileImage(userId, current.get().getId()) == 0) {
+			throw new BusinessException(ErrorCode.FILE_IN_USE);
+		}
+		return current;
+	}
+
+	/** 탈퇴 시 프로필 이미지를 완전히 지운다. 없으면 아무 일도 하지 않는다. */
+	@Transactional
+	public void deleteProfileImage(Long userId) {
+		fileRepository.findProfileImage(userId).ifPresent(file -> deleteAll(List.of(file)));
+	}
+
+	/** 사용자의 프로필 이미지 URL. 없으면 null(클라이언트가 기본 아바타를 그린다). */
+	@Transactional(readOnly = true)
+	public String profileImageUrl(Long userId) {
+		return fileRepository.findProfileImage(userId).map(file -> fileUrl(file.getId())).orElse(null);
+	}
+
+	/**
+	 * 탈퇴한 사용자가 올린 파일에서 업로더 표시만 지운다.
+	 * 파일은 남는다 — 증빙은 올린 사람이 아니라 그 모임의 회계 이력이다.
+	 */
+	@Transactional
+	public void clearUploader(Long userId) {
+		fileRepository.clearUploader(userId);
 	}
 
 	/** 모임의 현재 대표 이미지를 떼어내 완전히 지운다. 없으면 아무 일도 하지 않는다. */

@@ -4,6 +4,7 @@ import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -18,4 +19,11 @@ public interface GroupSpaceRepository extends JpaRepository<GroupSpace, Long> {
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("select g from GroupSpace g where g.id = :groupId")
 	Optional<GroupSpace> findByIdForUpdate(@Param("groupId") Long groupId);
+
+	/**
+	 * 탈퇴한 사용자가 만든 모임에서 생성자 표시만 지운다. 모임은 남은 관리자들의 것이라 그대로 둔다.
+	 */
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("update GroupSpace g set g.createdBy = null where g.createdBy = :userId")
+	int clearCreatedBy(@Param("userId") Long userId);
 }

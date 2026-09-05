@@ -13,6 +13,9 @@ public interface EmailVerificationRepository extends JpaRepository<EmailVerifica
 
 	Optional<EmailVerification> findByEmail(String email);
 
+	/** 탈퇴 시 그 주소의 인증 기록을 지운다. 같은 주소로 다시 가입하면 처음부터 인증한다. */
+	void deleteByEmail(String email);
+
 	/**
 	 * 발송·검증이 같은 행을 동시에 고칠 수 있어 잠금 읽기로 가져온다.
 	 * 일반 읽기는 트랜잭션 스냅샷을 보므로 시도 횟수가 덮어써질 수 있다.

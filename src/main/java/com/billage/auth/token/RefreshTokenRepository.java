@@ -34,4 +34,27 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long
 			   and t.revokedAt is null
 			""")
 	int revokeActiveFamily(@Param("familyId") String familyId, @Param("now") LocalDateTime now);
+
+	/**
+	 * 비밀번호 변경 시 다른 기기의 세션을 끊는다. 비밀번호를 바꾼 이유가 유출 의심일 수 있어
+	 * 남아 있는 Refresh Token 을 그대로 두면 변경이 무의미해진다.
+	 *
+	 * @param keepFamilyId 지금 쓰고 있는 기기의 패밀리. null 이면 모든 기기를 끊는다(재로그인 필요).
+	 */
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("""
+			update RefreshToken t
+			   set t.revokedAt = :now,
+			       t.revokeReason = com.billage.auth.token.RevokeReason.PASSWORD_CHANGED
+			 where t.user.id = :userId
+			   and t.revokedAt is null
+			   and (:keepFamilyId is null or t.familyId <> :keepFamilyId)
+			""")
+	int revokeActiveForUser(@Param("userId") Long userId, @Param("keepFamilyId") String keepFamilyId,
+			@Param("now") LocalDateTime now);
+
+	Optional<RefreshToken> findFirstByTokenHash(String tokenHash);
+
+	/** 탈퇴 시 그 계정의 토큰을 전부 지운다. 계정과 함께 사라지는 데이터다. */
+	void deleteByUserId(Long userId);
 }

@@ -38,7 +38,8 @@ public interface FileRepository extends JpaRepository<UploadedFile, Long> {
 	 * "안 쓰인다"를 먼저 읽고 나중에 지우면 그 사이에 선점된 파일까지 지워 버린다.
 	 */
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
-	@Query("delete from UploadedFile f where f.id = :fileId and f.groupId is null and f.entry is null")
+	@Query("delete from UploadedFile f where f.id = :fileId and f.groupId is null and f.userId is null "
+			+ "and f.entry is null")
 	int deleteIfUnused(@Param("fileId") Long fileId);
 
 	/**
@@ -53,6 +54,34 @@ public interface FileRepository extends JpaRepository<UploadedFile, Long> {
 	/** 모임의 현재 대표 이미지. */
 	@Query("select f from UploadedFile f where f.groupId = :groupId")
 	Optional<UploadedFile> findGroupImage(@Param("groupId") Long groupId);
+
+	/**
+	 * 프로필 이미지 선점. 대표 이미지({@link #claimGroupImage})와 같은 방식이며 주인만 사용자로 바뀐다.
+	 */
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("""
+			update UploadedFile f set f.userId = :userId
+			where f.id = :fileId and f.userId is null and f.groupId is null and f.entry is null
+			  and f.purpose = com.billage.file.FilePurpose.PROFILE_IMAGE and f.uploadedBy = :userId
+			""")
+	int claimProfileImage(@Param("fileId") Long fileId, @Param("userId") Long userId);
+
+	/** 사용자에게서 프로필 이미지를 떼어낸다. 파일 자체는 남는다(교체 중간 단계). */
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("update UploadedFile f set f.userId = null where f.userId = :userId and f.id = :fileId")
+	int detachProfileImage(@Param("userId") Long userId, @Param("fileId") Long fileId);
+
+	/** 사용자의 현재 프로필 이미지. */
+	@Query("select f from UploadedFile f where f.userId = :userId")
+	Optional<UploadedFile> findProfileImage(@Param("userId") Long userId);
+
+	/**
+	 * 탈퇴한 사용자가 올린 파일의 업로더 표시를 지운다. 파일은 남는다 —
+	 * 증빙은 올린 사람의 것이 아니라 그 모임의 회계 이력이다.
+	 */
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("update UploadedFile f set f.uploadedBy = null where f.uploadedBy = :userId")
+	int clearUploader(@Param("userId") Long userId);
 
 	/** 여러 모임의 대표 이미지를 한 번에. 목록 조회의 N+1 을 피한다. */
 	@Query("select f from UploadedFile f where f.groupId in :groupIds")
