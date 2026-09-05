@@ -53,7 +53,8 @@ public class UploadedFile {
 	@Column(nullable = false)
 	private Long size;
 
-	@Column(name = "uploaded_by", nullable = false, updatable = false)
+	/** 올린 사람. 그 사람이 탈퇴하면 비워진다 — 증빙 자체는 모임의 회계 이력이라 남는다. */
+	@Column(name = "uploaded_by")
 	private Long uploadedBy;
 
 	/** 증빙이 내역에 연결되면 값이 채워진다. 연결된 파일은 삭제할 수 없다. */
@@ -76,6 +77,13 @@ public class UploadedFile {
 	@Column(name = "group_id")
 	private Long groupId;
 
+	/**
+	 * 프로필 이미지로 쓰이는 사용자. 모임 대표 이미지의 {@code groupId} 와 같은 자리다.
+	 * 사용자당 하나만 가질 수 있다(uk_file_user).
+	 */
+	@Column(name = "user_id")
+	private Long userId;
+
 	@Column(name = "created_at", nullable = false, updatable = false)
 	private LocalDateTime createdAt;
 
@@ -96,7 +104,7 @@ public class UploadedFile {
 
 	/** 어딘가에 쓰이고 있는 파일. 지우려면 먼저 연결을 끊어야 한다. */
 	public boolean isLinked() {
-		return this.entry != null || this.groupId != null || this.archiveEntry != null;
+		return this.entry != null || this.groupId != null || this.userId != null || this.archiveEntry != null;
 	}
 
 	public void linkTo(Entry entry) {
@@ -110,7 +118,8 @@ public class UploadedFile {
 	}
 
 	public boolean isUploadedBy(Long userId) {
-		return this.uploadedBy.equals(userId);
+		// 업로더가 탈퇴하면 uploadedBy 가 비므로, 그때는 누구의 파일도 아니다.
+		return this.uploadedBy != null && this.uploadedBy.equals(userId);
 	}
 
 	@PrePersist

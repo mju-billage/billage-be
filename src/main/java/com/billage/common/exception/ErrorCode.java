@@ -36,6 +36,11 @@ public enum ErrorCode {
 			"인증 시도 횟수를 초과했습니다. 코드를 다시 받아 주세요."),
 	VERIFICATION_SEND_LIMIT_EXCEEDED("VERIFICATION_SEND_LIMIT_EXCEEDED", HttpStatus.TOO_MANY_REQUESTS,
 			"인증 코드를 너무 자주 요청했습니다. 잠시 후 다시 시도해 주세요."),
+	PASSWORD_CHANGE_NOT_ALLOWED("PASSWORD_CHANGE_NOT_ALLOWED", HttpStatus.BAD_REQUEST,
+			"소셜 로그인 계정은 비밀번호를 변경할 수 없습니다."),
+	USER_NOT_FOUND("USER_NOT_FOUND", HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."),
+	OWNER_TRANSFER_REQUIRED("OWNER_TRANSFER_REQUIRED", HttpStatus.CONFLICT,
+			"총무로 있는 모임의 권한을 먼저 넘겨주세요."),
 	MAIL_SEND_FAILED("MAIL_SEND_FAILED", HttpStatus.INTERNAL_SERVER_ERROR, "메일 발송에 실패했습니다. 잠시 후 다시 시도해 주세요."),
 
 	// 모임·모임원
