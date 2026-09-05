@@ -27,6 +27,9 @@ import com.billage.support.HttpTestClient.Response;
 import com.billage.support.IntegrationTest;
 import com.billage.user.User;
 import com.billage.user.UserRepository;
+import com.billage.user.UserService;
+import com.billage.user.WithdrawalReasonType;
+import com.billage.user.dto.WithdrawRequest;
 
 class AuthIntegrationTest extends IntegrationTest {
 
@@ -44,6 +47,8 @@ class AuthIntegrationTest extends IntegrationTest {
 	PasswordEncoder passwordEncoder;
 	@Autowired
 	TokenHasher tokenHasher;
+	@Autowired
+	UserService userService;
 
 	private HttpTestClient http;
 	private User user;
@@ -240,6 +245,20 @@ class AuthIntegrationTest extends IntegrationTest {
 		assertThat(response.status()).isEqualTo(200);
 		assertThat(response.at("data.userId")).isEqualTo(user.getId().intValue());
 		assertThat(response.at("data.email")).isEqualTo(EMAIL);
+	}
+
+	@Test
+	void 탈퇴한_계정의_토큰은_더_이상_통하지_않는다() {
+		// Access Token 은 서버에 저장하지 않아 탈퇴해도 만료(30분)까지 서명이 유효하다.
+		// 그대로 두면 사용자를 참조하는 요청이 FK 제약에 걸려 500 이 되고, 업로드는 저장소에 고아를 남긴다.
+		String accessToken = (String) login(EMAIL, PASSWORD).at("data.tokens.accessToken");
+		userService.withdraw(user.getId(), new WithdrawRequest(List.of(),
+				List.of(WithdrawalReasonType.NO_LONGER_NEEDED), null));
+
+		Response response = http.get("/api/v1/auth/me", accessToken);
+
+		assertThat(response.status()).isEqualTo(401);
+		assertThat(response.at("code")).isEqualTo("UNAUTHORIZED");
 	}
 
 	@Test

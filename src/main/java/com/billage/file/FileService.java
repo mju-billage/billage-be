@@ -54,17 +54,48 @@ public class FileService {
 	private final FileUrlResolver fileUrlResolver;
 	private final GroupAccessGuard guard;
 
+	/**
+	 * 파일 업로드.
+	 *
+	 * <p>메타데이터를 먼저 저장하고 바이트는 그다음에 쓴다. 순서가 반대면, 저장에 실패하는 요청이
+	 * (예: 탈퇴한 계정의 토큰으로 들어와 uploaded_by 의 FK 에 걸리는 경우) 이미 써 놓은 객체를
+	 * 저장소에 남긴다 — 메타데이터가 없으니 아무도 찾지도 지우지도 못한다.
+	 * 반대로 바이트 쓰기가 실패하면 트랜잭션이 되돌아가 행도 남지 않는다. 쓰다 만 조각과 뒤늦은 롤백까지
+	 * 대비해, 쓰기를 시작하기 전에 "커밋되지 않으면 이 키를 지운다"를 걸어 둔다.
+	 */
 	@Transactional
 	public FileResponse upload(Long userId, MultipartFile file, FilePurpose purpose) {
 		validate(file);
 
 		String key = storageKey(purpose, file.getOriginalFilename());
-		fileStorage.store(key, file);
-
-		UploadedFile saved = fileRepository.save(UploadedFile.create(purpose, key,
+		UploadedFile saved = fileRepository.saveAndFlush(UploadedFile.create(purpose, key,
 				originalFileName(file), file.getContentType(), file.getSize(), userId));
 
+		// 정리는 쓰기를 시작하기 전에 걸어 둔다. 쓰다가 실패해도 조각이 남을 수 있는데,
+		// 쓰기 뒤에 걸면 그 경우에는 정리가 아예 등록되지 않는다.
+		deleteStorageIfRolledBack(key);
+		fileStorage.store(key, file);
+
 		return FileResponse.of(saved, fileUrl(saved.getId()));
+	}
+
+	/**
+	 * 트랜잭션이 커밋되지 않으면 그 키의 저장소 객체를 지운다(저장소 쓰기는 롤백되지 않는다).
+	 * 쓰기가 시작되기 전에 등록하므로, 쓰다 만 조각도 함께 정리된다.
+	 * 실제로 아무것도 쓰이지 않았으면 없는 키를 지우는 셈인데, 그 실패는 삼킨다.
+	 */
+	private void deleteStorageIfRolledBack(String key) {
+		if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+			return;
+		}
+		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+			@Override
+			public void afterCompletion(int status) {
+				if (status != STATUS_COMMITTED) {
+					deleteQuietly(key);
+				}
+			}
+		});
 	}
 
 	@Transactional(readOnly = true)
