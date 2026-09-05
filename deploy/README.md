@@ -146,6 +146,14 @@ sudo /opt/billage/restore-db.sh /var/backups/billage/billage-YYYYmmdd-HHMMSS.sql
 sudo systemctl restart billage
 ```
 
+**메일 발송 SES**: 회원가입 이메일 인증 코드를 보낸다(`ap-northeast-2`).
+
+- 인증은 EC2 인스턴스 역할 `billage-backup-role` 에 `billage-ses-send` 정책(`ses:SendEmail`)을 추가해 사용 — **서버에 액세스 키 없음**(S3 와 같은 방식).
+- 발신 주소는 SES 에서 검증한 것이어야 한다. 실도메인 전에는 개별 이메일 주소를 검증해 쓴다.
+- **샌드박스 해제 전에는 검증된 주소로만, 하루 200통까지** 발송된다. 실사용자에게 보내려면 프로덕션 액세스 신청이 필요하다.
+- 앱 설정: `BILLAGE_MAIL_SENDER=SES`, `BILLAGE_MAIL_FROM=<검증한 주소>`. dev·prod 프로파일 기본값이 이미 `SES` 라, 발신 주소만 검증되어 있으면 환경변수를 빠뜨려도 동작한다.
+- 준비 전 임시로 끄려면 dev 에서 `BILLAGE_MAIL_SENDER=LOG` — 기동 시 경고가 남고 메일은 나가지 않는다. prod 에서 LOG 로 두면 **앱이 기동하지 않는다**(조용히 메일이 안 나가는 것을 막기 위함).
+
 **업로드 파일 S3**: 버킷 `s3://billage-files-442908904609/` (`ap-northeast-2`, 퍼블릭 차단, SSE-S3, 미완료 멀티파트 7일 정리).
 - 환경 구분은 프리픽스 — dev 는 `dev/`, prod 는 `prod/`. 앱 설정 `BILLAGE_FILE_STORAGE=S3`, `BILLAGE_FILE_S3_BUCKET`, `BILLAGE_FILE_S3_PREFIX`.
 - 인증은 EC2 인스턴스 역할 `billage-backup-role` 에 `billage-files-access` 정책(해당 버킷 객체에 Put/Get/Delete)을 추가해 사용 — **서버에 액세스 키 없음**.
