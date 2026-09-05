@@ -291,6 +291,38 @@ class UserServiceTest extends IntegrationTest {
 	}
 
 	@Test
+	void 탈퇴하는_중에_올라온_파일도_고아로_남지_않는다() throws Exception {
+		// 정리 목록을 뽑은 뒤에 커밋된 업로드까지 업로더 표시를 비우면, 아무도 열지도 지우지도 못하는
+		// 파일이 저장소에 남는다. 계정 행을 잠가 그 사이 업로드가 끼어들지 못하게 한다.
+		java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+		var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+		try {
+			pool.submit(() -> race(start, () -> userService.withdraw(userId, withdrawRequest(List.of()))));
+			pool.submit(() -> race(start, () -> uploadReceipt(userId)));
+			start.countDown();
+			pool.shutdown();
+			assertThat(pool.awaitTermination(30, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+		} finally {
+			pool.shutdownNow();
+		}
+
+		// 남은 파일 중에 "임자도 없고 업로더도 없는" 것이 있으면 안 된다.
+		assertThat(fileRepository.findAll())
+				.noneMatch(file -> file.getUploadedBy() == null && !file.isLinked());
+	}
+
+	private void race(java.util.concurrent.CountDownLatch start, Runnable task) {
+		try {
+			start.await();
+			task.run();
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		} catch (RuntimeException e) {
+			// 진 쪽은 실패한다(계정이 이미 사라졌거나, 남은 파일이 계정 삭제를 막는다). 정상이다.
+		}
+	}
+
+	@Test
 	void 탈퇴_사유는_계정과_따로_남는다() {
 		userService.withdraw(userId, new WithdrawRequest(List.of(),
 				List.of(WithdrawalReasonType.USAGE_UNCLEAR, WithdrawalReasonType.ETC), "다시 가입할게요"));

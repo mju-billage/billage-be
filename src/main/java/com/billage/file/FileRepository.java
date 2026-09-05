@@ -89,9 +89,18 @@ public interface FileRepository extends JpaRepository<UploadedFile, Long> {
 	/**
 	 * 탈퇴한 사용자가 올린 파일의 업로더 표시를 지운다. 파일은 남는다 —
 	 * 증빙은 올린 사람의 것이 아니라 그 모임의 회계 이력이다.
+	 *
+	 * <p><b>어딘가에 쓰이고 있는 파일만</b> 비운다. 안 쓰이는 파일까지 비우면 지울 사람이 사라져
+	 * 고아가 되므로, 그런 행이 남아 있으면 차라리 그대로 두어 계정 삭제가 FK 에 걸리게 한다 —
+	 * 탈퇴가 통째로 되돌아갈지언정 손댈 수 없는 파일을 만들지는 않는다.
 	 */
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
-	@Query("update UploadedFile f set f.uploadedBy = null where f.uploadedBy = :userId")
+	@Query("""
+			update UploadedFile f set f.uploadedBy = null
+			where f.uploadedBy = :userId
+			  and (f.entry is not null or f.archiveEntry is not null
+			       or f.groupId is not null or f.userId is not null)
+			""")
 	int clearUploader(@Param("userId") Long userId);
 
 	/** 여러 모임의 대표 이미지를 한 번에. 목록 조회의 N+1 을 피한다. */

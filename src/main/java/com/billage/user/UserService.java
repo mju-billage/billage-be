@@ -147,7 +147,10 @@ public class UserService {
 	 */
 	@Transactional
 	public void withdraw(Long userId, WithdrawRequest request) {
-		User user = requireUser(userId);
+		// 계정 행을 먼저 잠근다 — 파일 정리와 계정 삭제 사이에 새 업로드가 끼어들지 못하게 한다.
+		// 자세한 이유는 UserRepository#findByIdForUpdate.
+		User user = userRepository.findByIdForUpdate(userId)
+				.orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 		String email = user.getEmail();
 
 		List<GroupMembership> memberships = groupMembershipRepository.findByUserId(userId);
