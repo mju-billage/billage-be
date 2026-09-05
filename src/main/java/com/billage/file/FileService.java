@@ -262,9 +262,14 @@ public class FileService {
 	/**
 	 * 탈퇴한 사용자가 올린 파일에서 업로더 표시만 지운다.
 	 * 파일은 남는다 — 증빙은 올린 사람이 아니라 그 모임의 회계 이력이다.
+	 *
+	 * <p>다만 <b>아직 어디에도 연결하지 않은 업로드는 먼저 지운다.</b> 업로더 표시가 비면 접근 판정이
+	 * "업로더 본인만"으로 떨어져 아무도 열 수 없고, 삭제도 업로더만 할 수 있어 지울 사람이 사라진다 —
+	 * 저장소에 영영 남는 고아가 된다. 올려만 두고 내역에 붙이지 않은 증빙이 여기 해당한다.
 	 */
 	@Transactional
 	public void clearUploader(Long userId) {
+		deleteAll(fileRepository.findUnlinkedUploads(userId));
 		fileRepository.clearUploader(userId);
 	}
 

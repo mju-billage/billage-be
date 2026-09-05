@@ -76,6 +76,17 @@ public interface FileRepository extends JpaRepository<UploadedFile, Long> {
 	Optional<UploadedFile> findProfileImage(@Param("userId") Long userId);
 
 	/**
+	 * 올렸지만 아직 어디에도 연결하지 않은 파일. 탈퇴 처리에서 먼저 지우려고 찾는다 —
+	 * 남겨 두면 업로더 표시가 비어 아무도 열지도 지우지도 못하는 고아가 된다.
+	 */
+	@Query("""
+			select f from UploadedFile f
+			where f.uploadedBy = :userId and f.entry is null and f.archiveEntry is null
+			  and f.groupId is null and f.userId is null
+			""")
+	List<UploadedFile> findUnlinkedUploads(@Param("userId") Long userId);
+
+	/**
 	 * 탈퇴한 사용자가 올린 파일의 업로더 표시를 지운다. 파일은 남는다 —
 	 * 증빙은 올린 사람의 것이 아니라 그 모임의 회계 이력이다.
 	 */

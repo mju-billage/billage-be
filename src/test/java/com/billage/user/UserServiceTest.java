@@ -279,6 +279,18 @@ class UserServiceTest extends IntegrationTest {
 	}
 
 	@Test
+	void 올려두고_붙이지_않은_파일은_탈퇴와_함께_지운다() {
+		// 업로더 표시만 비우면 아무도 열지도 지우지도 못하는 고아가 저장소에 남는다.
+		Long fileId = uploadReceipt(userId);
+		String key = fileRepository.findById(fileId).orElseThrow().getStorageKey();
+
+		userService.withdraw(userId, withdrawRequest(List.of()));
+
+		assertThat(fileRepository.findById(fileId)).isEmpty();
+		assertThatThrownBy(() -> fileStorage.load(key)).isInstanceOf(BusinessException.class);
+	}
+
+	@Test
 	void 탈퇴_사유는_계정과_따로_남는다() {
 		userService.withdraw(userId, new WithdrawRequest(List.of(),
 				List.of(WithdrawalReasonType.USAGE_UNCLEAR, WithdrawalReasonType.ETC), "다시 가입할게요"));
@@ -337,6 +349,11 @@ class UserServiceTest extends IntegrationTest {
 	private Long uploadProfileImage(Long uploaderId) {
 		MockMultipartFile file = new MockMultipartFile("file", "me.jpg", "image/jpeg", "bytes".getBytes());
 		return fileService.upload(uploaderId, file, FilePurpose.PROFILE_IMAGE).fileId();
+	}
+
+	private Long uploadReceipt(Long uploaderId) {
+		MockMultipartFile file = new MockMultipartFile("file", "receipt.jpg", "image/jpeg", "bytes".getBytes());
+		return fileService.upload(uploaderId, file, FilePurpose.RECEIPT).fileId();
 	}
 
 	private Long uploadGroupImage(Long uploaderId) {
