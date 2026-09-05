@@ -39,7 +39,7 @@ public interface FileRepository extends JpaRepository<UploadedFile, Long> {
 	 */
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
 	@Query("delete from UploadedFile f where f.id = :fileId and f.groupId is null and f.userId is null "
-			+ "and f.entry is null")
+			+ "and f.entry is null and f.archiveEntry is null")
 	int deleteIfUnused(@Param("fileId") Long fileId);
 
 	/**

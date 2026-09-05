@@ -269,8 +269,22 @@ public class FileService {
 	 */
 	@Transactional
 	public void clearUploader(Long userId) {
-		deleteAll(fileRepository.findUnlinkedUploads(userId));
+		deleteIfStillUnused(fileRepository.findUnlinkedUploads(userId));
 		fileRepository.clearUploader(userId);
+	}
+
+	/**
+	 * "안 쓰이는 파일"을 지운다. 세는 것과 지우는 것 사이에 다른 요청이 그 파일을 내역에 붙이거나
+	 * 대표 이미지로 선점할 수 있으므로, 조건부 DELETE 로 그 경합과 원자적으로 겨룬다 —
+	 * 목록을 그대로 지우면 방금 사용 중이 된 증빙까지 지워 내역의 참조가 깨진다.
+	 * 선점당한 파일은 임자가 생긴 것이므로 그냥 둔다(뒤이어 업로더 표시만 비워진다).
+	 */
+	private void deleteIfStillUnused(List<UploadedFile> candidates) {
+		List<String> keys = candidates.stream()
+				.filter(file -> fileRepository.deleteIfUnused(file.getId()) == 1)
+				.map(UploadedFile::getStorageKey)
+				.toList();
+		deleteStorageAfterCommit(keys);
 	}
 
 	/** 모임의 현재 대표 이미지를 떼어내 완전히 지운다. 없으면 아무 일도 하지 않는다. */
@@ -430,7 +444,14 @@ public class FileService {
 		fileRepository.deleteAll(files);
 		fileRepository.flush();
 
-		List<String> keys = files.stream().map(UploadedFile::getStorageKey).toList();
+		deleteStorageAfterCommit(files.stream().map(UploadedFile::getStorageKey).toList());
+	}
+
+	/** DB 행이 지워진 파일의 저장소 객체를 커밋 이후에 지운다. */
+	private void deleteStorageAfterCommit(List<String> keys) {
+		if (keys.isEmpty()) {
+			return;
+		}
 		if (!TransactionSynchronizationManager.isSynchronizationActive()) {
 			keys.forEach(fileStorage::delete);
 			return;
