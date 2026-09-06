@@ -74,6 +74,11 @@ public class Ledger {
 		return new Ledger(folder.getGroup(), folder, name, budget);
 	}
 
+	/** 폴더에 넣지 않고 모임의 최상위 영역에 바로 만든다. 폴더가 하나도 없는 모임에서 쓴다. */
+	public static Ledger createInGroup(GroupSpace group, Folder folder, String name, Long budget) {
+		return new Ledger(group, folder, name, budget);
+	}
+
 	public void rename(String name) {
 		this.name = name;
 	}
