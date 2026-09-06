@@ -49,6 +49,10 @@ billage:
       send-window-minutes: 60
       # 프론트가 인증 화면을 붙이면 true 로 바꾼다. 그전까지 켜면 기존 가입 흐름이 막힌다.
       required-for-signup: ${BILLAGE_EMAIL_VERIFICATION_REQUIRED:false}
+    terms:
+      # 가입 요청에 agreements 를 요구할지. 프론트가 약관 동의 화면을 붙이면 true 로 바꾼다.
+      # 값이 들어오면 이 설정과 무관하게 항상 필수 3종을 검증한다.
+      required-for-signup: ${BILLAGE_TERMS_REQUIRED:false}
   file:
     # LOCAL(서버 디스크) | S3. 로컬 개발은 LOCAL, dev·prod 는 S3.
     storage: ${BILLAGE_FILE_STORAGE:LOCAL}
@@ -119,6 +123,10 @@ billage:
       send-window-minutes: 60
       # 프론트가 인증 화면을 붙이면 true 로 바꾼다. 그전까지 켜면 기존 가입 흐름이 막힌다.
       required-for-signup: ${BILLAGE_EMAIL_VERIFICATION_REQUIRED:false}
+    terms:
+      # 가입 요청에 agreements 를 요구할지. 프론트가 약관 동의 화면을 붙이면 true 로 바꾼다.
+      # 값이 들어오면 이 설정과 무관하게 항상 필수 3종을 검증한다.
+      required-for-signup: ${BILLAGE_TERMS_REQUIRED:false}
   file:
     # LOCAL(서버 디스크) | S3. 로컬 개발은 LOCAL, dev·prod 는 S3.
     storage: ${BILLAGE_FILE_STORAGE:LOCAL}
@@ -163,6 +171,10 @@ billage:
       send-window-minutes: 60
       # 프론트가 인증 화면을 붙이면 true 로 바꾼다. 그전까지 켜면 기존 가입 흐름이 막힌다.
       required-for-signup: ${BILLAGE_EMAIL_VERIFICATION_REQUIRED:false}
+    terms:
+      # 가입 요청에 agreements 를 요구할지. 프론트가 약관 동의 화면을 붙이면 true 로 바꾼다.
+      # 값이 들어오면 이 설정과 무관하게 항상 필수 3종을 검증한다.
+      required-for-signup: ${BILLAGE_TERMS_REQUIRED:false}
   file:
     # LOCAL(서버 디스크) | S3. 로컬 개발은 LOCAL, dev·prod 는 S3.
     storage: ${BILLAGE_FILE_STORAGE:LOCAL}

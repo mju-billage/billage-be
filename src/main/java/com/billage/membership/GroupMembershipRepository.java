@@ -40,6 +40,9 @@ public interface GroupMembershipRepository extends JpaRepository<GroupMembership
 
 	void deleteByGroupId(Long groupId);
 
+	/** 내가 속한 모든 모임의 관리자 관계. 탈퇴 처리에서 모임별 정리 대상을 찾을 때 쓴다. */
+	List<GroupMembership> findByUserId(Long userId);
+
 	/**
 	 * 총무 행을 잠근 채로 가져온다. 총무 수를 줄이기 직전에 쓴다.
 	 *

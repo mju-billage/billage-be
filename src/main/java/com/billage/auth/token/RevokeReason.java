@@ -6,10 +6,12 @@ package com.billage.auth.token;
  *     <li>{@link #ROTATED} — 재발급(Rotation)으로 정상 폐기</li>
  *     <li>{@link #LOGOUT} — 로그아웃으로 폐기</li>
  *     <li>{@link #REUSED} — 이미 회전된 토큰의 재사용 감지로 패밀리 전체 폐기</li>
+ *     <li>{@link #PASSWORD_CHANGED} — 비밀번호 변경으로 다른 기기의 세션 폐기</li>
  * </ul>
  */
 public enum RevokeReason {
 	ROTATED,
 	LOGOUT,
-	REUSED
+	REUSED,
+	PASSWORD_CHANGED
 }

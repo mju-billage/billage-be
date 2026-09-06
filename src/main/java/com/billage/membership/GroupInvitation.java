@@ -40,7 +40,8 @@ public class GroupInvitation {
 	@Column(nullable = false, length = 20, updatable = false)
 	private String code;
 
-	@Column(name = "created_by", nullable = false, updatable = false)
+	/** 코드를 발급한 총무. 탈퇴하면 비워진다(코드 자체는 만료까지 유효하다). */
+	@Column(name = "created_by", updatable = false)
 	private Long createdBy;
 
 	@Column(name = "expires_at", nullable = false, updatable = false)

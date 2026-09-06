@@ -4,7 +4,7 @@ package com.billage.file;
 public enum FilePurpose {
 	/** 증빙·영수증. 내역(Entry)에 연결된다. */
 	RECEIPT,
-	/** 사용자 프로필 이미지. 연결 로직은 User 수정 API 구현 시 추가. */
+	/** 사용자 프로필 이미지. 내 정보 수정에서 {@code file.user_id} 로 연결된다. */
 	PROFILE_IMAGE,
 	/** 모임 이미지. 연결 로직은 모임 이미지 필드 적용 시 추가. */
 	GROUP_IMAGE

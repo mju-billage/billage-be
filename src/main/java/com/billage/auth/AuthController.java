@@ -2,7 +2,6 @@ package com.billage.auth;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -19,8 +18,6 @@ import com.billage.auth.dto.SocialLoginRequest;
 import com.billage.auth.dto.SocialLoginResponse;
 import com.billage.auth.dto.SocialSignupRequest;
 import com.billage.auth.dto.TokenResponse;
-import com.billage.auth.dto.UserResponse;
-import com.billage.auth.security.CurrentUserId;
 import com.billage.auth.social.SocialAuthService;
 import com.billage.common.response.ApiResponse;
 
@@ -41,7 +38,7 @@ public class AuthController {
 	 */
 	@PostMapping("/signup")
 	public ResponseEntity<ApiResponse<SignupResponse>> signup(@Valid @RequestBody SignupRequest request) {
-		SignupResponse response = authService.signup(request.email(), request.password(), request.name());
+		SignupResponse response = authService.signup(request);
 		return ResponseEntity.status(HttpStatus.CREATED)
 				.body(ApiResponse.of(response, "회원가입에 성공했습니다."));
 	}
@@ -78,11 +75,6 @@ public class AuthController {
 	public ResponseEntity<ApiResponse<TokenResponse>> refresh(@Valid @RequestBody RefreshRequest request) {
 		TokenResponse response = authService.refresh(request.refreshToken());
 		return ResponseEntity.ok(ApiResponse.of(response, "토큰 재발급에 성공했습니다."));
-	}
-
-	@GetMapping("/me")
-	public ResponseEntity<ApiResponse<UserResponse>> me(@CurrentUserId Long userId) {
-		return ResponseEntity.ok(ApiResponse.of(authService.getCurrentUser(userId), "내 정보 조회에 성공했습니다."));
 	}
 
 	@PostMapping("/logout")

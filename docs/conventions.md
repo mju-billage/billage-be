@@ -23,7 +23,9 @@
 /api/v1/groups/{groupId}/reports
 ```
 
-- 인증된 사용자 본인 정보는 `/api/v1/auth/me`. (`/api/v1/users` 는 만들지 않았다 — 명세에 남아 있으면 정리할 것.)
+- 인증된 사용자 본인 정보는 `/api/v1/auth/me`(조회·수정·탈퇴), 비밀번호 변경은 `/api/v1/auth/password`.
+  (`/api/v1/users` 는 만들지 않았다 — 명세에 남아 있으면 정리할 것.) 로그인·토큰은 `AuthController`,
+  본인 계정 관리는 `com.billage.user.UserController` 가 맡는다.
 - 성공 응답: `com.billage.common.response.ApiResponse` 로 `{ "data": ..., "message": "..." }` 래핑(프론트 합의). 목록은 비어 있어도 `[]`.
   본문이 없는 삭제·탈퇴는 래퍼 없이 `204 No Content`.
 - 오류 응답: 공통 형식(`{ code, message, fieldErrors }`)으로 통일 — **오류는 래핑하지 않는다**.

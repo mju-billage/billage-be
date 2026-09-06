@@ -36,8 +36,11 @@ public class GroupSpace {
 	@Column(length = 255)
 	private String description;
 
-	/** 모임을 만든 사용자. 인증 도메인과 결합하지 않도록 식별자만 보관한다. */
-	@Column(name = "created_by", nullable = false, updatable = false)
+	/**
+	 * 모임을 만든 사용자. 인증 도메인과 결합하지 않도록 식별자만 보관한다.
+	 * 그 사람이 탈퇴하면 비워진다 — 모임은 남은 관리자들의 것이라 함께 사라지면 안 된다.
+	 */
+	@Column(name = "created_by", updatable = false)
 	private Long createdBy;
 
 	@Column(name = "created_at", nullable = false, updatable = false)

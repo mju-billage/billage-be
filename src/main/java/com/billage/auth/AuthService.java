@@ -8,10 +8,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.billage.auth.dto.AgreementsRequest;
 import com.billage.auth.dto.LoginResponse;
+import com.billage.auth.dto.SignupRequest;
 import com.billage.auth.dto.SignupResponse;
 import com.billage.auth.dto.TokenResponse;
-import com.billage.auth.dto.UserResponse;
 import com.billage.auth.jwt.JwtProperties;
 import com.billage.auth.jwt.JwtTokenProvider;
 import com.billage.auth.token.RefreshToken;
@@ -38,6 +39,7 @@ public class AuthService {
 	private final RefreshTokenGenerator refreshTokenGenerator;
 	private final TokenHasher tokenHasher;
 	private final EmailVerificationService emailVerificationService;
+	private final TermsProperties termsProperties;
 
 	private record IssuedRefreshToken(RefreshToken entity, String rawToken) {
 	}
@@ -49,9 +51,11 @@ public class AuthService {
 	 * 이 경우 비밀번호를 나중에 붙여주는 경로는 명세에 없다.
 	 */
 	@Transactional
-	public SignupResponse signup(String email, String rawPassword, String name) {
+	public SignupResponse signup(SignupRequest request) {
+		String email = request.email();
 		// 인증 요구는 설정으로 켠다 — 프론트가 인증 화면을 붙이기 전까지는 꺼 둔 채로 둔다.
 		emailVerificationService.requireVerified(email);
+		AgreementsRequest agreements = requireAgreements(request.agreements());
 		if (userRepository.existsByEmail(email)) {
 			throw new BusinessException(ErrorCode.EMAIL_ALREADY_EXISTS);
 		}
@@ -59,12 +63,33 @@ public class AuthService {
 		try {
 			// 위 검사와 저장 사이에 같은 이메일이 끼어들 수 있다. 최종 판정은 users.email 의 UNIQUE 제약이며,
 			// 지금 flush 해서 그 충돌을 이 자리에서 409 로 바꾼다(트랜잭션 커밋 시점에 터지면 500 이 된다).
-			User user = userRepository.saveAndFlush(
-					User.create(email, passwordEncoder.encode(rawPassword), name.trim()));
-			return SignupResponse.from(user);
+			User user = User.create(email, passwordEncoder.encode(request.password()), request.name().trim());
+			if (agreements != null) {
+				LocalDateTime now = LocalDateTime.now();
+				user.agreeToTermsIfNeeded(now);
+				user.recordMarketingAgreement(agreements.marketingAgreed(), now);
+			}
+			return SignupResponse.from(userRepository.saveAndFlush(user));
 		} catch (DataIntegrityViolationException e) {
 			throw new BusinessException(ErrorCode.EMAIL_ALREADY_EXISTS);
 		}
+	}
+
+	/**
+	 * 약관 동의 검증. 값이 오면 언제나 필수 3종을 확인하고, 아예 오지 않은 요청을 허용할지는 설정이 정한다 —
+	 * 프론트가 동의 화면을 붙이기 전에 필수로 켜면 기존 가입 흐름이 곧바로 막히기 때문이다.
+	 */
+	private AgreementsRequest requireAgreements(AgreementsRequest agreements) {
+		if (agreements == null) {
+			if (termsProperties.requiredForSignup()) {
+				throw new BusinessException(ErrorCode.TERMS_NOT_AGREED);
+			}
+			return null;
+		}
+		if (!agreements.allRequiredAgreed()) {
+			throw new BusinessException(ErrorCode.TERMS_NOT_AGREED);
+		}
+		return agreements;
 	}
 
 	/**
@@ -137,13 +162,6 @@ public class AuthService {
 		String tokenHash = tokenHasher.hash(rawRefreshToken);
 		refreshTokenRepository.findByTokenHash(tokenHash)
 				.ifPresent(token -> token.revokeForLogout(LocalDateTime.now()));
-	}
-
-	@Transactional(readOnly = true)
-	public UserResponse getCurrentUser(Long userId) {
-		User user = userRepository.findById(userId)
-				.orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHORIZED));
-		return UserResponse.from(user);
 	}
 
 	private IssuedRefreshToken issueRefreshToken(User user, String familyId, String deviceId, LocalDateTime now) {
