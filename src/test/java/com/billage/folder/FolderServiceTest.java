@@ -27,6 +27,7 @@ import com.billage.entry.EntryService;
 import com.billage.entry.EntryType;
 import com.billage.entry.dto.EntryCreateRequest;
 import com.billage.ledger.dto.GroupLedgerResponse;
+import com.billage.ledger.dto.GroupLedgerCreateRequest;
 import com.billage.ledger.dto.LedgerCreateRequest;
 import com.billage.ledger.dto.LedgerUpdateRequest;
 import com.billage.membership.GroupMembershipService;
@@ -470,10 +471,48 @@ class FolderServiceTest extends IntegrationTest {
 
 	/** 최상위 영역(어느 폴더에도 속하지 않는) 장부. 폴더를 만들고 바로 해제해서 만든다. */
 	private Long createRootLedger(String name) {
-		Long tempFolderId = createFolder("임시", null);
-		Long ledgerId = ledgerService.create(tempFolderId, ownerId, new LedgerCreateRequest(name, null)).ledgerId();
-		folderService.delete(tempFolderId, ownerId);
-		return ledgerId;
+		return ledgerService.createInGroup(groupId, ownerId,
+				new GroupLedgerCreateRequest(name, null, null)).ledgerId();
+	}
+
+	@Test
+	void 폴더가_없어도_모임_최상위에_장부를_만들_수_있다() {
+		// 폴더 안에만 만들 수 있으면 폴더가 하나도 없는 새 모임에서 장부를 만들 방법이 없다.
+		var created = ledgerService.createInGroup(groupId, ownerId,
+				new GroupLedgerCreateRequest("운영 장부", 1_000_000L, null));
+
+		assertThat(created.folderId()).isNull();
+		assertThat(ledgerRepository.findById(created.ledgerId()).orElseThrow().getFolder()).isNull();
+	}
+
+	@Test
+	void 폴더를_지정하면_그_폴더_안에_만든다() {
+		Long folderId = createFolder("2026년 상반기", null);
+
+		var created = ledgerService.createInGroup(groupId, ownerId,
+				new GroupLedgerCreateRequest("운영 장부", null, folderId));
+
+		assertThat(created.folderId()).isEqualTo(folderId);
+	}
+
+	@Test
+	void 다른_모임의_폴더는_지정할_수_없다() {
+		Long otherFolderId = folderService.create(otherGroupId, adminId,
+				new FolderCreateRequest("남의폴더", null)).folderId();
+
+		assertThatThrownBy(() -> ledgerService.createInGroup(groupId, ownerId,
+				new GroupLedgerCreateRequest("운영 장부", null, otherFolderId)))
+				.isInstanceOf(BusinessException.class)
+				.hasMessageContaining(ErrorCode.GROUP_MISMATCH.getMessage());
+	}
+
+	@Test
+	void 최상위_장부_생성도_총무만_할_수_있다() {
+		joinAsAdmin();
+
+		assertThatThrownBy(() -> ledgerService.createInGroup(groupId, adminId,
+				new GroupLedgerCreateRequest("운영 장부", null, null)))
+				.isInstanceOf(BusinessException.class);
 	}
 
 	private Long createFolder(String name, Long parentId) {

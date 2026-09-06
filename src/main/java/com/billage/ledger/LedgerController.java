@@ -18,6 +18,7 @@ import com.billage.auth.security.CurrentUserId;
 import com.billage.common.response.ApiResponse;
 import com.billage.ledger.dto.BudgetUpdateRequest;
 import com.billage.ledger.dto.BudgetUpdateResponse;
+import com.billage.ledger.dto.GroupLedgerCreateRequest;
 import com.billage.ledger.dto.GroupLedgerResponse;
 import com.billage.ledger.dto.LedgerCreateRequest;
 import com.billage.ledger.dto.LedgerCreateResponse;
@@ -53,6 +54,18 @@ public class LedgerController {
 		List<GroupLedgerResponse> ledgers = ledgerService.getGroupLedgers(groupId, userId, keyword);
 		String message = ledgers.isEmpty() ? "조회된 데이터가 없습니다." : "장부 목록 조회에 성공했습니다.";
 		return ResponseEntity.ok(ApiResponse.of(ledgers, message));
+	}
+
+	/**
+	 * 모임 단위 장부 생성. 본문의 {@code folderId} 를 생략하면 최상위 영역에 만든다 —
+	 * 폴더가 하나도 없는 새 모임에서도 장부를 만들 수 있어야 한다.
+	 */
+	@PostMapping("/api/v1/groups/{groupId}/ledgers")
+	public ResponseEntity<ApiResponse<LedgerCreateResponse>> createInGroup(@CurrentUserId Long userId,
+			@PathVariable Long groupId, @Valid @RequestBody GroupLedgerCreateRequest request) {
+		LedgerCreateResponse response = ledgerService.createInGroup(groupId, userId, request);
+		return ResponseEntity.status(HttpStatus.CREATED)
+				.body(ApiResponse.of(response, "장부 생성에 성공했습니다."));
 	}
 
 	@PostMapping("/api/v1/folders/{folderId}/ledgers")

@@ -16,6 +16,8 @@ import com.billage.folder.Folder;
 import com.billage.folder.FolderRepository;
 import com.billage.ledger.dto.BudgetUpdateRequest;
 import com.billage.ledger.dto.BudgetUpdateResponse;
+import com.billage.group.GroupSpace;
+import com.billage.ledger.dto.GroupLedgerCreateRequest;
 import com.billage.ledger.dto.GroupLedgerResponse;
 import com.billage.ledger.dto.LedgerCreateRequest;
 import com.billage.ledger.dto.LedgerCreateResponse;
@@ -78,6 +80,30 @@ public class LedgerService {
 
 		return LedgerCreateResponse.from(
 				ledgerRepository.save(Ledger.create(folder, request.name().trim(), request.budget())));
+	}
+
+	/**
+	 * 모임 단위 장부 생성. {@code folderId} 를 주지 않으면 최상위 영역에 만든다.
+	 *
+	 * <p>폴더 안에만 만들 수 있으면 폴더가 하나도 없는 새 모임에서는 장부를 만들 방법이 없다 —
+	 * 화면도 그래서 최상위에서 생성 진입점을 숨겨야 했다. 폴더는 이미 최상위에 바로 만들 수 있으므로
+	 * 이쪽을 맞춘다.
+	 */
+	@Transactional
+	public LedgerCreateResponse createInGroup(Long groupId, Long userId, GroupLedgerCreateRequest request) {
+		GroupSpace group = guard.requireOwner(groupId, userId).getGroup();
+		validateBudget(request.budget());
+
+		Folder folder = null;
+		if (request.folderId() != null) {
+			folder = findFolder(request.folderId());
+			if (!folder.getGroup().getId().equals(groupId)) {
+				throw new BusinessException(ErrorCode.GROUP_MISMATCH);
+			}
+		}
+
+		return LedgerCreateResponse.from(ledgerRepository.save(
+				Ledger.createInGroup(group, folder, request.name().trim(), request.budget())));
 	}
 
 	@Transactional(readOnly = true)
