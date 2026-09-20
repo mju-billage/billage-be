@@ -30,7 +30,12 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 final class ReceiptImageDimensions {
 
-	/** 클로바 OCR 이 받는 범위. 위 오류 메시지에 적힌 값이다. */
+	/**
+	 * 클로바 OCR 이 받는 가로·세로 범위. <b>양 끝을 포함</b>한다 — 실제로 넣어 확인했다(2026-09-21):
+	 * 8000x100 은 SUCCESS, 8001x100 과 9x100 은 ERROR 였다. 한 칸 좁게 막으면 멀쩡한 사진을 거절하게 된다.
+	 *
+	 * <p>가로·세로 각각만 보면 된다. 양쪽이 모두 8000 인 이미지(6400만 화소)도 크기 문제로는 거부되지 않았다.
+	 */
 	private static final int MIN_PIXELS = 10;
 	private static final int MAX_PIXELS = 8000;
 
