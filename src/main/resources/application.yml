@@ -65,6 +65,20 @@ billage:
       # 한 버킷을 dev·prod 가 공유하므로 환경 프리픽스로 구분한다.
       prefix: ${BILLAGE_FILE_S3_PREFIX:dev}
       presign-expiry: 5m
+  ocr:
+    # STUB(고정값 반환) | CLOVA. 로컬·테스트는 STUB, dev·prod 는 CLOVA.
+    # STUB 은 로컬·테스트 프로필에서만 뜬다 — 배포 환경에서 켜면 기동이 실패한다(가짜 금액이 장부에 올라가는 것을 막는다).
+    provider: ${BILLAGE_OCR_PROVIDER:STUB}
+    # 클로바 OCR 영수증 모델의 APIGW Invoke URL (.../document/receipt).
+    invoke-url: ${BILLAGE_OCR_INVOKE_URL:}
+    # 도메인 발급 시크릿. X-OCR-SECRET 헤더로 보낸다. 커밋 금지 — 환경변수로만 주입한다.
+    secret-key: ${BILLAGE_OCR_SECRET_KEY:}
+    # 업로드 상한(10MB)보다 작다. 이미지를 Base64 로 본문에 싣느라 원본의 1.4배가 메모리에 올라간다.
+    max-image-size: 4MB
+    connect-timeout: 3s
+    read-timeout: 10s
+    # 사용자당 시간당 인식 횟수. 외부 OCR 은 건당 과금이라 상한 없이 열어 두지 않는다.
+    max-scans-per-hour: 60
 
 springdoc:
   swagger-ui:
@@ -139,6 +153,20 @@ billage:
       # 한 버킷을 dev·prod 가 공유하므로 환경 프리픽스로 구분한다.
       prefix: ${BILLAGE_FILE_S3_PREFIX:dev}
       presign-expiry: 5m
+  ocr:
+    # STUB(고정값 반환) | CLOVA. 로컬·테스트는 STUB, dev·prod 는 CLOVA.
+    # STUB 은 로컬·테스트 프로필에서만 뜬다 — 배포 환경에서 켜면 기동이 실패한다(가짜 금액이 장부에 올라가는 것을 막는다).
+    provider: ${BILLAGE_OCR_PROVIDER:CLOVA}
+    # 클로바 OCR 영수증 모델의 APIGW Invoke URL (.../document/receipt).
+    invoke-url: ${BILLAGE_OCR_INVOKE_URL:}
+    # 도메인 발급 시크릿. X-OCR-SECRET 헤더로 보낸다. 커밋 금지 — 환경변수로만 주입한다.
+    secret-key: ${BILLAGE_OCR_SECRET_KEY:}
+    # 업로드 상한(10MB)보다 작다. 이미지를 Base64 로 본문에 싣느라 원본의 1.4배가 메모리에 올라간다.
+    max-image-size: 4MB
+    connect-timeout: 3s
+    read-timeout: 10s
+    # 사용자당 시간당 인식 횟수. 외부 OCR 은 건당 과금이라 상한 없이 열어 두지 않는다.
+    max-scans-per-hour: 60
 
 springdoc:
   api-docs:
@@ -187,6 +215,20 @@ billage:
       # 한 버킷을 dev·prod 가 공유하므로 환경 프리픽스로 구분한다.
       prefix: ${BILLAGE_FILE_S3_PREFIX:dev}
       presign-expiry: 5m
+  ocr:
+    # STUB(고정값 반환) | CLOVA. 로컬·테스트는 STUB, dev·prod 는 CLOVA.
+    # STUB 은 로컬·테스트 프로필에서만 뜬다 — 배포 환경에서 켜면 기동이 실패한다(가짜 금액이 장부에 올라가는 것을 막는다).
+    provider: ${BILLAGE_OCR_PROVIDER:CLOVA}
+    # 클로바 OCR 영수증 모델의 APIGW Invoke URL (.../document/receipt).
+    invoke-url: ${BILLAGE_OCR_INVOKE_URL:}
+    # 도메인 발급 시크릿. X-OCR-SECRET 헤더로 보낸다. 커밋 금지 — 환경변수로만 주입한다.
+    secret-key: ${BILLAGE_OCR_SECRET_KEY:}
+    # 업로드 상한(10MB)보다 작다. 이미지를 Base64 로 본문에 싣느라 원본의 1.4배가 메모리에 올라간다.
+    max-image-size: 4MB
+    connect-timeout: 3s
+    read-timeout: 10s
+    # 사용자당 시간당 인식 횟수. 외부 OCR 은 건당 과금이라 상한 없이 열어 두지 않는다.
+    max-scans-per-hour: 60
 
 springdoc:
   api-docs:
