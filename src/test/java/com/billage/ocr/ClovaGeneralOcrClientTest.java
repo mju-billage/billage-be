@@ -91,11 +91,14 @@ class ClovaGeneralOcrClientTest {
 				.isEqualTo(ErrorCode.OCR_RESULT_EMPTY);
 	}
 
-	/** 실제로 확인한 응답이다 — 해상도가 범위를 벗어나면 200 + inferResult ERROR 가 온다. */
+	/**
+	 * {@code ERROR} 는 클로바 쪽 장애다. 입력 이미지 문제로 오는 {@code ERROR}(해상도 초과 등)는
+	 * {@link ReceiptImageDimensions} 가 보내기 전에 걸러 400 으로 돌려주므로 여기까지 오지 않는다.
+	 */
 	@Test
 	void 클로바_처리_오류는_처리_실패다() {
 		responseBody.set("""
-				{"images": [{"inferResult": "ERROR", "message": "The image resolution limit has been exceeded."}]}
+				{"images": [{"inferResult": "ERROR", "message": "Internal server error"}]}
 				""");
 
 		assertThatThrownBy(this::recognize)

@@ -55,7 +55,12 @@ public class ReceiptOcrService {
 		// 저장소에서 읽기 전에 센다. 거절할 요청이면 S3 왕복도 하지 않는다.
 		rateLimiter.check(userId);
 
-		ReceiptOcrResult result = ocrClient.recognize(readBytes(file), format);
+		byte[] image = readBytes(file);
+		// 크기는 바이트를 손에 넣은 뒤에야 알 수 있다. 여기서 걸러 내면 어차피 실패할 요청에
+		// 건당 과금을 쓰지 않고, 사용자도 502 대신 "다시 찍으세요"를 본다.
+		ReceiptImageDimensions.validate(image);
+
+		ReceiptOcrResult result = ocrClient.recognize(image, format);
 		return ReceiptOcrResponse.of(fileId, result, LocalDateTime.now());
 	}
 

@@ -157,9 +157,10 @@ billage:
       presign-expiry: 5m
   ocr:
     # STUB(고정값 반환) | CLOVA_RECEIPT(영수증 모델) | CLOVA_GENERAL(범용 모델, 임시).
-    # 영수증 모델 도메인 승인 전까지 CLOVA_GENERAL 로 둔다 — 총액·결제일이 추론값이고 품목은 비어 있다.
-    # 승인되면 CLOVA_RECEIPT 로 바꾸고 invoke-url·secret-key 도 그 도메인 것으로 교체한다.
-    provider: ${BILLAGE_OCR_PROVIDER:CLOVA_GENERAL}
+    # 기본값은 명세대로 CLOVA_RECEIPT 다. 범용 모델은 총액·결제일이 추론값이고 품목이 비어 있어
+    # 명세를 온전히 만족하지 못하므로, 쓰려면 BILLAGE_OCR_PROVIDER=CLOVA_GENERAL 로 명시해야 한다 —
+    # 기본값으로 두면 영수증 도메인이 승인된 뒤에도 아무도 모르게 범용으로 계속 돌 수 있다.
+    provider: ${BILLAGE_OCR_PROVIDER:CLOVA_RECEIPT}
     # 클로바 OCR 도메인의 APIGW Invoke URL. 주소 끝이 곧 모델이라 provider 와 짝이 맞아야 한다
     # (CLOVA_RECEIPT -> .../document/receipt, CLOVA_GENERAL -> .../general).
     invoke-url: ${BILLAGE_OCR_INVOKE_URL:}
@@ -221,9 +222,10 @@ billage:
       presign-expiry: 5m
   ocr:
     # STUB(고정값 반환) | CLOVA_RECEIPT(영수증 모델) | CLOVA_GENERAL(범용 모델, 임시).
-    # 영수증 모델 도메인 승인 전까지 CLOVA_GENERAL 로 둔다 — 총액·결제일이 추론값이고 품목은 비어 있다.
-    # 승인되면 CLOVA_RECEIPT 로 바꾸고 invoke-url·secret-key 도 그 도메인 것으로 교체한다.
-    provider: ${BILLAGE_OCR_PROVIDER:CLOVA_GENERAL}
+    # 기본값은 명세대로 CLOVA_RECEIPT 다. 범용 모델은 총액·결제일이 추론값이고 품목이 비어 있어
+    # 명세를 온전히 만족하지 못하므로, 쓰려면 BILLAGE_OCR_PROVIDER=CLOVA_GENERAL 로 명시해야 한다 —
+    # 기본값으로 두면 영수증 도메인이 승인된 뒤에도 아무도 모르게 범용으로 계속 돌 수 있다.
+    provider: ${BILLAGE_OCR_PROVIDER:CLOVA_RECEIPT}
     # 클로바 OCR 도메인의 APIGW Invoke URL. 주소 끝이 곧 모델이라 provider 와 짝이 맞아야 한다
     # (CLOVA_RECEIPT -> .../document/receipt, CLOVA_GENERAL -> .../general).
     invoke-url: ${BILLAGE_OCR_INVOKE_URL:}

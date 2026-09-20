@@ -84,6 +84,9 @@ Figma 화면명세서 ver 0.25 전 캔버스를 텍스트로 추출해 노션 AP
   - `CLOVA_GENERAL` — **범용 모델**(`.../general`). 글자와 좌표만 주므로 총액·결제일을 서버가 추론한다
     (`ReceiptLineAssembler` 로 좌표에서 줄을 되돌리고 `ReceiptTextParser` 가 키워드·정규식으로 추려낸다).
     **정확도가 낮고 품목은 항상 빈 배열이다.**
+- **설정 기본값은 `CLOVA_RECEIPT` 다.** 범용 모델은 명세를 온전히 만족하지 못하므로(품목이 늘 비고 총액이 추론값)
+  쓰려면 `BILLAGE_OCR_PROVIDER=CLOVA_GENERAL` 로 명시해야 한다 — 기본값으로 두면 영수증 도메인이 승인된 뒤에도
+  아무도 모르게 범용으로 계속 돌 수 있다.
 - **2026-09-21 현재 범용 모델로 임시 운영한다.** 영수증 특화 모델은 신청 후 승인까지 약 3일 걸려,
   그동안 프론트 연동을 막지 않으려고 범용으로 먼저 열었다. 승인되면 `provider` 를 `CLOVA_RECEIPT` 로 올리고
   **`ReceiptLineAssembler`·`ReceiptTextParser`·`ClovaGeneralOcrClient` 를 지운다** — 이 셋은 버릴 전제로 쓴 코드다.
@@ -105,9 +108,11 @@ Figma 화면명세서 ver 0.25 전 캔버스를 텍스트로 추출해 노션 AP
 - **시크릿**: `BILLAGE_OCR_INVOKE_URL` / `BILLAGE_OCR_SECRET_KEY` 를 EC2 환경변수로 주입한다.
   S3·SES 와 달리 인스턴스 역할로 해결되지 않는 외부 서비스라 서버에 값이 생긴다. 커밋 금지.
   **둘 중 하나라도 비면 dev·prod 기동이 실패한다**(S3 버킷 미설정과 같은 방식) — 배포 전에 먼저 넣어야 한다.
-- **`inferResult` 는 세 값이다**: `SUCCESS` / `FAILURE`(못 읽음 → 422) / `ERROR`(→ 502).
-  `ERROR` 는 클로바 장애뿐 아니라 **입력 이미지 문제**에도 온다(해상도 10~8000px 범위를 벗어나면 200 + ERROR).
-  지금은 둘 다 502 라 사용자에게 "서버 처리 실패"로 보인다 — 영수증 모델 응답을 실제로 본 뒤 400 쪽으로 다듬을 것.
+- **`inferResult` 는 세 값이다**: `SUCCESS` / `FAILURE`(못 읽음 → 422) / `ERROR`(클로바 장애 → 502).
+  `ERROR` 는 장애뿐 아니라 **입력 이미지 문제**에도 온다(해상도가 10~8000px 를 벗어나면 200 + ERROR).
+  메시지 문자열로 둘을 가르는 것은 깨지기 쉬워서, **보내기 전에 `ReceiptImageDimensions` 가 크기를 확인해**
+  범위를 벗어난 사진은 `INVALID_OCR_FILE(400)` 로 돌려준다 — 사용자가 "서버 처리 실패" 대신 "다시 찍으세요"를 본다.
+  그 결과 응답의 `ERROR` 는 장애로만 남는다. 덤으로 어차피 실패할 요청에 건당 과금을 쓰지 않는다.
 - **비용 방어**: 건당 과금이라 사용자당 시간당 횟수를 제한한다(`billage.ocr.max-scans-per-hour`, 기본 60).
   단일 서버 메모리 기준이라 서버를 늘리면 대수만큼 느슨해진다.
 - **이미지 상한**: 업로드는 10MB 지만 인식은 4MB(`billage.ocr.max-image-size`).
