@@ -78,8 +78,18 @@ Figma 화면명세서 ver 0.25 전 캔버스를 텍스트로 추출해 노션 AP
 
 노션 명세: **🔎 OCR (영수증 인식)** (`3a5f756d-01c8-8152-877d-d635f6a88f10`). 2026-07-22 에 작성돼 `시작 전` 이던 것을 2026-09-20 에 구현했다.
 
-- **제공자**: 네이버 클라우드 CLOVA OCR **영수증 모델**(`.../document/receipt`). 범용 OCR 이 아니다 —
-  범용은 글자 덩어리만 주어 총액·날짜·품목 판별을 우리가 떠안는다. AWS Textract 는 한글을 지원하지 않아 후보에서 빠졌다.
+- **제공자**: 네이버 클라우드 CLOVA OCR. AWS Textract 는 한글을 지원하지 않아 후보에서 빠졌다.
+  모델이 둘이고 `billage.ocr.provider` 로 고른다.
+  - `CLOVA_RECEIPT` — **영수증 특화 모델**(`.../document/receipt`). 총액·결제일·품목을 클로바가 필드로 구분해 준다. 이쪽이 목표다.
+  - `CLOVA_GENERAL` — **범용 모델**(`.../general`). 글자와 좌표만 주므로 총액·결제일을 서버가 추론한다
+    (`ReceiptLineAssembler` 로 좌표에서 줄을 되돌리고 `ReceiptTextParser` 가 키워드·정규식으로 추려낸다).
+    **정확도가 낮고 품목은 항상 빈 배열이다.**
+- **2026-09-21 현재 범용 모델로 임시 운영한다.** 영수증 특화 모델은 신청 후 승인까지 약 3일 걸려,
+  그동안 프론트 연동을 막지 않으려고 범용으로 먼저 열었다. 승인되면 `provider` 를 `CLOVA_RECEIPT` 로 올리고
+  **`ReceiptLineAssembler`·`ReceiptTextParser`·`ClovaGeneralOcrClient` 를 지운다** — 이 셋은 버릴 전제로 쓴 코드다.
+- **모델과 주소는 짝이다.** Invoke URL 의 끝이 곧 모델이라 `/general` 도메인에 `/document/receipt` 로 부르면
+  400 `Request domain invalid` 가 온다(실제로 확인). 도메인을 만들 때 고른 모델로 정해지므로 주소 끝만 바꿔 쓸 수 없고,
+  도메인이 바뀌면 시크릿도 함께 바뀐다.
 - **API**: `POST /api/v1/files/{fileId}/ocr` (명세 그대로). 업로드(`POST /api/v1/files`, purpose=RECEIPT)와 분리돼 있다 —
   인식 대상이 이미 올라간 파일이라 같은 이미지를 두 번 올릴 이유가 없고, 인식에 실패해도 파일이 남아 증빙으로 쓸 수 있다.
 - **응답**: `merchantName` / `purchasedOn` / `items[]` / `totalAmount` / `recognizedAt`.
@@ -90,11 +100,14 @@ Figma 화면명세서 ver 0.25 전 캔버스를 텍스트로 추출해 노션 AP
 - **오류**: `INVALID_OCR_FILE(400)`(증빙 용도가 아니거나 OCR 이 못 받는 형식·크기) ·
   `OCR_RESULT_EMPTY(422)` · `OCR_PROCESSING_FAILED(502)`(외부 호출 실패) · `ACCESS_DENIED(403)` · `FILE_NOT_FOUND(404)`.
   **명세에 없던 `OCR_RATE_LIMITED(429)` 를 추가했다** — 노션에도 반영해야 한다.
-- **설정**: `billage.ocr.provider=STUB|CLOVA`. 로컬·테스트는 STUB(고정값), dev·prod 는 CLOVA.
+- **설정**: `billage.ocr.provider=STUB|CLOVA_RECEIPT|CLOVA_GENERAL`. 로컬·테스트는 STUB(고정값).
   STUB 은 local/test 프로필 밖에서 뜨면 기동이 실패한다 — 가짜 금액이 장부에 올라가는 것이 조용히 틀리는 최악이라서다.
 - **시크릿**: `BILLAGE_OCR_INVOKE_URL` / `BILLAGE_OCR_SECRET_KEY` 를 EC2 환경변수로 주입한다.
   S3·SES 와 달리 인스턴스 역할로 해결되지 않는 외부 서비스라 서버에 값이 생긴다. 커밋 금지.
   **둘 중 하나라도 비면 dev·prod 기동이 실패한다**(S3 버킷 미설정과 같은 방식) — 배포 전에 먼저 넣어야 한다.
+- **`inferResult` 는 세 값이다**: `SUCCESS` / `FAILURE`(못 읽음 → 422) / `ERROR`(→ 502).
+  `ERROR` 는 클로바 장애뿐 아니라 **입력 이미지 문제**에도 온다(해상도 10~8000px 범위를 벗어나면 200 + ERROR).
+  지금은 둘 다 502 라 사용자에게 "서버 처리 실패"로 보인다 — 영수증 모델 응답을 실제로 본 뒤 400 쪽으로 다듬을 것.
 - **비용 방어**: 건당 과금이라 사용자당 시간당 횟수를 제한한다(`billage.ocr.max-scans-per-hour`, 기본 60).
   단일 서버 메모리 기준이라 서버를 늘리면 대수만큼 느슨해진다.
 - **이미지 상한**: 업로드는 10MB 지만 인식은 4MB(`billage.ocr.max-image-size`).

@@ -2,16 +2,10 @@ package com.billage.ocr;
 
 import java.time.DateTimeException;
 import java.time.LocalDate;
-import java.util.Base64;
 import java.util.List;
-import java.util.UUID;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.http.MediaType;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestClientException;
 
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
@@ -30,12 +24,9 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 @Component
-@ConditionalOnProperty(name = "billage.ocr.provider", havingValue = "CLOVA")
+@ConditionalOnProperty(name = "billage.ocr.provider", havingValue = "CLOVA_RECEIPT")
 public class ClovaReceiptOcrClient implements ReceiptOcrClient {
 
-	private static final String API_VERSION = "V2";
-	private static final String SECRET_HEADER = "X-OCR-SECRET";
-	private static final String IMAGE_NAME = "receipt";
 	private static final String INFER_SUCCESS = "SUCCESS";
 	/** 영수증을 읽지 못했다는 뜻. 클로바 쪽 장애를 뜻하는 {@code ERROR} 와 다르다. */
 	private static final String INFER_FAILURE = "FAILURE";
@@ -44,50 +35,15 @@ public class ClovaReceiptOcrClient implements ReceiptOcrClient {
 	/** {@code Long.parseLong} 이 넘치지 않을 자리수. 잘못 읽은 긴 숫자를 금액으로 삼지 않으려는 방어선이기도 하다. */
 	private static final int MAX_DIGITS = 18;
 
-	private final RestClient restClient;
-	private final OcrProperties properties;
+	private final ClovaHttpClient httpClient;
 
 	public ClovaReceiptOcrClient(OcrProperties properties) {
-		this.properties = properties;
-		if (properties.invokeUrl() == null || properties.invokeUrl().isBlank()) {
-			throw new IllegalStateException("billage.ocr.invoke-url 설정이 필요합니다.");
-		}
-		if (properties.secretKey() == null || properties.secretKey().isBlank()) {
-			throw new IllegalStateException("billage.ocr.secret-key 설정이 필요합니다.");
-		}
-		this.restClient = create(properties);
-	}
-
-	/**
-	 * 타임아웃을 두지 않으면 클로바 응답이 늦을 때 요청 스레드가 무한정 묶인다
-	 * (소셜 로그인의 {@code SocialHttpClient} 와 같은 이유). OCR 은 로그인보다 느려서 읽기 제한을 길게 잡는다.
-	 */
-	private static RestClient create(OcrProperties properties) {
-		SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-		factory.setConnectTimeout(properties.connectTimeout());
-		factory.setReadTimeout(properties.readTimeout());
-		return RestClient.builder().requestFactory(factory).build();
+		this.httpClient = new ClovaHttpClient(properties);
 	}
 
 	@Override
 	public ReceiptOcrResult recognize(byte[] image, ReceiptImageFormat format) {
-		ClovaResponse response;
-		try {
-			response = restClient.post()
-					.uri(properties.invokeUrl())
-					.header(SECRET_HEADER, properties.secretKey())
-					.contentType(MediaType.APPLICATION_JSON)
-					.body(new ClovaRequest(API_VERSION, UUID.randomUUID().toString(), System.currentTimeMillis(),
-							List.of(new ClovaImage(format.value(), IMAGE_NAME,
-									Base64.getEncoder().encodeToString(image)))))
-					.retrieve()
-					.body(ClovaResponse.class);
-		} catch (RestClientException e) {
-			// 인식 실패가 아니라 호출 자체가 실패한 것이다. 둘을 같은 결과로 돌려주면
-			// 키 만료·장애를 "영수증이 안 읽혔다"로 보고 아무도 눈치채지 못한다.
-			log.error("클로바 OCR 호출 실패", e);
-			throw new BusinessException(ErrorCode.OCR_PROCESSING_FAILED);
-		}
+		ClovaResponse response = httpClient.post(image, format, ClovaResponse.class);
 
 		if (response == null || response.images() == null || response.images().isEmpty()) {
 			log.error("클로바 OCR 응답에 이미지 결과가 없습니다.");
@@ -229,12 +185,6 @@ public class ClovaReceiptOcrClient implements ReceiptOcrClient {
 
 	private String trimToNull(String value) {
 		return (value == null || value.isBlank()) ? null : value.trim();
-	}
-
-	private record ClovaImage(String format, String name, String data) {
-	}
-
-	private record ClovaRequest(String version, String requestId, long timestamp, List<ClovaImage> images) {
 	}
 
 	/** {@code value} 는 금액·상호·수량, {@code year/month/day} 는 날짜에 쓰인다. 필드마다 채워지는 쪽이 다르다. */

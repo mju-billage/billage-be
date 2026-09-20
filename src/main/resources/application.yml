@@ -66,10 +66,12 @@ billage:
       prefix: ${BILLAGE_FILE_S3_PREFIX:dev}
       presign-expiry: 5m
   ocr:
-    # STUB(고정값 반환) | CLOVA. 로컬·테스트는 STUB, dev·prod 는 CLOVA.
-    # STUB 은 로컬·테스트 프로필에서만 뜬다 — 배포 환경에서 켜면 기동이 실패한다(가짜 금액이 장부에 올라가는 것을 막는다).
+    # STUB(고정값 반환) | CLOVA_RECEIPT(영수증 모델) | CLOVA_GENERAL(범용 모델, 임시).
+    # 로컬·테스트는 STUB. STUB 은 로컬·테스트 프로필에서만 뜬다 — 배포 환경에서 켜면 기동이 실패한다
+    # (가짜 금액이 장부에 올라가는 것을 막는다).
     provider: ${BILLAGE_OCR_PROVIDER:STUB}
-    # 클로바 OCR 영수증 모델의 APIGW Invoke URL (.../document/receipt).
+    # 클로바 OCR 도메인의 APIGW Invoke URL. 주소 끝이 곧 모델이라 provider 와 짝이 맞아야 한다
+    # (CLOVA_RECEIPT -> .../document/receipt, CLOVA_GENERAL -> .../general).
     invoke-url: ${BILLAGE_OCR_INVOKE_URL:}
     # 도메인 발급 시크릿. X-OCR-SECRET 헤더로 보낸다. 커밋 금지 — 환경변수로만 주입한다.
     secret-key: ${BILLAGE_OCR_SECRET_KEY:}
@@ -154,10 +156,12 @@ billage:
       prefix: ${BILLAGE_FILE_S3_PREFIX:dev}
       presign-expiry: 5m
   ocr:
-    # STUB(고정값 반환) | CLOVA. 로컬·테스트는 STUB, dev·prod 는 CLOVA.
-    # STUB 은 로컬·테스트 프로필에서만 뜬다 — 배포 환경에서 켜면 기동이 실패한다(가짜 금액이 장부에 올라가는 것을 막는다).
-    provider: ${BILLAGE_OCR_PROVIDER:CLOVA}
-    # 클로바 OCR 영수증 모델의 APIGW Invoke URL (.../document/receipt).
+    # STUB(고정값 반환) | CLOVA_RECEIPT(영수증 모델) | CLOVA_GENERAL(범용 모델, 임시).
+    # 영수증 모델 도메인 승인 전까지 CLOVA_GENERAL 로 둔다 — 총액·결제일이 추론값이고 품목은 비어 있다.
+    # 승인되면 CLOVA_RECEIPT 로 바꾸고 invoke-url·secret-key 도 그 도메인 것으로 교체한다.
+    provider: ${BILLAGE_OCR_PROVIDER:CLOVA_GENERAL}
+    # 클로바 OCR 도메인의 APIGW Invoke URL. 주소 끝이 곧 모델이라 provider 와 짝이 맞아야 한다
+    # (CLOVA_RECEIPT -> .../document/receipt, CLOVA_GENERAL -> .../general).
     invoke-url: ${BILLAGE_OCR_INVOKE_URL:}
     # 도메인 발급 시크릿. X-OCR-SECRET 헤더로 보낸다. 커밋 금지 — 환경변수로만 주입한다.
     secret-key: ${BILLAGE_OCR_SECRET_KEY:}
@@ -216,10 +220,12 @@ billage:
       prefix: ${BILLAGE_FILE_S3_PREFIX:dev}
       presign-expiry: 5m
   ocr:
-    # STUB(고정값 반환) | CLOVA. 로컬·테스트는 STUB, dev·prod 는 CLOVA.
-    # STUB 은 로컬·테스트 프로필에서만 뜬다 — 배포 환경에서 켜면 기동이 실패한다(가짜 금액이 장부에 올라가는 것을 막는다).
-    provider: ${BILLAGE_OCR_PROVIDER:CLOVA}
-    # 클로바 OCR 영수증 모델의 APIGW Invoke URL (.../document/receipt).
+    # STUB(고정값 반환) | CLOVA_RECEIPT(영수증 모델) | CLOVA_GENERAL(범용 모델, 임시).
+    # 영수증 모델 도메인 승인 전까지 CLOVA_GENERAL 로 둔다 — 총액·결제일이 추론값이고 품목은 비어 있다.
+    # 승인되면 CLOVA_RECEIPT 로 바꾸고 invoke-url·secret-key 도 그 도메인 것으로 교체한다.
+    provider: ${BILLAGE_OCR_PROVIDER:CLOVA_GENERAL}
+    # 클로바 OCR 도메인의 APIGW Invoke URL. 주소 끝이 곧 모델이라 provider 와 짝이 맞아야 한다
+    # (CLOVA_RECEIPT -> .../document/receipt, CLOVA_GENERAL -> .../general).
     invoke-url: ${BILLAGE_OCR_INVOKE_URL:}
     # 도메인 발급 시크릿. X-OCR-SECRET 헤더로 보낸다. 커밋 금지 — 환경변수로만 주입한다.
     secret-key: ${BILLAGE_OCR_SECRET_KEY:}

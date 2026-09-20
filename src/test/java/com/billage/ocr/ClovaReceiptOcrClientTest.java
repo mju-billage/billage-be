@@ -59,7 +59,7 @@ class ClovaReceiptOcrClientTest {
 	}
 
 	private ClovaReceiptOcrClient client() {
-		return new ClovaReceiptOcrClient(new OcrProperties(OcrProperties.ProviderType.CLOVA, invokeUrl, "test-secret",
+		return new ClovaReceiptOcrClient(new OcrProperties(OcrProperties.ProviderType.CLOVA_RECEIPT, invokeUrl, "test-secret",
 				DataSize.ofMegabytes(4), Duration.ofSeconds(3), Duration.ofSeconds(5), 60));
 	}
 
