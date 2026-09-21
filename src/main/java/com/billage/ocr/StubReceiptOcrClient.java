@@ -42,7 +42,8 @@ public class StubReceiptOcrClient implements ReceiptOcrClient {
 	void guardAgainstSilentDeployment() {
 		if (!environment.acceptsProfiles(OFFLINE)) {
 			throw new IllegalStateException(
-					"배포 환경에서 영수증 인식이 스텁으로 동작합니다. billage.ocr.provider=CLOVA 로 설정하세요. "
+					"배포 환경에서 영수증 인식이 스텁으로 동작합니다. "
+							+ "billage.ocr.provider 를 CLOVA_RECEIPT(영수증 모델) 또는 CLOVA_GENERAL(범용 모델) 로 설정하세요. "
 							+ "activeProfiles=" + List.of(environment.getActiveProfiles()));
 		}
 	}
