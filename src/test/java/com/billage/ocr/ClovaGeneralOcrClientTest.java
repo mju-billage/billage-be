@@ -107,6 +107,17 @@ class ClovaGeneralOcrClientTest {
 				.isEqualTo(ErrorCode.OCR_PROCESSING_FAILED);
 	}
 
+	/** JSON 배열에 null 원소가 들어오면 inferResult() 에서 터진다. */
+	@Test
+	void 이미지_결과가_null_이어도_터지지_않는다() {
+		responseBody.set("{\"images\": [null]}");
+
+		assertThatThrownBy(this::recognize)
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.OCR_PROCESSING_FAILED);
+	}
+
 	@Test
 	void 호출이_실패하면_처리_실패다() {
 		responseStatus.set(500);

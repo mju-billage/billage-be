@@ -52,13 +52,14 @@ public class ReceiptOcrService {
 					"인식할 수 있는 이미지 크기를 초과했습니다(최대 " + properties.maxImageSize().toMegabytes() + "MB).");
 		}
 
-		// 저장소에서 읽기 전에 센다. 거절할 요청이면 S3 왕복도 하지 않는다.
-		rateLimiter.check(userId);
-
 		byte[] image = readBytes(file);
 		// 크기는 바이트를 손에 넣은 뒤에야 알 수 있다. 여기서 걸러 내면 어차피 실패할 요청에
 		// 건당 과금을 쓰지 않고, 사용자도 502 대신 "다시 찍으세요"를 본다.
 		ReceiptImageDimensions.validate(image);
+
+		// 돈이 나가는 호출 바로 앞에서 센다. 앞에서 세면 깨진 이미지나 해상도 초과처럼
+		// 애초에 클로바를 부르지도 않는 요청이 사용자의 시간당 한도를 갉아먹는다.
+		rateLimiter.check(userId);
 
 		ReceiptOcrResult result = ocrClient.recognize(image, format);
 		return ReceiptOcrResponse.of(fileId, result, LocalDateTime.now());

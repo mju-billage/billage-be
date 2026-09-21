@@ -93,6 +93,9 @@ Figma 화면명세서 ver 0.25 전 캔버스를 텍스트로 추출해 노션 AP
 - **모델과 주소는 짝이다.** Invoke URL 의 끝이 곧 모델이라 `/general` 도메인에 `/document/receipt` 로 부르면
   400 `Request domain invalid` 가 온다(실제로 확인). 도메인을 만들 때 고른 모델로 정해지므로 주소 끝만 바꿔 쓸 수 없고,
   도메인이 바뀌면 시크릿도 함께 바뀐다.
+  **이 조합은 기동할 때 검증한다** — 어긋난 채로 뜨면 호출 시점에 502 로만 보여 설정 실수인 줄 모른다.
+- **Invoke URL 은 HTTPS 여야 기동한다.** 시크릿을 `X-OCR-SECRET` 헤더로 보내므로 평문이면 키가 그대로 나간다.
+  테스트가 띄우는 로컬 가짜 서버(loopback)만 평문을 허용한다.
 - **API**: `POST /api/v1/files/{fileId}/ocr` (명세 그대로). 업로드(`POST /api/v1/files`, purpose=RECEIPT)와 분리돼 있다 —
   인식 대상이 이미 올라간 파일이라 같은 이미지를 두 번 올릴 이유가 없고, 인식에 실패해도 파일이 남아 증빙으로 쓸 수 있다.
 - **응답**: `merchantName` / `purchasedOn` / `items[]` / `totalAmount` / `recognizedAt`.

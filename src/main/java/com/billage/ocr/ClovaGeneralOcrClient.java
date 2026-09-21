@@ -47,6 +47,11 @@ public class ClovaGeneralOcrClient implements ReceiptOcrClient {
 		}
 
 		GeneralImage result = response.images().getFirst();
+		if (result == null) {
+			// JSON 배열에 null 원소가 들어오면 아래 inferResult() 에서 터진다.
+			log.error("클로바 OCR 응답의 이미지 결과가 비어 있습니다.");
+			throw new BusinessException(ErrorCode.OCR_PROCESSING_FAILED);
+		}
 		if (INFER_FAILURE.equals(result.inferResult())) {
 			log.info("클로바 OCR 인식 실패. message={}", result.message());
 			throw new BusinessException(ErrorCode.OCR_RESULT_EMPTY);
