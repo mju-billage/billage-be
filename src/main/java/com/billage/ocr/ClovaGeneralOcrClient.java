@@ -11,15 +11,18 @@ import com.billage.common.exception.ErrorCode;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * CLOVA OCR <b>범용</b> 모델 호출. 영수증 모델 도메인 승인을 기다리는 동안 쓰는 임시 구현이다.
+ * CLOVA OCR <b>범용</b> 모델 호출. 이 서비스의 영수증 인식은 이 구현으로 확정됐다(2026-09-21).
  *
- * <p>범용 모델은 글자와 좌표만 돌려준다 — 무엇이 총액이고 무엇이 날짜인지는 우리가 추론해야 한다
- * ({@link ReceiptLineAssembler} 로 줄을 되돌리고 {@link ReceiptTextParser} 가 값을 추려낸다).
- * 정확히 그 일을 떠안지 않으려고 영수증 모델을 골랐던 것이므로, <b>영수증 도메인이 승인되면
- * {@code billage.ocr.provider} 를 {@code CLOVA_RECEIPT} 로 바꾸고 이 클래스와 파서를 지운다.</b>
+ * <p>영수증 특화 모델은 승인까지 받았지만 <b>건당 단가 때문에 쓰지 않기로 했다</b>. 그 대신
+ * 범용 모델이 돌려주는 글자와 좌표에서 총액·결제일을 우리가 추론한다
+ * ({@link ReceiptLineAssembler} 로 좌표에서 줄을 되돌리고 {@link ReceiptTextParser} 가 값을 추려낸다).
  *
- * <p>품목({@code items})은 항상 비어 있다. 범용 OCR 로 품목 행만 가려내려면 열 위치까지 추론해야 하는데,
- * 잘못 뽑은 품목은 없는 것보다 나쁘다.
+ * <p>그래서 <b>인식 품질은 이제 클로바가 아니라 {@link ReceiptTextParser} 의 규칙에 달려 있다.</b>
+ * 못 읽는 영수증 서식이 나오면 그 규칙을 늘리는 것이 대응이다.
+ *
+ * <p>품목({@code items})은 <b>항상 비어 있다</b> — 임시 상태가 아니라 확정된 계약이다.
+ * 범용 OCR 로 품목 행만 가려내려면 열 위치까지 추론해야 하는데, 잘못 뽑은 품목은 없는 것보다 나쁘다.
+ * 화면이 품목을 필요로 하게 되면 그때 다시 판단한다.
  */
 @Slf4j
 @Component
@@ -33,8 +36,7 @@ public class ClovaGeneralOcrClient implements ReceiptOcrClient {
 
 	public ClovaGeneralOcrClient(OcrProperties properties) {
 		this.httpClient = new ClovaHttpClient(properties);
-		log.warn("영수증 인식이 범용 OCR 모델로 동작합니다(임시). 총액·결제일은 추론값이고 품목은 비어 있습니다. "
-				+ "영수증 모델 도메인이 준비되면 billage.ocr.provider=CLOVA_RECEIPT 로 바꾸세요.");
+		log.info("영수증 인식: CLOVA 범용 OCR 모델. 총액·결제일은 ReceiptTextParser 가 추론하며 품목은 비웁니다.");
 	}
 
 	@Override

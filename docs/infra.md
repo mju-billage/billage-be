@@ -78,18 +78,22 @@ Figma 화면명세서 ver 0.25 전 캔버스를 텍스트로 추출해 노션 AP
 
 노션 명세: **🔎 OCR (영수증 인식)** (`3a5f756d-01c8-8152-877d-d635f6a88f10`). 2026-07-22 에 작성돼 `시작 전` 이던 것을 2026-09-20 에 구현했다.
 
-- **제공자**: 네이버 클라우드 CLOVA OCR. AWS Textract 는 한글을 지원하지 않아 후보에서 빠졌다.
-  모델이 둘이고 `billage.ocr.provider` 로 고른다.
-  - `CLOVA_RECEIPT` — **영수증 특화 모델**(`.../document/receipt`). 총액·결제일·품목을 클로바가 필드로 구분해 준다. 이쪽이 목표다.
-  - `CLOVA_GENERAL` — **범용 모델**(`.../general`). 글자와 좌표만 주므로 총액·결제일을 서버가 추론한다
-    (`ReceiptLineAssembler` 로 좌표에서 줄을 되돌리고 `ReceiptTextParser` 가 키워드·정규식으로 추려낸다).
-    **정확도가 낮고 품목은 항상 빈 배열이다.**
-- **설정 기본값은 `CLOVA_RECEIPT` 다.** 범용 모델은 명세를 온전히 만족하지 못하므로(품목이 늘 비고 총액이 추론값)
-  쓰려면 `BILLAGE_OCR_PROVIDER=CLOVA_GENERAL` 로 명시해야 한다 — 기본값으로 두면 영수증 도메인이 승인된 뒤에도
-  아무도 모르게 범용으로 계속 돌 수 있다.
-- **2026-09-21 현재 범용 모델로 임시 운영한다.** 영수증 특화 모델은 신청 후 승인까지 약 3일 걸려,
-  그동안 프론트 연동을 막지 않으려고 범용으로 먼저 열었다. 승인되면 `provider` 를 `CLOVA_RECEIPT` 로 올리고
-  **`ReceiptLineAssembler`·`ReceiptTextParser`·`ClovaGeneralOcrClient` 를 지운다** — 이 셋은 버릴 전제로 쓴 코드다.
+**2026-09-21 dev 배포 완료**(PR #40·#41). `https://52-78-148-114.nip.io` 에서 호출된다.
+서버 환경변수 3종(`BILLAGE_OCR_PROVIDER`/`INVOKE_URL`/`SECRET_KEY`)은 `/etc/billage/billage.env` 에 배치했다.
+
+- **제공자**: 네이버 클라우드 CLOVA OCR **범용 모델**(`.../general`)로 확정했다(2026-09-21).
+  AWS Textract 는 한글을 지원하지 않아 애초에 후보에서 빠졌다.
+- **영수증 특화 모델은 쓰지 않는다.** 승인까지 받았지만 **건당 단가 때문에 접었다**.
+  처음에는 특화 모델이 목표였고 범용은 승인을 기다리는 동안의 임시 수단이었는데, 그 임시가 본체가 된 것이다.
+  `CLOVA_RECEIPT` 구현(`ClovaReceiptOcrClient`)은 단가 정책이 바뀔 때 되돌릴 수 있게 남겨 뒀지만
+  **실제 호출로 검증한 적이 없다** — 되살린다면 실물 영수증으로 응답 구조부터 확인해야 한다.
+- **그래서 인식 품질은 클로바가 아니라 우리 파서에 달려 있다.** `ReceiptLineAssembler` 가 좌표로 줄을 되돌리고
+  `ReceiptTextParser` 가 키워드·정규식으로 총액·결제일·상호를 추려낸다. 이 둘은 **임시 코드가 아니라 본체다.**
+  못 읽는 영수증 서식이 보고되면 `TOTAL_KEYWORDS` 를 늘리는 것이 대응이며, 늘릴 때 `TOTAL_EXCLUSIONS`
+  (과세·부가세·할인)와 부딪히지 않는지 함께 본다 — 구성 요소를 총액으로 집으면 틀린 금액이 장부에 올라간다.
+- **`items` 는 항상 빈 배열이다.** 임시 상태가 아니라 확정된 계약이다(노션 명세에도 반영).
+  범용 OCR 로 품목 행만 가려내려면 열 위치까지 추론해야 하는데, 잘못 뽑은 품목은 없는 것보다 나쁘다.
+  화면이 품목을 필요로 하게 되면 그때 다시 판단한다.
 - **모델과 주소는 짝이다.** Invoke URL 의 끝이 곧 모델이라 `/general` 도메인에 `/document/receipt` 로 부르면
   400 `Request domain invalid` 가 온다(실제로 확인). 도메인을 만들 때 고른 모델로 정해지므로 주소 끝만 바꿔 쓸 수 없고,
   도메인이 바뀌면 시크릿도 함께 바뀐다.
@@ -105,11 +109,20 @@ Figma 화면명세서 ver 0.25 전 캔버스를 텍스트로 추출해 노션 AP
   사용자가 확인·수정 후 내역 등록 API 를 부르는 흐름이라 서버가 들고 있을 이유가 없다. Flyway 마이그레이션도 없다.
 - **오류**: `INVALID_OCR_FILE(400)`(증빙 용도가 아니거나 OCR 이 못 받는 형식·크기) ·
   `OCR_RESULT_EMPTY(422)` · `OCR_PROCESSING_FAILED(502)`(외부 호출 실패) · `ACCESS_DENIED(403)` · `FILE_NOT_FOUND(404)`.
-  **명세에 없던 `OCR_RATE_LIMITED(429)` 를 추가했다** — 노션에도 반영해야 한다.
-- **설정**: `billage.ocr.provider=STUB|CLOVA_RECEIPT|CLOVA_GENERAL`. 로컬·테스트는 STUB(고정값).
+  **명세에 없던 `OCR_RATE_LIMITED(429)` 를 추가했다**(노션 명세에도 반영 완료).
+- **설정**: `billage.ocr.provider=STUB|CLOVA_RECEIPT|CLOVA_GENERAL`. 로컬·테스트는 STUB(고정값), 배포는 `CLOVA_GENERAL`.
   STUB 은 local/test 프로필 밖에서 뜨면 기동이 실패한다 — 가짜 금액이 장부에 올라가는 것이 조용히 틀리는 최악이라서다.
 - **시크릿**: `BILLAGE_OCR_INVOKE_URL` / `BILLAGE_OCR_SECRET_KEY` 를 EC2 환경변수로 주입한다.
   S3·SES 와 달리 인스턴스 역할로 해결되지 않는 외부 서비스라 서버에 값이 생긴다. 커밋 금지.
+
+### 프론트 연동 상태 (2026-09-21)
+
+- `billage_FE` 에 `src/services/ocrService.ts` 가 있고 **경로·응답 필드가 서버 구현과 일치한다**(같은 노션 명세 기준).
+- **다만 그쪽 타입이 `null` 을 허용하지 않는다.** 서버는 `totalAmount` 만 항상 채우고 나머지는 못 읽으면 `null`·빈 배열로 내린다.
+  범용 모델을 쓰는 동안은 `items` 가 **늘 비고** 상호·결제일도 자주 비어서, 고치지 않으면 화면이 깨진다.
+- **아직 이 API 를 부를 데이터가 없다.** 카메라는 실제 촬영으로 바뀌었지만(2026-09-06) 그 결과를
+  `fileService.uploadFile()` 로 올려 진짜 `fileId` 를 받는 연결이 없고, 갤러리는 여전히 가짜 토큰만 만든다.
+  **업로드 배선이 이 기능의 마지막 관문이다** — 서버는 준비됐다.
   **둘 중 하나라도 비면 dev·prod 기동이 실패한다**(S3 버킷 미설정과 같은 방식) — 배포 전에 먼저 넣어야 한다.
 - **`inferResult` 는 세 값이다**: `SUCCESS` / `FAILURE`(못 읽음 → 422) / `ERROR`(클로바 장애 → 502).
   `ERROR` 는 장애뿐 아니라 **입력 이미지 문제**에도 온다(해상도가 10~8000px 를 벗어나면 200 + ERROR).

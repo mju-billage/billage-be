@@ -9,9 +9,8 @@ import org.springframework.util.unit.DataSize;
 /**
  * 영수증 인식(OCR) 설정.
  *
- * @param provider       인식 수단. 로컬·테스트는 {@code STUB}, dev·prod 는 클로바.
- *                       {@code CLOVA_RECEIPT} 가 본래 목표이고 {@code CLOVA_GENERAL} 은 영수증 모델 승인을
- *                       기다리는 동안 쓰는 임시 수단이다.
+ * @param provider       인식 수단. 로컬·테스트는 {@code STUB}, dev·prod 는 {@code CLOVA_GENERAL}.
+ *                       영수증 특화 모델({@code CLOVA_RECEIPT})은 건당 단가 때문에 쓰지 않기로 했다(2026-09-21).
  * @param invokeUrl      클로바 OCR 도메인의 APIGW Invoke URL. 도메인마다 다르고 <b>주소 끝이 곧 모델</b>이다
  *                       ({@code .../document/receipt} vs {@code .../general}). 도메인을 만들 때 고른 모델이
  *                       정해지므로 끝만 바꿔 쓸 수 없다 — 다른 모델로 부르면 400 {@code Request domain invalid}.
@@ -35,11 +34,15 @@ public record OcrProperties(
 	public enum ProviderType {
 		/** 고정값 반환. 로컬·테스트 전용이며 배포 환경에서는 기동이 실패한다. */
 		STUB,
-		/** 영수증 전용 모델({@code /document/receipt}). 총액·결제일·품목을 필드로 받는다. */
+		/**
+		 * 영수증 전용 모델({@code /document/receipt}). 총액·결제일·품목을 필드로 받는다.
+		 * <b>쓰지 않는다</b> — 건당 단가 때문에 범용 모델로 확정했다(2026-09-21). 단가 정책이 바뀌면
+		 * 이 값으로 되돌릴 수 있게 구현은 남겨 뒀지만, 실제 호출로 검증한 적은 없다.
+		 */
 		CLOVA_RECEIPT,
 		/**
-		 * 범용 모델({@code /general}). 글자와 좌표만 돌려주므로 총액·결제일을 우리가 추론한다.
-		 * 영수증 모델 승인을 기다리는 동안 쓰는 임시 수단이라 정확도가 낮고 품목은 뽑지 않는다.
+		 * 범용 모델({@code /general}). 글자와 좌표만 돌려주므로 총액·결제일을 {@link ReceiptTextParser} 가
+		 * 추론하고 품목은 비운다. <b>이 서비스의 확정 수단이다.</b>
 		 */
 		CLOVA_GENERAL
 	}

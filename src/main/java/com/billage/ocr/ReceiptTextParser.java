@@ -10,12 +10,16 @@ import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
 
 /**
- * 영수증 줄글에서 상호·결제일·총액을 추려낸다. 범용 OCR 전용이다 —
- * 영수증 모델은 이 일을 클로바가 해 주므로 {@link ClovaReceiptOcrClient} 는 이 클래스를 쓰지 않는다.
+ * 영수증 줄글에서 상호·결제일·총액을 추려낸다. 범용 OCR 전용이다.
  *
  * <p><b>추측이 섞이는 코드다.</b> 영수증 서식이 가게마다 달라 규칙으로 100% 맞출 수 없다.
  * 그래서 확신이 서지 않으면 값을 지어내지 않고 비운다 — 총액만은 비울 수 없어(없으면 화면에 채울 게 없다)
- * 못 찾으면 {@code OCR_RESULT_EMPTY} 로 올린다. 영수증 모델 도메인이 승인되면 통째로 지울 코드다.
+ * 못 찾으면 {@code OCR_RESULT_EMPTY} 로 올린다.
+ *
+ * <p><b>이 클래스가 인식 품질을 결정한다.</b> 영수증 특화 모델을 쓰지 않기로 하면서(2026-09-21, 단가 문제)
+ * 총액·결제일 판별이 통째로 여기 규칙에 달리게 됐다. 못 읽는 서식이 보고되면 키워드를 늘려 대응한다 —
+ * 늘릴 때는 {@link #TOTAL_EXCLUSIONS} 와 부딪히지 않는지 함께 본다(구성 요소를 총액으로 집으면
+ * 틀린 금액이 장부에 올라간다).
  */
 final class ReceiptTextParser {
 
