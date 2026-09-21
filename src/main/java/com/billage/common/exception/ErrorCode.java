@@ -92,7 +92,15 @@ public enum ErrorCode {
 	FILE_SIZE_EXCEEDED("FILE_SIZE_EXCEEDED", HttpStatus.PAYLOAD_TOO_LARGE, "파일 용량이 허용 범위를 초과했습니다."),
 	FILE_IN_USE("FILE_IN_USE", HttpStatus.CONFLICT, "다른 곳에 연결된 파일은 삭제할 수 없습니다."),
 	FILE_UPLOAD_FAILED("FILE_UPLOAD_FAILED", HttpStatus.INTERNAL_SERVER_ERROR, "파일 저장에 실패했습니다."),
-	FILE_DELETE_FAILED("FILE_DELETE_FAILED", HttpStatus.INTERNAL_SERVER_ERROR, "파일 삭제에 실패했습니다.");
+	FILE_DELETE_FAILED("FILE_DELETE_FAILED", HttpStatus.INTERNAL_SERVER_ERROR, "파일 삭제에 실패했습니다."),
+
+	// 영수증 인식(OCR)
+	INVALID_OCR_FILE("INVALID_OCR_FILE", HttpStatus.BAD_REQUEST, "영수증 이미지가 아니거나 인식할 수 없는 파일입니다."),
+	OCR_RESULT_EMPTY("OCR_RESULT_EMPTY", HttpStatus.UNPROCESSABLE_ENTITY, "영수증에서 인식할 내용을 찾지 못했습니다."),
+	// 명세에 없으나 추가했다 — 외부 OCR 은 건당 과금이라 상한 없이 열어 둘 수 없다.
+	OCR_RATE_LIMITED("OCR_RATE_LIMITED", HttpStatus.TOO_MANY_REQUESTS,
+			"영수증 인식 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."),
+	OCR_PROCESSING_FAILED("OCR_PROCESSING_FAILED", HttpStatus.BAD_GATEWAY, "영수증 인식 처리에 실패했습니다.");
 
 	private final String code;
 	private final HttpStatus status;

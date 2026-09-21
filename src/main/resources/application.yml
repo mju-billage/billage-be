@@ -65,6 +65,22 @@ billage:
       # 한 버킷을 dev·prod 가 공유하므로 환경 프리픽스로 구분한다.
       prefix: ${BILLAGE_FILE_S3_PREFIX:dev}
       presign-expiry: 5m
+  ocr:
+    # STUB(고정값 반환) | CLOVA_RECEIPT(영수증 모델) | CLOVA_GENERAL(범용 모델, 임시).
+    # 로컬·테스트는 STUB. STUB 은 로컬·테스트 프로필에서만 뜬다 — 배포 환경에서 켜면 기동이 실패한다
+    # (가짜 금액이 장부에 올라가는 것을 막는다).
+    provider: ${BILLAGE_OCR_PROVIDER:STUB}
+    # 클로바 OCR 도메인의 APIGW Invoke URL. 주소 끝이 곧 모델이라 provider 와 짝이 맞아야 한다
+    # (CLOVA_RECEIPT -> .../document/receipt, CLOVA_GENERAL -> .../general).
+    invoke-url: ${BILLAGE_OCR_INVOKE_URL:}
+    # 도메인 발급 시크릿. X-OCR-SECRET 헤더로 보낸다. 커밋 금지 — 환경변수로만 주입한다.
+    secret-key: ${BILLAGE_OCR_SECRET_KEY:}
+    # 업로드 상한(10MB)보다 작다. 이미지를 Base64 로 본문에 싣느라 원본의 1.4배가 메모리에 올라간다.
+    max-image-size: 4MB
+    connect-timeout: 3s
+    read-timeout: 10s
+    # 사용자당 시간당 인식 횟수. 외부 OCR 은 건당 과금이라 상한 없이 열어 두지 않는다.
+    max-scans-per-hour: 60
 
 springdoc:
   swagger-ui:
@@ -139,6 +155,23 @@ billage:
       # 한 버킷을 dev·prod 가 공유하므로 환경 프리픽스로 구분한다.
       prefix: ${BILLAGE_FILE_S3_PREFIX:dev}
       presign-expiry: 5m
+  ocr:
+    # STUB(고정값 반환) | CLOVA_RECEIPT(영수증 모델) | CLOVA_GENERAL(범용 모델, 임시).
+    # 기본값은 명세대로 CLOVA_RECEIPT 다. 범용 모델은 총액·결제일이 추론값이고 품목이 비어 있어
+    # 명세를 온전히 만족하지 못하므로, 쓰려면 BILLAGE_OCR_PROVIDER=CLOVA_GENERAL 로 명시해야 한다 —
+    # 기본값으로 두면 영수증 도메인이 승인된 뒤에도 아무도 모르게 범용으로 계속 돌 수 있다.
+    provider: ${BILLAGE_OCR_PROVIDER:CLOVA_RECEIPT}
+    # 클로바 OCR 도메인의 APIGW Invoke URL. 주소 끝이 곧 모델이라 provider 와 짝이 맞아야 한다
+    # (CLOVA_RECEIPT -> .../document/receipt, CLOVA_GENERAL -> .../general).
+    invoke-url: ${BILLAGE_OCR_INVOKE_URL:}
+    # 도메인 발급 시크릿. X-OCR-SECRET 헤더로 보낸다. 커밋 금지 — 환경변수로만 주입한다.
+    secret-key: ${BILLAGE_OCR_SECRET_KEY:}
+    # 업로드 상한(10MB)보다 작다. 이미지를 Base64 로 본문에 싣느라 원본의 1.4배가 메모리에 올라간다.
+    max-image-size: 4MB
+    connect-timeout: 3s
+    read-timeout: 10s
+    # 사용자당 시간당 인식 횟수. 외부 OCR 은 건당 과금이라 상한 없이 열어 두지 않는다.
+    max-scans-per-hour: 60
 
 springdoc:
   api-docs:
@@ -187,6 +220,23 @@ billage:
       # 한 버킷을 dev·prod 가 공유하므로 환경 프리픽스로 구분한다.
       prefix: ${BILLAGE_FILE_S3_PREFIX:dev}
       presign-expiry: 5m
+  ocr:
+    # STUB(고정값 반환) | CLOVA_RECEIPT(영수증 모델) | CLOVA_GENERAL(범용 모델, 임시).
+    # 기본값은 명세대로 CLOVA_RECEIPT 다. 범용 모델은 총액·결제일이 추론값이고 품목이 비어 있어
+    # 명세를 온전히 만족하지 못하므로, 쓰려면 BILLAGE_OCR_PROVIDER=CLOVA_GENERAL 로 명시해야 한다 —
+    # 기본값으로 두면 영수증 도메인이 승인된 뒤에도 아무도 모르게 범용으로 계속 돌 수 있다.
+    provider: ${BILLAGE_OCR_PROVIDER:CLOVA_RECEIPT}
+    # 클로바 OCR 도메인의 APIGW Invoke URL. 주소 끝이 곧 모델이라 provider 와 짝이 맞아야 한다
+    # (CLOVA_RECEIPT -> .../document/receipt, CLOVA_GENERAL -> .../general).
+    invoke-url: ${BILLAGE_OCR_INVOKE_URL:}
+    # 도메인 발급 시크릿. X-OCR-SECRET 헤더로 보낸다. 커밋 금지 — 환경변수로만 주입한다.
+    secret-key: ${BILLAGE_OCR_SECRET_KEY:}
+    # 업로드 상한(10MB)보다 작다. 이미지를 Base64 로 본문에 싣느라 원본의 1.4배가 메모리에 올라간다.
+    max-image-size: 4MB
+    connect-timeout: 3s
+    read-timeout: 10s
+    # 사용자당 시간당 인식 횟수. 외부 OCR 은 건당 과금이라 상한 없이 열어 두지 않는다.
+    max-scans-per-hour: 60
 
 springdoc:
   api-docs:
