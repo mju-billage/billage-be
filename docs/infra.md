@@ -78,6 +78,9 @@ Figma 화면명세서 ver 0.25 전 캔버스를 텍스트로 추출해 노션 AP
 
 노션 명세: **🔎 OCR (영수증 인식)** (`3a5f756d-01c8-8152-877d-d635f6a88f10`). 2026-07-22 에 작성돼 `시작 전` 이던 것을 2026-09-20 에 구현했다.
 
+**2026-09-21 dev 배포 완료**(PR #40·#41). `https://52-78-148-114.nip.io` 에서 호출된다.
+서버 환경변수 3종(`BILLAGE_OCR_PROVIDER`/`INVOKE_URL`/`SECRET_KEY`)은 `/etc/billage/billage.env` 에 배치했다.
+
 - **제공자**: 네이버 클라우드 CLOVA OCR. AWS Textract 는 한글을 지원하지 않아 후보에서 빠졌다.
   모델이 둘이고 `billage.ocr.provider` 로 고른다.
   - `CLOVA_RECEIPT` — **영수증 특화 모델**(`.../document/receipt`). 총액·결제일·품목을 클로바가 필드로 구분해 준다. 이쪽이 목표다.
@@ -105,11 +108,20 @@ Figma 화면명세서 ver 0.25 전 캔버스를 텍스트로 추출해 노션 AP
   사용자가 확인·수정 후 내역 등록 API 를 부르는 흐름이라 서버가 들고 있을 이유가 없다. Flyway 마이그레이션도 없다.
 - **오류**: `INVALID_OCR_FILE(400)`(증빙 용도가 아니거나 OCR 이 못 받는 형식·크기) ·
   `OCR_RESULT_EMPTY(422)` · `OCR_PROCESSING_FAILED(502)`(외부 호출 실패) · `ACCESS_DENIED(403)` · `FILE_NOT_FOUND(404)`.
-  **명세에 없던 `OCR_RATE_LIMITED(429)` 를 추가했다** — 노션에도 반영해야 한다.
+  **명세에 없던 `OCR_RATE_LIMITED(429)` 를 추가했다**(노션 명세에도 반영 완료).
 - **설정**: `billage.ocr.provider=STUB|CLOVA_RECEIPT|CLOVA_GENERAL`. 로컬·테스트는 STUB(고정값).
   STUB 은 local/test 프로필 밖에서 뜨면 기동이 실패한다 — 가짜 금액이 장부에 올라가는 것이 조용히 틀리는 최악이라서다.
 - **시크릿**: `BILLAGE_OCR_INVOKE_URL` / `BILLAGE_OCR_SECRET_KEY` 를 EC2 환경변수로 주입한다.
   S3·SES 와 달리 인스턴스 역할로 해결되지 않는 외부 서비스라 서버에 값이 생긴다. 커밋 금지.
+
+### 프론트 연동 상태 (2026-09-21)
+
+- `billage_FE` 에 `src/services/ocrService.ts` 가 있고 **경로·응답 필드가 서버 구현과 일치한다**(같은 노션 명세 기준).
+- **다만 그쪽 타입이 `null` 을 허용하지 않는다.** 서버는 `totalAmount` 만 항상 채우고 나머지는 못 읽으면 `null`·빈 배열로 내린다.
+  범용 모델을 쓰는 동안은 `items` 가 **늘 비고** 상호·결제일도 자주 비어서, 고치지 않으면 화면이 깨진다.
+- **아직 이 API 를 부를 데이터가 없다.** 카메라는 실제 촬영으로 바뀌었지만(2026-09-06) 그 결과를
+  `fileService.uploadFile()` 로 올려 진짜 `fileId` 를 받는 연결이 없고, 갤러리는 여전히 가짜 토큰만 만든다.
+  **업로드 배선이 이 기능의 마지막 관문이다** — 서버는 준비됐다.
   **둘 중 하나라도 비면 dev·prod 기동이 실패한다**(S3 버킷 미설정과 같은 방식) — 배포 전에 먼저 넣어야 한다.
 - **`inferResult` 는 세 값이다**: `SUCCESS` / `FAILURE`(못 읽음 → 422) / `ERROR`(클로바 장애 → 502).
   `ERROR` 는 장애뿐 아니라 **입력 이미지 문제**에도 온다(해상도가 10~8000px 를 벗어나면 200 + ERROR).
