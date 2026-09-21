@@ -35,6 +35,23 @@ class ClovaHttpClientTest {
 				.doesNotThrowAnyException();
 	}
 
+	/**
+	 * 슬래시를 빠뜨린 주소는 scheme 이 https 인 채로 host 만 비어 파싱된다.
+	 * scheme 만 보면 통과해 버려서, 오타 난 설정으로 서버가 뜨고 인식할 때가 되어서야 502 가 난다.
+	 */
+	@Test
+	void 호스트가_없는_주소는_기동을_막는다() {
+		assertThatThrownBy(() -> new ClovaHttpClient(
+				properties(OcrProperties.ProviderType.CLOVA_GENERAL, "https:/general")))
+				.isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining("호스트");
+
+		assertThatThrownBy(() -> new ClovaHttpClient(
+				properties(OcrProperties.ProviderType.CLOVA_GENERAL, "https:///general")))
+				.isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining("호스트");
+	}
+
 	/** 테스트가 띄우는 가짜 서버는 평문이다. 이것까지 막으면 연동 테스트를 못 쓴다. */
 	@Test
 	void 로컬_가짜_서버는_평문을_허용한다() {

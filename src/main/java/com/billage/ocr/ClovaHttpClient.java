@@ -68,6 +68,11 @@ final class ClovaHttpClient {
 		} catch (URISyntaxException e) {
 			throw new IllegalStateException("billage.ocr.invoke-url 이 올바른 주소가 아닙니다: " + invokeUrl, e);
 		}
+		// 슬래시를 빠뜨린 "https:/general" 은 scheme 이 https 인 채로 host 만 비어 파싱된다.
+		// 여기서 걸러 내지 않으면 오타 난 주소로 서버가 멀쩡히 뜨고, 인식할 때가 되어서야 502 가 난다.
+		if (uri.getHost() == null || uri.getHost().isBlank()) {
+			throw new IllegalStateException("billage.ocr.invoke-url 에 호스트가 없습니다: " + invokeUrl);
+		}
 		if ("https".equalsIgnoreCase(uri.getScheme())) {
 			return;
 		}
