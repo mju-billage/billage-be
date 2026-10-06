@@ -1,6 +1,5 @@
 package com.billage.file;
 
-import java.net.URI;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Collection;
@@ -130,11 +129,6 @@ public class FileService {
 	@Transactional(readOnly = true)
 	public Resource loadContent(UploadedFile file) {
 		return fileStorage.load(file.getStorageKey());
-	}
-
-	/** 저장소가 지원하면 직접 내려받을 임시 URL 을 준다(S3). 로컬 디스크는 비어 있다. */
-	public Optional<URI> presignedUrl(UploadedFile file) {
-		return fileStorage.presignedGetUrl(file.getStorageKey());
 	}
 
 	/**
