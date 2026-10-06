@@ -36,10 +36,12 @@ spring:
 
 billage:
   mail:
-    # LOG(로그로만 남김) | SES. 로컬·테스트는 LOG, dev·prod 는 SES.
+    # LOG(로그로만 남김) | SMTP(Gmail). 로컬·테스트는 LOG, dev·prod 는 SMTP.
     sender: ${BILLAGE_MAIL_SENDER:LOG}
-    # SES 에서 검증된 발신 주소. 도메인 검증 전에는 개별 주소를 검증해 쓴다.
-    from: ${BILLAGE_MAIL_FROM:no-reply@billage.app}
+    smtp:
+      # Gmail 주소와 앱 비밀번호. 커밋 금지 — 환경변수로만 주입한다. sender 가 SMTP 인데 비면 기동이 실패한다.
+      username: ${GMAIL_USERNAME:}
+      password: ${GMAIL_APP_PASSWORD:}
   auth:
     email-verification:
       # 화면 타이머(03:00)와 같은 값이어야 한다.
@@ -130,10 +132,11 @@ spring:
 # dev(배포) 서버에서 Swagger 노출 — 배포 서버 API 확인·테스트용
 billage:
   mail:
-    # 이 환경의 기본은 SES 다. 환경변수를 빠뜨렸다고 조용히 발송이 멈추면 안 된다.
-    sender: ${BILLAGE_MAIL_SENDER:SES}
-    # SES 에서 검증된 발신 주소. 도메인 검증 전에는 개별 주소를 검증해 쓴다.
-    from: ${BILLAGE_MAIL_FROM:no-reply@billage.app}
+    # 이 환경의 기본은 SMTP 다. 환경변수를 빠뜨렸다고 조용히 발송이 멈추면 안 된다.
+    sender: ${BILLAGE_MAIL_SENDER:SMTP}
+    smtp:
+      username: ${GMAIL_USERNAME:}
+      password: ${GMAIL_APP_PASSWORD:}
   auth:
     email-verification:
       # 화면 타이머(03:00)와 같은 값이어야 한다.
@@ -199,10 +202,11 @@ spring:
 
 billage:
   mail:
-    # 이 환경의 기본은 SES 다. 환경변수를 빠뜨렸다고 조용히 발송이 멈추면 안 된다.
-    sender: ${BILLAGE_MAIL_SENDER:SES}
-    # SES 에서 검증된 발신 주소. 도메인 검증 전에는 개별 주소를 검증해 쓴다.
-    from: ${BILLAGE_MAIL_FROM:no-reply@billage.app}
+    # 이 환경의 기본은 SMTP 다. 환경변수를 빠뜨렸다고 조용히 발송이 멈추면 안 된다.
+    sender: ${BILLAGE_MAIL_SENDER:SMTP}
+    smtp:
+      username: ${GMAIL_USERNAME:}
+      password: ${GMAIL_APP_PASSWORD:}
   auth:
     email-verification:
       # 화면 타이머(03:00)와 같은 값이어야 한다.

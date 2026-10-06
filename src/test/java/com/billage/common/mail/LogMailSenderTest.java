@@ -20,7 +20,7 @@ class LogMailSenderTest {
 
 		assertThatThrownBy(() -> new LogMailSender(prod).guardAgainstSilentProduction())
 				.isInstanceOf(IllegalStateException.class)
-				.hasMessageContaining("billage.mail.sender=SES");
+				.hasMessageContaining("billage.mail.sender=SMTP");
 	}
 
 	@Test
