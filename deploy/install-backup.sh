@@ -5,6 +5,10 @@ set -euo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
+echo "==> 서버 시각대 KST (cron·로그·백업 파일명 기준)"
+timedatectl set-timezone Asia/Seoul
+systemctl restart cron
+
 echo "==> 스크립트 배치"
 install -m 0755 "$DIR/backup-db.sh"   /opt/billage/backup-db.sh
 install -m 0755 "$DIR/restore-db.sh"  /opt/billage/restore-db.sh
@@ -18,8 +22,8 @@ cat > /etc/cron.d/billage-backup <<'EOF'
 # Billage MySQL 일일 백업. 로그: /var/log/billage-backup.log
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-# 서버 TZ 와 무관하게 KST 03:30 을 보장한다.
-CRON_TZ=Asia/Seoul
+# 시각은 서버 시각대(KST) 기준이다. Debian/Ubuntu 기본 cron 은 CRON_TZ 를 무시하므로
+# 서버를 Asia/Seoul 로 맞춰 둔다(이 스크립트 앞부분의 timedatectl).
 30 3 * * * root /opt/billage/backup-db.sh >> /var/log/billage-backup.log 2>&1
 EOF
 cat > /etc/cron.d/billage-health <<'EOF'
@@ -32,7 +36,6 @@ cat > /etc/cron.d/billage-cleanup <<'EOF'
 # Billage 디스크 정리(오래된 백업·로그·Docker 캐시). 매주 일요일 04:30 KST. 로그: /var/log/billage-cleanup.log
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-CRON_TZ=Asia/Seoul
 30 4 * * 0 root /opt/billage/cleanup-disk.sh >> /var/log/billage-cleanup.log 2>&1
 EOF
 chmod 0644 /etc/cron.d/billage-backup /etc/cron.d/billage-health /etc/cron.d/billage-cleanup
