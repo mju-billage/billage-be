@@ -14,7 +14,9 @@ EnvironmentFile=/etc/billage/billage.env
 
 # t3.micro(1GB RAM) 메모리 예산: JVM(힙384m+비힙/스택 여유) + MySQL(mem_limit 360m)
 # + Docker/Caddy/OS 를 1GB+스왑2G 안에 맞춘다. 힙을 384m 로 낮춰 호스트 여유 확보.
-ExecStart=/usr/bin/java -Xms128m -Xmx384m -XX:+UseSerialGC -jar /opt/billage/billage.jar
+# 시각대를 서버 설정에 맡기지 않고 고정한다 — 앱은 저장하는 시각이 KST 라고 가정한다(KoreanTime).
+# UTC 로 뜬 서버에서는 createdAt 이 9시간 어긋났다.
+ExecStart=/usr/bin/java -Duser.timezone=Asia/Seoul -Xms128m -Xmx384m -XX:+UseSerialGC -jar /opt/billage/billage.jar
 
 SuccessExitStatus=143
 Restart=always

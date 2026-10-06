@@ -3,13 +3,19 @@ package com.billage.file;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.io.InputStream;
 import java.time.LocalDate;
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.Resource;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockMultipartFile;
 
 import com.billage.common.exception.BusinessException;
@@ -40,6 +46,8 @@ class FileServiceTest extends IntegrationTest {
 	FileRepository fileRepository;
 	@Autowired
 	FileStorage fileStorage;
+	@Autowired
+	FileController fileController;
 	@Autowired
 	GroupService groupService;
 	@Autowired
@@ -347,6 +355,24 @@ class FileServiceTest extends IntegrationTest {
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
 				.isEqualTo(ErrorCode.ACCESS_DENIED);
+	}
+
+	// --- 내려받기 ---
+
+	@Test
+	void 내려받기는_리다이렉트_없이_본문과_메타데이터_헤더를_직접_준다() throws Exception {
+		Long fileId = upload(ownerId, "receipt.jpg");
+
+		ResponseEntity<Resource> response = fileController.download(ownerId, fileId);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+		assertThat(response.getHeaders().getContentType()).isEqualTo(MediaType.IMAGE_JPEG);
+		assertThat(response.getHeaders().getContentLength()).isEqualTo("image-bytes".length());
+		assertThat(response.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION))
+				.isEqualTo("inline; filename=\"receipt.jpg\"");
+		try (InputStream in = response.getBody().getInputStream()) {
+			assertThat(in.readAllBytes()).isEqualTo("image-bytes".getBytes());
+		}
 	}
 
 	private Long upload(Long userId, String fileName) {

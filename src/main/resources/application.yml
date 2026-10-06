@@ -61,10 +61,14 @@ billage:
     # 응답 파일 URL 의 절대 주소. 비우면 요청(X-Forwarded-* 반영)에서 유추한다.
     public-base-url: ${BILLAGE_PUBLIC_BASE_URL:}
     s3:
-      bucket: ${BILLAGE_FILE_S3_BUCKET:}
-      # 한 버킷을 dev·prod 가 공유하므로 환경 프리픽스로 구분한다.
-      prefix: ${BILLAGE_FILE_S3_PREFIX:dev}
-      presign-expiry: 5m
+      # S3 호환 저장소 — 서버 안의 MinIO. 외부에 열지 않으므로 endpoint 는 서버 내부 주소다.
+      endpoint: ${S3_ENDPOINT:}
+      access-key: ${S3_ACCESS_KEY:}
+      secret-key: ${S3_SECRET_KEY:}
+      bucket: ${S3_BUCKET:}
+      region: ${S3_REGION:us-east-1}
+      # 한 버킷을 dev·prod 가 공유할 수 있도록 환경 프리픽스로 구분한다.
+      prefix: ${S3_PREFIX:dev}
   ocr:
     # STUB(고정값 반환) | CLOVA_RECEIPT(영수증 모델) | CLOVA_GENERAL(범용 모델, 임시).
     # 로컬·테스트는 STUB. STUB 은 로컬·테스트 프로필에서만 뜬다 — 배포 환경에서 켜면 기동이 실패한다
@@ -151,10 +155,14 @@ billage:
     # 응답 파일 URL 의 절대 주소. 비우면 요청(X-Forwarded-* 반영)에서 유추한다.
     public-base-url: ${BILLAGE_PUBLIC_BASE_URL:}
     s3:
-      bucket: ${BILLAGE_FILE_S3_BUCKET:}
-      # 한 버킷을 dev·prod 가 공유하므로 환경 프리픽스로 구분한다.
-      prefix: ${BILLAGE_FILE_S3_PREFIX:dev}
-      presign-expiry: 5m
+      # S3 호환 저장소 — 서버 안의 MinIO. 외부에 열지 않으므로 endpoint 는 서버 내부 주소다.
+      endpoint: ${S3_ENDPOINT:}
+      access-key: ${S3_ACCESS_KEY:}
+      secret-key: ${S3_SECRET_KEY:}
+      bucket: ${S3_BUCKET:}
+      region: ${S3_REGION:us-east-1}
+      # 한 버킷을 dev·prod 가 공유할 수 있도록 환경 프리픽스로 구분한다.
+      prefix: ${S3_PREFIX:dev}
   ocr:
     # STUB(고정값 반환) | CLOVA_RECEIPT(영수증 모델) | CLOVA_GENERAL(범용 모델, 임시).
     # 기본값은 명세대로 CLOVA_RECEIPT 다. 범용 모델은 총액·결제일이 추론값이고 품목이 비어 있어
@@ -216,10 +224,14 @@ billage:
     # 응답 파일 URL 의 절대 주소. 비우면 요청(X-Forwarded-* 반영)에서 유추한다.
     public-base-url: ${BILLAGE_PUBLIC_BASE_URL:}
     s3:
-      bucket: ${BILLAGE_FILE_S3_BUCKET:}
-      # 한 버킷을 dev·prod 가 공유하므로 환경 프리픽스로 구분한다.
-      prefix: ${BILLAGE_FILE_S3_PREFIX:dev}
-      presign-expiry: 5m
+      # S3 호환 저장소 — 서버 안의 MinIO. 외부에 열지 않으므로 endpoint 는 서버 내부 주소다.
+      endpoint: ${S3_ENDPOINT:}
+      access-key: ${S3_ACCESS_KEY:}
+      secret-key: ${S3_SECRET_KEY:}
+      bucket: ${S3_BUCKET:}
+      region: ${S3_REGION:us-east-1}
+      # 한 버킷을 dev·prod 가 공유할 수 있도록 환경 프리픽스로 구분한다.
+      prefix: ${S3_PREFIX:dev}
   ocr:
     # STUB(고정값 반환) | CLOVA_RECEIPT(영수증 모델) | CLOVA_GENERAL(범용 모델, 임시).
     # 기본값은 명세대로 CLOVA_RECEIPT 다. 범용 모델은 총액·결제일이 추론값이고 품목이 비어 있어

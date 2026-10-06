@@ -7,13 +7,13 @@
 #   3) (선택) S3_BUCKET 설정 시 aws s3 로 오프사이트 업로드
 #
 # 설정 파일(선택): /etc/billage/backup.env
-#   RETENTION_DAYS=14
+#   RETENTION_DAYS=7
 #   S3_BUCKET=billage-db-backup        # 있으면 s3://<bucket>/mysql/ 로 업로드
 set -euo pipefail
 
 MYSQL_ENV="/etc/billage/mysql.env"
 BACKUP_DIR="/var/backups/billage"
-RETENTION_DAYS="${RETENTION_DAYS:-14}"
+RETENTION_DAYS="${RETENTION_DAYS:-7}"
 CONTAINER="billage-mysql"
 DB="billage"
 

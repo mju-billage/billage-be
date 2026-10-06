@@ -1,8 +1,6 @@
 package com.billage.file;
 
 import java.io.IOException;
-import java.net.URI;
-import java.util.Optional;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.InputStreamResource;
@@ -21,12 +19,10 @@ import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
-import software.amazon.awssdk.services.s3.presigner.S3Presigner;
-import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
 /**
- * S3 저장소. 자격 증명은 EC2 인스턴스 역할에서 얻으므로 서버에 액세스 키를 두지 않는다.
- * 다운로드는 presigned URL 로 넘겨 앱이 파일 트래픽을 중계하지 않게 한다.
+ * S3 호환 저장소(서버 안의 MinIO). 클라이언트 설정은 {@link FileConfig} 참고.
+ * 저장소를 외부에 열지 않으므로 다운로드는 앱이 객체를 읽어 직접 흘려보낸다.
  */
 @Slf4j
 @Component
@@ -34,15 +30,13 @@ import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignReques
 public class S3FileStorage implements FileStorage {
 
 	private final S3Client s3Client;
-	private final S3Presigner presigner;
 	private final FileProperties properties;
 
-	public S3FileStorage(S3Client s3Client, S3Presigner presigner, FileProperties properties) {
+	public S3FileStorage(S3Client s3Client, FileProperties properties) {
 		this.s3Client = s3Client;
-		this.presigner = presigner;
 		this.properties = properties;
 		if (properties.s3().bucket() == null || properties.s3().bucket().isBlank()) {
-			throw new IllegalStateException("billage.file.s3.bucket 설정이 필요합니다.");
+			throw new IllegalStateException("billage.file.s3.bucket 설정이 필요합니다. (S3_BUCKET)");
 		}
 	}
 
@@ -80,16 +74,6 @@ public class S3FileStorage implements FileStorage {
 			log.error("S3 삭제 실패: {}", key, e);
 			throw new BusinessException(ErrorCode.FILE_DELETE_FAILED);
 		}
-	}
-
-	@Override
-	public Optional<URI> presignedGetUrl(String key) {
-		GetObjectPresignRequest request = GetObjectPresignRequest.builder()
-				.signatureDuration(properties.s3().presignExpiry())
-				.getObjectRequest(builder -> builder.bucket(bucket()).key(objectKey(key)))
-				.build();
-
-		return Optional.of(presigner.presignGetObject(request).url()).map(url -> URI.create(url.toString()));
 	}
 
 	private String bucket() {

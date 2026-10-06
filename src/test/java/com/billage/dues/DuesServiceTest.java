@@ -268,7 +268,7 @@ class DuesServiceTest extends IntegrationTest {
 				new MemberCreateRequest("남의모임원", null, null, null)).memberId();
 
 		assertThatThrownBy(() -> duesService.create(groupId, ownerId,
-				new DuesCreateRequest("2학기 회비", 30_000L, LocalDate.now(), LocalDate.of(2026, 9, 30),
+				new DuesCreateRequest("2학기 회비", 30_000L, LocalDate.now(), LocalDate.now().plusDays(30),
 						List.of(otherMemberId), ledgerId)))
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
@@ -514,7 +514,7 @@ class DuesServiceTest extends IntegrationTest {
 	}
 
 	private DuesCreateRequest createRequest(List<Long> memberIds) {
-		return new DuesCreateRequest("2학기 회비", 30_000L, LocalDate.now(), LocalDate.of(2026, 9, 30), memberIds,
+		return new DuesCreateRequest("2학기 회비", 30_000L, LocalDate.now(), LocalDate.now().plusDays(30), memberIds,
 				ledgerId);
 	}
 

@@ -131,8 +131,8 @@
 - 허용 형식 jpg·jpeg·png·webp, 최대 10MB (`billage.file.*` 설정, 기획 확정 시 조정).
 - 원본 파일명을 storage key 로 쓰지 않는다(`{용도}/{yyyy/MM/dd}/{UUID}.{확장자}`).
 - 접근: 연결 전에는 업로더만, 내역에 연결되면 그 모임 관리자면 조회 가능. 삭제는 업로더만, 연결된 파일은 `FILE_IN_USE`.
-- 저장소는 `FileStorage` 인터페이스 뒤에 있다 — 로컬 개발은 디스크, dev·prod 는 S3.
-- 다운로드(`GET /files/{id}/content`)는 권한 검사 후 **presigned URL 로 302 리다이렉트**한다(로컬 디스크는 직접 전송).
+- 저장소는 `FileStorage` 인터페이스 뒤에 있다 — 로컬 개발은 디스크, dev·prod 는 서버 안의 MinIO(S3 호환 API).
+- 다운로드(`GET /files/{id}/content`)는 권한 검사 후 **서버가 저장소에서 읽어 200 으로 직접 스트리밍**한다. 저장소를 외부에 열지 않으므로 리다이렉트하지 않는다. `Content-Type`·`Content-Length`·`Content-Disposition` 은 업로드 때 기록한 메타데이터로 채운다.
 
 ## 내역 승인 정책
 

@@ -131,7 +131,7 @@ sudo systemctl restart caddy
 
 ## DB 백업 / 복구 (운영)
 
-매일 03:30 KST 에 `billage` DB 를 `mysqldump` → gzip → `/var/backups/billage/` 저장, 14일 로컬 보관.
+매일 03:30 KST 에 `billage` DB 를 `mysqldump` → gzip → `/var/backups/billage/` 저장, 7일 로컬 보관.
 설치는 서버에서 1회: `sudo bash /tmp/deploy/install-backup.sh` (cron `/etc/cron.d/billage-backup` 등록).
 
 ```bash
@@ -154,10 +154,85 @@ sudo systemctl restart billage
 - 앱 설정: `BILLAGE_MAIL_SENDER=SES`, `BILLAGE_MAIL_FROM=<검증한 주소>`. dev·prod 프로파일 기본값이 이미 `SES` 라, 발신 주소만 검증되어 있으면 환경변수를 빠뜨려도 동작한다.
 - 준비 전 임시로 끄려면 dev 에서 `BILLAGE_MAIL_SENDER=LOG` — 기동 시 경고가 남고 메일은 나가지 않는다. prod 에서 LOG 로 두면 **앱이 기동하지 않는다**(조용히 메일이 안 나가는 것을 막기 위함).
 
-**업로드 파일 S3**: 버킷 `s3://billage-files-442908904609/` (`ap-northeast-2`, 퍼블릭 차단, SSE-S3, 미완료 멀티파트 7일 정리).
-- 환경 구분은 프리픽스 — dev 는 `dev/`, prod 는 `prod/`. 앱 설정 `BILLAGE_FILE_STORAGE=S3`, `BILLAGE_FILE_S3_BUCKET`, `BILLAGE_FILE_S3_PREFIX`.
-- 인증은 EC2 인스턴스 역할 `billage-backup-role` 에 `billage-files-access` 정책(해당 버킷 객체에 Put/Get/Delete)을 추가해 사용 — **서버에 액세스 키 없음**.
-- 다운로드는 앱이 권한 확인 후 presigned URL(5분)로 302 리다이렉트하므로 파일 트래픽이 서버를 통과하지 않는다.
+**업로드 파일 MinIO**: 같은 서버의 Docker 컨테이너 `billage-minio` (`deploy/compose.minio.yaml`). AWS S3 는 쓰지 않는다.
+
+- **이미지**: `pgsty/silo:RELEASE.2026-09-16T00-00-00Z` (digest 고정). 공식 `minio/minio` 이미지는 Docker Hub·Quay 에서 내려갔고 원본 저장소도 보관 상태라, 유지보수가 이어지는 포크를 쓴다. S3 API·`mc`·환경변수 이름은 MinIO 와 같다. `latest` 금지 — 올릴 때는 태그와 digest 를 함께 바꾼다.
+- **포트**: `127.0.0.1:9000`(S3 API), `127.0.0.1:9001`(Console). **외부에 열지 않고 Caddy 로도 연결하지 않는다.** Console 이 필요하면 SSH 터널(`ssh -L 9001:127.0.0.1:9001 ...`)로 본다.
+- **데이터**: 호스트 `/var/lib/billage/minio` (컨테이너 `/data`). 컨테이너·이미지를 지워도 남는다.
+- **버킷**: `billage` (비공개). 환경 구분은 프리픽스 — dev 는 `dev/`. 하드 쿼터 25GiB(아래 "디스크 용량 정책").
+- **백업 없음(알고 감수하는 위험)**: 업로드 파일은 이 VM 디스크 한 곳에만 있다. 외부 저장소를 두지 않기로 했으므로(2026-10-06) VM 이나 디스크를 잃으면 DB 는 덤프로 되살려도 **파일 본문은 복구할 수 없다.** DB 덤프도 오프사이트 업로드가 꺼져 있으면 같은 VM 에만 남는다. 실사용자 데이터를 받기 전(런칭 전)에 다시 정한다 — 붙일 때는 `mc mirror local/billage <외부>` 를 cron 으로 돌리면 된다.
+- **계정**: 관리자(root)는 `/etc/billage/minio.env`(600), 앱은 `billage` 버킷의 객체 읽기·쓰기·삭제만 되는 전용 키(`billage-app` 정책)를 `/etc/billage/billage.env` 에 둔다. 둘 다 커밋 금지.
+- **앱 설정**: `BILLAGE_FILE_STORAGE=S3`, `S3_ENDPOINT=http://127.0.0.1:9000`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET=billage`, `S3_REGION=us-east-1`, `S3_PREFIX=dev`. AWS SDK for S3 를 그대로 쓰고 엔드포인트·path-style·액세스 키만 지정한다.
+- **다운로드**: `GET /api/v1/files/{id}/content` 가 권한 확인 후 MinIO 에서 읽어 200 으로 직접 스트리밍한다(presigned URL·302 없음).
+
+```bash
+# 처음 띄우기
+sudo install -d -m 0750 /var/lib/billage/minio
+sudo cp deploy/minio.env.example /etc/billage/minio.env && sudo chmod 600 /etc/billage/minio.env   # 값 채우기
+cd /opt/billage && sudo docker compose -f compose.minio.yaml --env-file /etc/billage/minio.env up -d
+
+# 상태 / 재시작 / 로그
+sudo docker ps --filter name=billage-minio
+cd /opt/billage && sudo docker compose -f compose.minio.yaml --env-file /etc/billage/minio.env restart minio
+sudo docker logs --tail 100 -f billage-minio
+
+# 관리 명령(mc 는 이미지에 들어 있다). 관리자 계정은 minio.env 에서 읽는다.
+sudo bash -c '. /etc/billage/minio.env; docker exec -e MC_HOST_local="http://$MINIO_ROOT_USER:$MINIO_ROOT_PASSWORD@127.0.0.1:9000" billage-minio mc du local/billage'
+#   mc ls -r local/billage/dev/          객체 목록
+#   mc quota info local/billage          쿼터 확인
+#   mc quota set local/billage --size 25GiB
+#   mc admin info local                  서버·디스크 상태
+```
+
+버킷·앱 전용 키를 새로 만들 때: `mc mb local/billage` → `mc quota set local/billage --size 25GiB` →
+`mc admin policy create local billage-app <정책 json>` → `mc admin user add local <키> <시크릿>` →
+`mc admin policy attach local billage-app --user <키>`.
+
+**기존 AWS S3 파일 이관(보류 — 필요해지면 실행)**: BlueRack 으로 옮기며 DB 를 빈 상태로 새로 시작해, 옛 객체를 가리키는 파일 행이 없다.
+옛 DB 를 복원하게 되면 그때 같은 키 구조(`dev/...`)로 복사한다. **S3 원본은 지우지 않는다.**
+
+```bash
+# rclone 설정(~/.config/rclone/rclone.conf, 커밋 금지)
+#   [aws]   type=s3 provider=AWS   access_key_id=... secret_access_key=... region=ap-northeast-2
+#   [minio] type=s3 provider=Minio access_key_id=<관리자> secret_access_key=... endpoint=http://127.0.0.1:9000
+rclone size aws:billage-files-442908904609/dev                      # 원본 개수·용량 (쿼터 25GiB 안인지 먼저 확인)
+rclone copy aws:billage-files-442908904609/dev minio:billage/dev --progress
+rclone size minio:billage/dev                                       # 개수·용량이 원본과 같은지
+rclone check aws:billage-files-442908904609/dev minio:billage/dev   # 객체별 크기·해시 비교, 차이 0 이어야 한다
+```
+
+## 디스크 용량 정책 (64GB VM)
+
+목표: **여유 15GB 이상을 항상 유지.** 디스크가 차면 MySQL 쓰기부터 실패하므로 파일 저장소가 디스크를 다 쓰지 못하게 막는다.
+
+| 항목 | 2026-10-06 실측 | 상한(예산) | 지키는 방법 |
+|---|---|---|---|
+| OS·패키지·Java·스왑 4G | 8.0G | 10G | apt 캐시 주 1회 정리 |
+| Docker 이미지·레이어·캐시 | 1.1G | 3G | 태그 없는 이미지·빌드 캐시 주 1회 정리, 컨테이너 로그 10MB×3 |
+| MySQL 데이터 | 0.2G | 3G | 넘어가면 예산 재검토 |
+| DB 백업 | 1M 미만 | 0.5G | **7일 보관** |
+| 로그(journald·Caddy·점검) | 0.03G | 0.5G | journald 200M·14일, Caddy 20MB×5·14일, 점검 로그 20MB 넘으면 줄임 |
+| jar·빌드 산출물 | 0.1G | 0.5G | 현재 jar + 롤백용 1개만, `/tmp/billage` 정리 |
+| **업로드 파일(MinIO)** | 0 | **25G** | 버킷 하드 쿼터 25GiB, **TTL 없음** |
+| 여유 | 50.5G | **15G 이상** | 자가점검이 80% 이상·15GB 미만이면 WARN |
+
+파일시스템 62.7GiB 중 root 예약 3.2GiB 를 빼면 쓸 수 있는 건 59.5GiB — 위 예산 합(42.5G) + 여유 15G 가 그 안에 들어온다.
+**권장 최대 파일 저장량은 25GiB** 다(10MB 파일 2,500개, 보통 2~3MB 인 사진이면 약 1만 개).
+
+- **쿼터에 닿으면**: MinIO 가 업로드만 거부한다 → 앱은 `FILE_UPLOAD_FAILED`. 조회·삭제·나머지 API 는 정상. 쿼터는 MinIO 가 주기적으로 집계한 사용량으로 판정해 약간 넘칠 수 있으므로, 쿼터와 여유 15GB 사이에 간격을 뒀다.
+- **디스크 자체가 차면**: MySQL 쓰기 실패(가입·내역 등록 등 500), DB 백업 실패, 로그 유실. 쿼터와 경고는 여기까지 가지 않게 하려는 것이다.
+- **감지**: `healthcheck.sh`(5분)가 `/var/log/billage-health.log` 에 `disk=…% free=…G minio_data=…` 를 남기고, 사용 80% 이상 또는 여유 15GB 미만이면 `WARN`. `sudo grep WARN /var/log/billage-health.log | tail`.
+- **정리**: `cleanup-disk.sh`(매주 일 04:30 KST, 로그 `/var/log/billage-cleanup.log`). 급하면 `sudo /opt/billage/cleanup-disk.sh`.
+- **지워도 되는 것**: 7일 넘은 DB 백업, journald·Caddy·점검 로그, 태그 없는 Docker 이미지·빌드 캐시, apt 캐시, `/tmp/billage`.
+- **지우면 안 되는 것**: `/var/lib/billage/minio`(증빙 원본 — DB 행과 짝이라 파일만 지우면 이미지가 깨진다), Docker 볼륨 `billage_mysql-data`, 사용 중인 이미지, `/etc/billage/*.env`, 최근 7일 백업. `docker system prune -a --volumes` 는 쓰지 않는다.
+- 25GiB 를 넘겨야 하면 쿼터를 올리기 전에 디스크를 늘리거나 파일을 외부 저장소로 옮기는 것을 먼저 검토한다.
+
+```bash
+df -h /
+sudo du -sh /var/lib/billage/minio /var/backups/billage /var/log /var/lib/docker
+sudo docker system df
+journalctl --disk-usage
+```
 
 **S3 오프사이트(적용됨)**: 로컬 + S3 이중 보관.
 - 버킷: `s3://billage-db-backup-442908904609/mysql/` (`ap-northeast-2`, 퍼블릭 차단, SSE-S3, 수명주기 30일 자동삭제)
@@ -170,12 +245,12 @@ sudo systemctl restart billage
 - **외부 접근 차단**: 앱은 `SERVER_ADDRESS=127.0.0.1` 로 로컬만 리슨(+보안그룹), MySQL 은 `127.0.0.1:3306` 바인딩. 8080/3306 외부 노출 없음.
 - **메모리 상한** (1GB+스왑2G 예산): JVM `-Xmx384m`, MySQL `mem_limit: 360m` + `innodb-buffer-pool 128M` + `performance-schema OFF`. 나머지는 Docker/Caddy/OS + 스왑.
 - **배포 안전장치**: 헬스체크(2xx/3xx=성공, 타임아웃 적용) 실패 시 **이전 jar 로 자동 롤백 + 롤백본 헬스 재확인**(`billage.jar.prev`).
-- **재시작/로그**: `Restart=always`, journald `SystemMaxUse=200M`, 자가점검 cron 5분(`/var/log/billage-health.log`).
+- **재시작/로그**: `Restart=always`, journald `SystemMaxUse=200M`·14일, Caddy 접근 로그 20MB×5 회전, 자가점검 cron 5분(`/var/log/billage-health.log`), 디스크 정리 cron 주 1회.
 - **백업/복구**: 위 "DB 백업 / 복구" 참고. 복구 왕복 테스트 검증됨.
 
 ### 최소 모니터링
 
-- 서버 자가점검: `/opt/billage/healthcheck.sh`(cron 5분) — 앱/DB/디스크/메모리 로깅, MySQL 이상 시 재기동.
+- 서버 자가점검: `/opt/billage/healthcheck.sh`(cron 5분) — 앱/DB/MinIO/디스크/메모리 로깅, MySQL·MinIO 이상 시 재기동, 디스크 80% 이상·여유 15GB 미만 WARN.
 - **외부 알림(권장, 별도 작업)**: [UptimeRobot](https://uptimerobot.com) 무료 계정 → HTTP(s) 모니터로 `https://52-78-148-114.nip.io/actuator/health` 5분 감시 → 다운 시 이메일 알림. (서버 자체가 죽으면 내부 cron 은 못 알리므로 외부 감시가 필요)
 
 ## 도메인이 생기면
