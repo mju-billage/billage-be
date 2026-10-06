@@ -133,7 +133,24 @@ public class GroupService {
 	 */
 	@Transactional
 	public void delete(Long groupId, Long userId) {
+		delete(groupId, userId, null);
+	}
+
+	/**
+	 * @param confirmName 화면에서 입력한 모임명. null 이면 대조하지 않는다(본문 없이 부르던 기존 호출).
+	 *                    권한을 먼저 본다 — 총무가 아닌 사람에게 이름이 맞는지 알려 줄 이유가 없다.
+	 */
+	@Transactional
+	public void delete(Long groupId, Long userId, String confirmName) {
 		guard.requireOwner(groupId, userId);
+		if (confirmName != null) {
+			String name = groupSpaceRepository.findById(groupId)
+					.orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND))
+					.getName();
+			if (!name.equals(confirmName.trim())) {
+				throw new BusinessException(ErrorCode.GROUP_NAME_MISMATCH);
+			}
+		}
 
 		groupInvitationRepository.deleteByGroupId(groupId);
 		// 회비가 납부 명단을 참조하므로 명단보다 먼저 지운다.

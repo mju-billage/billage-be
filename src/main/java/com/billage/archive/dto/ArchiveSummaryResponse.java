@@ -17,14 +17,18 @@ public record ArchiveSummaryResponse(
 		long balance,
 		long ledgerCount,
 		long entryCount,
+		long sizeBytes,
 		OffsetDateTime createdAt
 ) {
 
-	public static ArchiveSummaryResponse from(Archive archive) {
+	/**
+	 * @param sizeBytes 담긴 증빙 파일의 용량 합계(바이트). 증빙이 없으면 0 이다.
+	 */
+	public static ArchiveSummaryResponse from(Archive archive, long sizeBytes) {
 		return new ArchiveSummaryResponse(archive.getId(), archive.getTitle(),
 				archive.getStartDate(), archive.getEndDate(),
 				archive.getTotalIncome(), archive.getTotalExpense(), archive.balance(),
-				archive.getLedgerCount(), archive.getEntryCount(),
+				archive.getLedgerCount(), archive.getEntryCount(), sizeBytes,
 				KoreanTime.toOffset(archive.getCreatedAt()));
 	}
 }

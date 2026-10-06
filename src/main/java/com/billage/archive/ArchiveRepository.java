@@ -13,6 +13,26 @@ public interface ArchiveRepository extends JpaRepository<Archive, Long> {
 	@Query("select a from Archive a where a.groupId = :groupId order by a.id desc")
 	List<Archive> findAllByGroupId(@Param("groupId") Long groupId);
 
+	/**
+	 * 보관함마다 담긴 증빙 파일의 용량 합계. 증빙이 하나도 없는 보관함은 결과에 없다.
+	 * 목록에서 보관함 수만큼 쿼리를 내지 않도록 한 번에 가져온다.
+	 */
+	@Query("""
+			select l.archive.id as archiveId, sum(f.size) as sizeBytes
+			  from UploadedFile f
+			  join f.archiveEntry e
+			  join e.archiveLedger l
+			 where l.archive.groupId = :groupId
+			 group by l.archive.id
+			""")
+	List<ArchiveSize> sumReceiptSizesByGroupId(@Param("groupId") Long groupId);
+
+	interface ArchiveSize {
+		Long getArchiveId();
+
+		Long getSizeBytes();
+	}
+
 	@Query("select a from Archive a left join fetch a.ledgers where a.id = :archiveId")
 	Optional<Archive> findWithLedgers(@Param("archiveId") Long archiveId);
 }
