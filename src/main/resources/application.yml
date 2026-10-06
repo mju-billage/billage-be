@@ -51,6 +51,10 @@ billage:
       send-window-minutes: 60
       # 프론트가 인증 화면을 붙이면 true 로 바꾼다. 그전까지 켜면 기존 가입 흐름이 막힌다.
       required-for-signup: ${BILLAGE_EMAIL_VERIFICATION_REQUIRED:false}
+    password-reset:
+      # 같은 계정으로 한 시간에 보낼 임시 비밀번호 수. 넘으면 응답은 그대로 204 이고 발송만 하지 않는다.
+      max-sends: 3
+      send-window-minutes: 60
     terms:
       # 가입 요청에 agreements 를 요구할지. 프론트가 약관 동의 화면을 붙이면 true 로 바꾼다.
       # 값이 들어오면 이 설정과 무관하게 항상 필수 3종을 검증한다.
