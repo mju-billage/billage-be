@@ -5,7 +5,7 @@
 - dev / prod 서버 분리 (개발 중엔 EC2 공용 dev 서버 1대). DB도 분리, 공유 금지.
 - Caddy = HTTPS + reverse proxy. Spring Boot는 systemd 실행.
 - GitHub Actions: develop push → dev 배포 / release tag 또는 수동 → prod 배포.
-- 파일은 **서버 안의 MinIO**(S3 호환 API, 포크 `pgsty/silo` 고정 태그, `127.0.0.1:9000` 전용 — 외부 공개·Caddy 연결 금지). 앱 설정 `billage.file.storage=S3` + `S3_ENDPOINT/ACCESS_KEY/SECRET_KEY/BUCKET/REGION/PREFIX`. AWS SDK for S3 를 그대로 쓴다. 로컬 개발은 `LOCAL`(디스크). 구성·용량 정책은 `deploy/README.md` 의 "업로드 파일 MinIO"·"디스크 용량 정책".
+- 파일은 **서버 안의 MinIO**(S3 호환 API, 포크 `pgsty/silo` 고정 태그, `127.0.0.1:9000` 전용 — 외부 공개·Caddy 연결 금지). 앱 설정 `billage.file.storage=S3` + `S3_ENDPOINT/ACCESS_KEY/SECRET_KEY/BUCKET/REGION/PREFIX`. AWS SDK for S3 를 그대로 쓴다. 로컬 개발은 `LOCAL`(디스크). 구성·용량 정책은 `deploy/README.md` 의 "업로드 파일 MinIO"·"디스크 용량 정책". **파일 오프사이트 백업은 없다**(외부 저장소 미사용 결정, 런칭 전 재검토).
 - 초기에 RDS·ALB·Redis·Kafka 사용 안 함. 비밀값은 Git에 커밋 금지.
 - 로컬: 앱은 IDE 실행, MySQL만 Docker Compose.
 

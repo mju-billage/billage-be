@@ -160,6 +160,7 @@ sudo systemctl restart billage
 - **포트**: `127.0.0.1:9000`(S3 API), `127.0.0.1:9001`(Console). **외부에 열지 않고 Caddy 로도 연결하지 않는다.** Console 이 필요하면 SSH 터널(`ssh -L 9001:127.0.0.1:9001 ...`)로 본다.
 - **데이터**: 호스트 `/var/lib/billage/minio` (컨테이너 `/data`). 컨테이너·이미지를 지워도 남는다.
 - **버킷**: `billage` (비공개). 환경 구분은 프리픽스 — dev 는 `dev/`. 하드 쿼터 25GiB(아래 "디스크 용량 정책").
+- **백업 없음(알고 감수하는 위험)**: 업로드 파일은 이 VM 디스크 한 곳에만 있다. 외부 저장소를 두지 않기로 했으므로(2026-10-06) VM 이나 디스크를 잃으면 DB 는 덤프로 되살려도 **파일 본문은 복구할 수 없다.** DB 덤프도 오프사이트 업로드가 꺼져 있으면 같은 VM 에만 남는다. 실사용자 데이터를 받기 전(런칭 전)에 다시 정한다 — 붙일 때는 `mc mirror local/billage <외부>` 를 cron 으로 돌리면 된다.
 - **계정**: 관리자(root)는 `/etc/billage/minio.env`(600), 앱은 `billage` 버킷의 객체 읽기·쓰기·삭제만 되는 전용 키(`billage-app` 정책)를 `/etc/billage/billage.env` 에 둔다. 둘 다 커밋 금지.
 - **앱 설정**: `BILLAGE_FILE_STORAGE=S3`, `S3_ENDPOINT=http://127.0.0.1:9000`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET=billage`, `S3_REGION=us-east-1`, `S3_PREFIX=dev`. AWS SDK for S3 를 그대로 쓰고 엔드포인트·path-style·액세스 키만 지정한다.
 - **다운로드**: `GET /api/v1/files/{id}/content` 가 권한 확인 후 MinIO 에서 읽어 200 으로 직접 스트리밍한다(presigned URL·302 없음).
