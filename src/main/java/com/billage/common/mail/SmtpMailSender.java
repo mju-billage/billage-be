@@ -74,7 +74,8 @@ public class SmtpMailSender implements MailSender {
 			client.send(message);
 		} catch (MailException | MessagingException e) {
 			// 수신자에게 원인을 그대로 보여 줄 값이 아니다 — 로그로만 남기고 공통 오류로 바꾼다.
-			log.error("SMTP 발송 실패. to={} reason={}", to, e.getMessage());
+			// 한도 초과처럼 실패가 몰릴 때 가입자 주소가 로그에 쌓이지 않게 도메인만 남긴다.
+			log.error("SMTP 발송 실패. toDomain={} reason={}", to.substring(to.indexOf('@') + 1), e.getMessage());
 			throw new BusinessException(ErrorCode.MAIL_SEND_FAILED);
 		}
 	}
