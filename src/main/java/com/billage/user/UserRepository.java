@@ -25,5 +25,13 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
 	Optional<User> findByEmail(String email);
 
+	/**
+	 * 계정 행을 잠그고 가져온다. 비밀번호 재설정이 쓴다 — 같은 주소로 요청이 겹쳐도
+	 * 발송 횟수를 정확히 세고, 임시 비밀번호가 서로 덮어쓰이지 않게 한다.
+	 */
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select u from User u where u.email = :email")
+	Optional<User> findByEmailForUpdate(@Param("email") String email);
+
 	boolean existsByEmail(String email);
 }

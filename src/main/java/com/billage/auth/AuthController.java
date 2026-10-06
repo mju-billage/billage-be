@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.billage.auth.dto.LoginRequest;
 import com.billage.auth.dto.LoginResponse;
 import com.billage.auth.dto.LogoutRequest;
+import com.billage.auth.dto.PasswordResetRequest;
 import com.billage.auth.dto.RefreshRequest;
 import com.billage.auth.dto.SignupRequest;
 import com.billage.auth.dto.SignupResponse;
@@ -18,6 +19,7 @@ import com.billage.auth.dto.SocialLoginRequest;
 import com.billage.auth.dto.SocialLoginResponse;
 import com.billage.auth.dto.SocialSignupRequest;
 import com.billage.auth.dto.TokenResponse;
+import com.billage.auth.password.PasswordResetService;
 import com.billage.auth.social.SocialAuthService;
 import com.billage.common.response.ApiResponse;
 
@@ -31,6 +33,7 @@ public class AuthController {
 
 	private final AuthService authService;
 	private final SocialAuthService socialAuthService;
+	private final PasswordResetService passwordResetService;
 
 	/**
 	 * 이메일 회원가입. 명세상 가입과 로그인은 분리돼 있어 토큰을 발급하지 않는다 —
@@ -69,6 +72,16 @@ public class AuthController {
 		LoginResponse response = socialAuthService.signup(request.provider(), request.token(), request.name());
 		return ResponseEntity.status(HttpStatus.CREATED)
 				.body(ApiResponse.of(response, "회원가입에 성공했습니다."));
+	}
+
+	/**
+	 * 비밀번호 재설정. 가입된 주소인지와 무관하게 항상 204 다 —
+	 * 응답으로 가입 여부를 알려 주지 않는다.
+	 */
+	@PostMapping("/password/reset")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void resetPassword(@Valid @RequestBody PasswordResetRequest request) {
+		passwordResetService.reset(request.email());
 	}
 
 	@PostMapping("/refresh")
