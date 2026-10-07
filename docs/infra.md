@@ -101,8 +101,8 @@ Figma 화면명세서 ver 0.25 전 캔버스를 텍스트로 추출해 노션 AP
 - **응답**: `merchantName` / `purchasedOn` / `items[]` / `totalAmount` / `recognizedAt`.
   **`totalAmount` 만 필수**다 — 나머지는 못 읽으면 null(또는 빈 배열)로 내리고 사용자가 채운다.
   총액마저 못 읽으면 결과가 아니라 `OCR_RESULT_EMPTY(422)` 다.
-- **인식 결과는 저장하지 않는다.** 명세의 "별도 테이블 영구 보관 여부 미확정"은 보관하지 않는 쪽으로 뒀다 —
-  사용자가 확인·수정 후 내역 등록 API 를 부르는 흐름이라 서버가 들고 있을 이유가 없다. Flyway 마이그레이션도 없다.
+- **인식 결과는 파일에 붙여 보관한다**(2026-10-07, V22 — 처음에는 저장하지 않았다). 그 파일이 내역의 증빙이 되면
+  내역 상세의 `ocr` 로 다시 내려가고, 그때 OCR 을 다시 부르지 않는다. 정책은 `docs/domain.md` 의 UploadedFile 절.
 - **오류**: `INVALID_OCR_FILE(400)`(증빙 용도가 아니거나 OCR 이 못 받는 형식·크기) ·
   `OCR_RESULT_EMPTY(422)` · `OCR_PROCESSING_FAILED(502)`(외부 호출 실패) · `ACCESS_DENIED(403)` · `FILE_NOT_FOUND(404)`.
   **명세에 없던 `OCR_RATE_LIMITED(429)` 를 추가했다** — 노션에도 반영해야 한다.

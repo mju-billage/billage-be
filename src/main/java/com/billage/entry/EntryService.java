@@ -23,10 +23,13 @@ import com.billage.dues.DuesService;
 import com.billage.entry.dto.GroupEntryListResponse;
 import com.billage.entry.dto.GroupEntrySummaryResponse;
 import com.billage.file.FileService;
+import com.billage.file.dto.ReceiptFileResponse;
 import com.billage.ledger.Ledger;
 import com.billage.ledger.LedgerRepository;
 import com.billage.membership.GroupAccessGuard;
 import com.billage.membership.GroupMembership;
+import com.billage.ocr.ReceiptOcrService;
+import com.billage.ocr.dto.ReceiptOcrResponse;
 import com.billage.user.User;
 import com.billage.user.UserRepository;
 
@@ -48,6 +51,7 @@ public class EntryService {
 	private final FileService fileService;
 	private final DuesService duesService;
 	private final GroupAccessGuard guard;
+	private final ReceiptOcrService receiptOcrService;
 
 	@Transactional(readOnly = true)
 	public PageResponse<EntrySummaryResponse> getEntries(Long ledgerId, Long userId, EntryType type,
@@ -121,8 +125,14 @@ public class EntryService {
 		Entry entry = findEntry(entryId);
 		guard.requireMembership(entry.getGroupId(), userId);
 
+		List<ReceiptFileResponse> receipts = fileService.getReceipts(entryId);
+		// 보관된 인식 결과를 읽을 뿐이다. 상세를 열 때마다 OCR 을 부르지 않는다.
+		ReceiptOcrResponse ocr = receiptOcrService
+				.findLatestOf(receipts.stream().map(ReceiptFileResponse::fileId).toList())
+				.orElse(null);
+
 		if (entry.getDuesId() == null) {
-			return EntryDetailResponse.of(entry, fileService.getReceipts(entryId));
+			return EntryDetailResponse.of(entry, receipts, ocr);
 		}
 
 		// 마감된 회비가 만든 수입 내역이면 납부자 명단을 함께 보여 준다.
@@ -134,7 +144,7 @@ public class EntryService {
 						.toList())
 				.orElse(List.of());
 
-		return EntryDetailResponse.of(entry, fileService.getReceipts(entryId), payerViews.isPresent(), payers);
+		return EntryDetailResponse.of(entry, receipts, ocr, payerViews.isPresent(), payers);
 	}
 
 	/**
