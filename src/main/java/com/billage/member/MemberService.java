@@ -142,8 +142,11 @@ public class MemberService {
 		memberRepository.findByIdAndGroupId(memberId, groupId)
 				.orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_NOT_FOUND));
 
-		String trimmed = keyword == null || keyword.isBlank() ? null : keyword.trim();
-		Page<MemberPaymentView> page = duesService.findPaymentsOf(memberId, from, to, trimmed, pageable);
+		// 검색어의 %·_ 는 글자 그대로 찾는다. 이스케이프하지 않으면 "%" 한 글자로 전부가 검색된다.
+		String escaped = keyword == null || keyword.isBlank()
+				? null
+				: keyword.trim().replace("!", "!!").replace("%", "!%").replace("_", "!_");
+		Page<MemberPaymentView> page = duesService.findPaymentsOf(memberId, from, to, escaped, pageable);
 		List<MemberPaymentListResponse.Payment> payments = page.getContent().stream()
 				.map(view -> new MemberPaymentListResponse.Payment(view.duesId(), view.duesTitle(),
 						view.ledgerId(), view.ledgerName(), view.amount(), KoreanTime.toOffset(view.paidAt())))

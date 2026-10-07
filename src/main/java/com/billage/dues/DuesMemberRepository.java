@@ -67,6 +67,9 @@ public interface DuesMemberRepository extends JpaRepository<DuesMember, Long> {
 	 * 검색어는 회비명과 장부명을 함께 본다. 회비는 장부를 ID 로만 들고 있어 장부를 따로 붙인다 —
 	 * 연결된 장부가 지워진 회비도 목록에서 빠지지 않도록 left join 이다.
 	 * 정렬은 {@code pageable} 이 정한다.
+	 *
+	 * @param keyword {@code %}·{@code _}·{@code !} 앞에 {@code !} 를 붙여 넘겨야 한다. 그대로 넘기면
+	 *                {@code %} 한 글자로 전부가 검색된다.
 	 */
 	@Query(value = """
 			select dm from DuesMember dm
@@ -76,8 +79,8 @@ public interface DuesMemberRepository extends JpaRepository<DuesMember, Long> {
 			  and dm.status = com.billage.dues.PaymentStatus.PAID
 			  and (:from is null or dm.paidAt >= :from)
 			  and (:to is null or dm.paidAt < :to)
-			  and (:keyword is null or d.title like concat('%', :keyword, '%')
-			       or l.name like concat('%', :keyword, '%'))
+			  and (:keyword is null or d.title like concat('%', :keyword, '%') escape '!'
+			       or l.name like concat('%', :keyword, '%') escape '!')
 			""",
 			countQuery = """
 			select count(dm) from DuesMember dm
@@ -87,8 +90,8 @@ public interface DuesMemberRepository extends JpaRepository<DuesMember, Long> {
 			  and dm.status = com.billage.dues.PaymentStatus.PAID
 			  and (:from is null or dm.paidAt >= :from)
 			  and (:to is null or dm.paidAt < :to)
-			  and (:keyword is null or d.title like concat('%', :keyword, '%')
-			       or l.name like concat('%', :keyword, '%'))
+			  and (:keyword is null or d.title like concat('%', :keyword, '%') escape '!'
+			       or l.name like concat('%', :keyword, '%') escape '!')
 			""")
 	Page<DuesMember> findPaymentsOf(@Param("memberId") Long memberId,
 			@Param("from") LocalDateTime from, @Param("to") LocalDateTime to,

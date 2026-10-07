@@ -126,6 +126,13 @@ class MemberPaymentListTest extends IntegrationTest {
 	}
 
 	@Test
+	void 검색어의_와일드카드_문자는_글자_그대로_찾는다() {
+		assertThat(list("%", null, null, null).payments()).isEmpty();
+		assertThat(list("_", null, null, null).payments()).isEmpty();
+		assertThat(list("%", null, null, null).pageInfo().totalElements()).isZero();
+	}
+
+	@Test
 	void 허용하지_않는_정렬_기준은_거부한다() {
 		assertThatThrownBy(() -> MemberPaymentPaging.of("amount,desc", null, null))
 				.isInstanceOf(BusinessException.class)
