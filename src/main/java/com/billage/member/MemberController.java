@@ -52,13 +52,26 @@ public class MemberController {
 		return ResponseEntity.ok(ApiResponse.of(member, "모임원 조회에 성공했습니다."));
 	}
 
-	/** 모임원이 낸 회비 목록. 기간은 납부 시각 기준이다. */
+	/**
+	 * 모임원이 낸 회비 목록. 기간은 납부 시각 기준이다.
+	 *
+	 * <p>{@code page}·{@code size} 는 선택이다. 둘 다 없으면 전부 내려준다 — 페이지 없이 부르던 기존 앱이
+	 * 갑자기 앞의 일부만 받게 되면 안 된다.
+	 *
+	 * @param keyword 회비명·장부명 검색어
+	 * @param sort    {@code paidAt,desc}(기본) 또는 {@code paidAt,asc}
+	 */
 	@GetMapping("/{memberId}/payments")
 	public ResponseEntity<ApiResponse<MemberPaymentListResponse>> getPayments(@CurrentUserId Long userId,
 			@PathVariable Long groupId, @PathVariable Long memberId,
 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
-		MemberPaymentListResponse payments = memberService.getPayments(groupId, userId, memberId, from, to);
+			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+			@RequestParam(required = false) String keyword,
+			@RequestParam(required = false) String sort,
+			@RequestParam(required = false) Integer page,
+			@RequestParam(required = false) Integer size) {
+		MemberPaymentListResponse payments = memberService.getPayments(groupId, userId, memberId, from, to,
+				keyword, MemberPaymentPaging.of(sort, page, size));
 		String message = payments.payments().isEmpty() ? "조회된 데이터가 없습니다." : "납부 내역 조회에 성공했습니다.";
 		return ResponseEntity.ok(ApiResponse.of(payments, message));
 	}

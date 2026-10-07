@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -62,18 +64,38 @@ public interface DuesMemberRepository extends JpaRepository<DuesMember, Long> {
 	 * 한 모임원의 납부 완료 기록. 「모임원 상세 > 납부 내역」 화면이 쓴다.
 	 *
 	 * <p>회비명·장부와 함께 보여 주므로 fetch join 으로 회비를 같이 읽는다.
+	 * 검색어는 회비명과 장부명을 함께 본다. 회비는 장부를 ID 로만 들고 있어 장부를 따로 붙인다 —
+	 * 연결된 장부가 지워진 회비도 목록에서 빠지지 않도록 left join 이다.
+	 * 정렬은 {@code pageable} 이 정한다.
+	 *
+	 * @param keyword {@code %}·{@code _}·{@code !} 앞에 {@code !} 를 붙여 넘겨야 한다. 그대로 넘기면
+	 *                {@code %} 한 글자로 전부가 검색된다.
 	 */
-	@Query("""
+	@Query(value = """
 			select dm from DuesMember dm
 			join fetch dm.dues d
+			left join Ledger l on l.id = d.ledgerId
 			where dm.member.id = :memberId
 			  and dm.status = com.billage.dues.PaymentStatus.PAID
 			  and (:from is null or dm.paidAt >= :from)
 			  and (:to is null or dm.paidAt < :to)
-			order by dm.paidAt desc, dm.id desc
+			  and (:keyword is null or d.title like concat('%', :keyword, '%') escape '!'
+			       or l.name like concat('%', :keyword, '%') escape '!')
+			""",
+			countQuery = """
+			select count(dm) from DuesMember dm
+			join dm.dues d
+			left join Ledger l on l.id = d.ledgerId
+			where dm.member.id = :memberId
+			  and dm.status = com.billage.dues.PaymentStatus.PAID
+			  and (:from is null or dm.paidAt >= :from)
+			  and (:to is null or dm.paidAt < :to)
+			  and (:keyword is null or d.title like concat('%', :keyword, '%') escape '!'
+			       or l.name like concat('%', :keyword, '%') escape '!')
 			""")
-	List<DuesMember> findPaymentsOf(@Param("memberId") Long memberId,
-			@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+	Page<DuesMember> findPaymentsOf(@Param("memberId") Long memberId,
+			@Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
+			@Param("keyword") String keyword, Pageable pageable);
 
 	/** 여러 모임원의 총 납부 금액. 모임원 목록에서 N+1 없이 채우려고 한 번에 센다. */
 	@Query("""

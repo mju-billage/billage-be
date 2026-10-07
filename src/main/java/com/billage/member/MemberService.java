@@ -8,12 +8,15 @@ import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
 import com.billage.dues.DuesService;
+import com.billage.dues.MemberPaymentView;
 import com.billage.group.GroupSpace;
 import com.billage.common.response.KoreanTime;
 import com.billage.member.dto.MemberBulkCreateRequest;
@@ -134,18 +137,24 @@ public class MemberService {
 	 */
 	@Transactional(readOnly = true)
 	public MemberPaymentListResponse getPayments(Long groupId, Long userId, Long memberId,
-			LocalDate from, LocalDate to) {
+			LocalDate from, LocalDate to, String keyword, Pageable pageable) {
 		guard.requireMembership(groupId, userId);
 		memberRepository.findByIdAndGroupId(memberId, groupId)
 				.orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_NOT_FOUND));
 
-		List<MemberPaymentListResponse.Payment> payments = duesService.findPaymentsOf(memberId, from, to).stream()
+		// 검색어의 %·_ 는 글자 그대로 찾는다. 이스케이프하지 않으면 "%" 한 글자로 전부가 검색된다.
+		String escaped = keyword == null || keyword.isBlank()
+				? null
+				: keyword.trim().replace("!", "!!").replace("%", "!%").replace("_", "!_");
+		Page<MemberPaymentView> page = duesService.findPaymentsOf(memberId, from, to, escaped, pageable);
+		List<MemberPaymentListResponse.Payment> payments = page.getContent().stream()
 				.map(view -> new MemberPaymentListResponse.Payment(view.duesId(), view.duesTitle(),
 						view.ledgerId(), view.ledgerName(), view.amount(), KoreanTime.toOffset(view.paidAt())))
 				.toList();
 
 		return new MemberPaymentListResponse(
-				duesService.totalPaidAmounts(List.of(memberId)).getOrDefault(memberId, 0L), payments);
+				duesService.totalPaidAmounts(List.of(memberId)).getOrDefault(memberId, 0L), payments,
+				MemberPaymentListResponse.PageInfo.of(page));
 	}
 
 	/**
