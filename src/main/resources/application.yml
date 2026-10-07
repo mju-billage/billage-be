@@ -51,6 +51,8 @@ billage:
       send-window-minutes: 60
       # 프론트가 인증 화면을 붙이면 true 로 바꾼다. 그전까지 켜면 기존 가입 흐름이 막힌다.
       required-for-signup: ${BILLAGE_EMAIL_VERIFICATION_REQUIRED:false}
+      # 인증을 마친 뒤 가입 요청까지 허용하는 시간. 지나면 다시 인증해야 한다.
+      verified-ttl-seconds: 300
     password-reset:
       # 같은 계정으로 한 시간에 보낼 임시 비밀번호 수. 넘으면 응답은 그대로 204 이고 발송만 하지 않는다.
       max-sends: 3
