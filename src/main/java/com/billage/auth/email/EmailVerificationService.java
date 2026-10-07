@@ -97,14 +97,18 @@ public class EmailVerificationService {
 	/**
 	 * 가입 시 인증 여부 확인. {@code billage.auth.email-verification.required-for-signup} 이 꺼져 있으면
 	 * 통과시킨다 — 프론트가 인증 화면을 붙이기 전까지 기존 가입 흐름을 깨지 않기 위해서다.
+	 *
+	 * <p>인증은 마친 뒤 {@code verified-ttl-seconds}(5분) 안에만 유효하다. 지났으면 인증하지 않은 것과 같은
+	 * {@code EMAIL_NOT_VERIFIED} 이며, 화면은 인증 단계로 되돌려 코드를 다시 받게 하면 된다.
 	 */
 	@Transactional(readOnly = true)
 	public void requireVerified(String rawEmail) {
 		if (!properties.requiredForSignup()) {
 			return;
 		}
+		LocalDateTime now = LocalDateTime.now();
 		boolean verified = repository.findByEmail(normalize(rawEmail))
-				.map(EmailVerification::isVerified)
+				.map(verification -> verification.isVerifiedWithin(properties.verifiedTtlSeconds(), now))
 				.orElse(false);
 		if (!verified) {
 			throw new BusinessException(ErrorCode.EMAIL_NOT_VERIFIED);
