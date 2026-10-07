@@ -69,7 +69,8 @@ public class AuthController {
 	 */
 	@PostMapping("/social/signup")
 	public ResponseEntity<ApiResponse<LoginResponse>> socialSignup(@Valid @RequestBody SocialSignupRequest request) {
-		LoginResponse response = socialAuthService.signup(request.provider(), request.token(), request.name());
+		LoginResponse response = socialAuthService.signup(request.provider(), request.token(), request.name(),
+				request.agreements(), request.termsAgreed());
 		return ResponseEntity.status(HttpStatus.CREATED)
 				.body(ApiResponse.of(response, "회원가입에 성공했습니다."));
 	}

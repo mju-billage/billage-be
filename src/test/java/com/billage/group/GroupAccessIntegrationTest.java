@@ -114,6 +114,43 @@ class GroupAccessIntegrationTest extends IntegrationTest {
 		assertThat(after.at("data.memberCount")).isEqualTo(1);
 	}
 
+	// --- 모임 삭제 확인(모임명 입력) ---
+
+	@Test
+	void 입력한_모임명이_맞으면_삭제된다() {
+		Response delete = http.deleteJson("/api/v1/groups/" + groupId, Map.of("confirmName", "주리랑"), ownerToken);
+
+		assertThat(delete.status()).isEqualTo(204);
+		assertThat(http.get("/api/v1/groups/" + groupId, ownerToken).status()).isEqualTo(404);
+	}
+
+	@Test
+	void 입력한_모임명이_다르면_삭제하지_않는다() {
+		Response delete = http.deleteJson("/api/v1/groups/" + groupId, Map.of("confirmName", "주리"), ownerToken);
+
+		assertThat(delete.status()).isEqualTo(400);
+		assertThat(delete.at("code")).isEqualTo("GROUP_NAME_MISMATCH");
+		assertThat(http.get("/api/v1/groups/" + groupId, ownerToken).status()).isEqualTo(200);
+	}
+
+	@Test
+	void 본문_없이_부르던_기존_삭제_요청도_그대로_된다() {
+		Response delete = http.delete("/api/v1/groups/" + groupId, ownerToken);
+
+		assertThat(delete.status()).isEqualTo(204);
+	}
+
+	@Test
+	void 일반_관리자는_모임명을_맞게_넣어도_삭제할_수_없다() {
+		Response right = http.deleteJson("/api/v1/groups/" + groupId, Map.of("confirmName", "주리랑"), adminToken);
+		Response wrong = http.deleteJson("/api/v1/groups/" + groupId, Map.of("confirmName", "아무거나"), adminToken);
+
+		// 이름이 맞든 틀리든 같은 응답이어야 한다 — 권한 없는 사람에게 이름이 맞는지 알려 주지 않는다.
+		assertThat(right.status()).isEqualTo(403);
+		assertThat(wrong.status()).isEqualTo(403);
+		assertThat(http.get("/api/v1/groups/" + groupId, ownerToken).status()).isEqualTo(200);
+	}
+
 	private String tokenOf(String email, String name) {
 		userRepository.save(User.create(email, passwordEncoder.encode(PASSWORD), name));
 		Response login = http.postJson("/api/v1/auth/login", Map.of("email", email, "password", PASSWORD));

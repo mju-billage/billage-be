@@ -24,11 +24,22 @@ class SocialAccountRegistrar {
 	private final UserRepository userRepository;
 	private final SocialAccountRepository socialAccountRepository;
 
+	/**
+	 * @param marketing 마케팅 수신 동의. 항목별 동의 없이 온 예전 요청이면 null 이다.
+	 *                  새로 만드는 계정에만 적는다 — 이미 있는 계정에 소셜을 연결하는 경우,
+	 *                  그 계정이 가입 때 남긴 동의 기록을 덮어쓰지 않는다.
+	 */
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
-	public User register(SocialProvider provider, OAuthUserInfo info, String name) {
+	public User register(SocialProvider provider, OAuthUserInfo info, String name, Boolean marketing) {
 		LocalDateTime now = LocalDateTime.now();
 		User user = userRepository.findByEmail(info.email())
-				.orElseGet(() -> userRepository.save(User.createSocial(info.email(), name, now)));
+				.orElseGet(() -> {
+					User created = User.createSocial(info.email(), name, now);
+					if (marketing != null) {
+						created.recordMarketingAgreement(marketing, now);
+					}
+					return userRepository.save(created);
+				});
 		user.agreeToTermsIfNeeded(now);
 		socialAccountRepository.save(SocialAccount.link(user, provider, info.providerUserId(), info.email()));
 		return user;

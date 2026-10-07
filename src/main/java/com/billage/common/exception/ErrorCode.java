@@ -46,6 +46,7 @@ public enum ErrorCode {
 	// 모임·모임원
 	ACCESS_DENIED("ACCESS_DENIED", HttpStatus.FORBIDDEN, "해당 모임에 대한 권한이 없습니다."),
 	GROUP_NOT_FOUND("GROUP_NOT_FOUND", HttpStatus.NOT_FOUND, "모임을 찾을 수 없습니다."),
+	GROUP_NAME_MISMATCH("GROUP_NAME_MISMATCH", HttpStatus.BAD_REQUEST, "입력한 모임명이 일치하지 않습니다."),
 	MEMBER_NOT_FOUND("MEMBER_NOT_FOUND", HttpStatus.NOT_FOUND, "모임원을 찾을 수 없습니다."),
 	MEMBERSHIP_NOT_FOUND("MEMBERSHIP_NOT_FOUND", HttpStatus.NOT_FOUND, "모임 관리자를 찾을 수 없습니다."),
 	INVALID_ROLE("INVALID_ROLE", HttpStatus.BAD_REQUEST, "허용되지 않은 권한 값입니다."),

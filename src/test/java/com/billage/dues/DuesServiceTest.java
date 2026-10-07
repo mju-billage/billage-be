@@ -147,6 +147,20 @@ class DuesServiceTest extends IntegrationTest {
 	}
 
 	@Test
+	void 마감이_만든_수입_내역은_모임_전체_목록에서도_회비를_가리킨다() {
+		Long duesId = createDues(List.of(member1, member2));
+		pay(duesId, member1);
+		DuesCloseResponse closed = duesService.close(duesId, ownerId);
+
+		var entries = entryService.getGroupEntries(groupId, ownerId, null, null, null, null, null, null,
+				PageRequest.of(0, 20)).entries().content();
+
+		assertThat(entries).filteredOn(entry -> entry.entryId().equals(closed.generatedEntryId()))
+				.singleElement()
+				.satisfies(entry -> assertThat(entry.duesId()).isEqualTo(duesId));
+	}
+
+	@Test
 	void 아무도_납부하지_않은_회비를_마감하면_수입_내역을_만들지_않는다() {
 		Long duesId = createDues(List.of(member1, member2));
 

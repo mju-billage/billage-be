@@ -5,6 +5,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -80,14 +81,15 @@ public class ArchiveService {
 		fileService.moveReceiptsToArchive(archived);
 		clearGroup(groupId);
 
-		return ArchiveSummaryResponse.from(archive);
+		return summaryOf(archive);
 	}
 
 	@Transactional(readOnly = true)
 	public List<ArchiveSummaryResponse> getArchives(Long groupId, Long userId) {
 		guard.requireMembership(groupId, userId);
+		Map<Long, Long> sizes = receiptSizes(groupId);
 		return archiveRepository.findAllByGroupId(groupId).stream()
-				.map(ArchiveSummaryResponse::from)
+				.map(archive -> ArchiveSummaryResponse.from(archive, sizes.getOrDefault(archive.getId(), 0L)))
 				.toList();
 	}
 
@@ -117,7 +119,19 @@ public class ArchiveService {
 			throw new BusinessException(ErrorCode.INVALID_REQUEST, "보관 제목은 공백일 수 없습니다.");
 		}
 		archive.rename(trimmed);
-		return ArchiveSummaryResponse.from(archive);
+		return summaryOf(archive);
+	}
+
+	private ArchiveSummaryResponse summaryOf(Archive archive) {
+		return ArchiveSummaryResponse.from(archive,
+				receiptSizes(archive.getGroupId()).getOrDefault(archive.getId(), 0L));
+	}
+
+	/** 보관함 ID → 증빙 용량 합계. 증빙이 없는 보관함은 들어 있지 않다. */
+	private Map<Long, Long> receiptSizes(Long groupId) {
+		return archiveRepository.sumReceiptSizesByGroupId(groupId).stream()
+				.collect(Collectors.toMap(ArchiveRepository.ArchiveSize::getArchiveId,
+						ArchiveRepository.ArchiveSize::getSizeBytes));
 	}
 
 	/** 삭제. 화면도 "삭제 이후에는 데이터 복구가 어렵습니다"라고 경고한다 — 되돌릴 수 없다. */
