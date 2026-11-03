@@ -81,7 +81,7 @@ class PasswordResetIntegrationTest extends IntegrationTest {
 		Response response = login(EMAIL, PASSWORD);
 
 		assertThat(response.status()).isEqualTo(401);
-		assertThat(response.at("code")).isEqualTo("INVALID_CREDENTIALS");
+		assertThat(response.at("code")).isEqualTo("INVALID_PASSWORD");
 	}
 
 	@Test
