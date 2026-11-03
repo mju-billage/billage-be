@@ -45,7 +45,9 @@ class KakaoTokenVerifierTest {
 	}
 
 	private void userMe(String json) {
-		server.expect(requestTo(USER_ME)).andRespond(withSuccess(json, MediaType.APPLICATION_JSON));
+		server.expect(requestTo(USER_ME))
+				.andExpect(header("Authorization", "Bearer kakao-token"))
+				.andRespond(withSuccess(json, MediaType.APPLICATION_JSON));
 	}
 
 	@Test
@@ -91,6 +93,15 @@ class KakaoTokenVerifierTest {
 		userMe("{\"id\":42,\"kakao_account\":{\"email\":\"a@kakao.com\",\"is_email_verified\":false}}");
 
 		assertRejected(verifier(APP_ID));
+	}
+
+	@Test
+	void 회원번호가_없으면_거부한다() {
+		tokenInfo(APP_ID);
+		userMe("{\"kakao_account\":{\"email\":\"a@kakao.com\",\"is_email_verified\":true}}");
+
+		assertRejected(verifier(APP_ID));
+		server.verify();
 	}
 
 	@Test

@@ -23,6 +23,7 @@ import com.billage.entry.ApprovalStatus;
 import com.billage.entry.EntryRepository;
 import com.billage.entry.EntryService;
 import com.billage.entry.dto.EntryDetailResponse;
+import com.billage.entry.dto.EntryUpdateRequest;
 import com.billage.entry.EntryType;
 import com.billage.folder.FolderService;
 import com.billage.folder.dto.FolderCreateRequest;
@@ -534,6 +535,25 @@ class DuesServiceTest extends IntegrationTest {
 
 	private Long createDues(List<Long> memberIds) {
 		return duesService.create(groupId, ownerId, createRequest(memberIds)).duesId();
+	}
+
+	@Test
+	void 마감이_만든_수입_내역을_다른_장부로_옮겨도_회비_연결은_유지된다() {
+		Long duesId = createDues(List.of(member1, member2));
+		pay(duesId, member1);
+		Long entryId = duesService.close(duesId, ownerId).generatedEntryId();
+		Long folderId = folderService.create(groupId, ownerId, new FolderCreateRequest("행사", null)).folderId();
+		Long otherLedgerId = ledgerService.create(folderId, ownerId, new LedgerCreateRequest("행사 장부", null)).ledgerId();
+
+		entryService.update(entryId, ownerId,
+				new EntryUpdateRequest(null, null, null, null, null, otherLedgerId, null));
+
+		EntryDetailResponse detail = entryService.getDetail(entryId, ownerId);
+		assertThat(detail.ledgerId()).isEqualTo(otherLedgerId);
+		assertThat(detail.duesId()).isEqualTo(duesId);
+		assertThat(detail.duesTitle()).isEqualTo("2학기 회비");
+		assertThat(detail.duesExists()).isTrue();
+		assertThat(detail.payerCount()).isEqualTo(1);
 	}
 
 	private void pay(Long duesId, Long memberId) {
