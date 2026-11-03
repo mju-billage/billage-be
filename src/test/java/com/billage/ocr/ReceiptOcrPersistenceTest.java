@@ -153,7 +153,7 @@ class ReceiptOcrPersistenceTest extends IntegrationTest {
 		Long entryId = createEntry(List.of(fileId));
 
 		// 증빙 전체 교체 — 빠진 파일은 저장소에서도 지워진다.
-		entryService.update(entryId, ownerId, new EntryUpdateRequest(null, null, null, null, null, List.of()));
+		entryService.update(entryId, ownerId, new EntryUpdateRequest(null, null, null, null, null, null, List.of()));
 
 		assertThat(entryService.getDetail(entryId, ownerId).ocr()).isNull();
 		assertThat(receiptOcrRepository.count()).isZero();

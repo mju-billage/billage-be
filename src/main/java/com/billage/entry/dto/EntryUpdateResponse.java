@@ -9,6 +9,8 @@ import com.billage.entry.EntryType;
 /** 내역 수정 응답. */
 public record EntryUpdateResponse(
 		Long entryId,
+		Long ledgerId,
+		String ledgerName,
 		EntryType type,
 		String title,
 		Long amount,
@@ -18,7 +20,8 @@ public record EntryUpdateResponse(
 ) {
 
 	public static EntryUpdateResponse from(Entry entry) {
-		return new EntryUpdateResponse(entry.getId(), entry.getType(), entry.getTitle(), entry.getAmount(),
+		return new EntryUpdateResponse(entry.getId(), entry.getLedger().getId(), entry.getLedger().getName(),
+				entry.getType(), entry.getTitle(), entry.getAmount(),
 				entry.getOccurredOn(), entry.getMemo(), entry.getApprovalStatus());
 	}
 }

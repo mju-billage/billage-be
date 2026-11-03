@@ -50,7 +50,8 @@ public class Entry {
 	private Long groupId;
 
 	@ManyToOne(fetch = FetchType.LAZY, optional = false)
-	@JoinColumn(name = "ledger_id", nullable = false, updatable = false)
+	/** 같은 모임 안에서만 옮길 수 있다({@link #moveTo}). 그래서 {@code groupId} 는 바뀌지 않는다. */
+	@JoinColumn(name = "ledger_id", nullable = false)
 	private Ledger ledger;
 
 	@Enumerated(EnumType.STRING)
@@ -171,6 +172,17 @@ public class Entry {
 	 * 유형(type)은 바꿀 수 없고, 승인 상태와 작성자·승인자 기록도 건드리지 않는다
 	 * — 승인 완료 내역을 수정해도 승인 대기로 되돌아가지 않는다(기획 확정).
 	 */
+	/**
+	 * 같은 모임의 다른 장부로 옮긴다. 승인 상태·작성자·회비 연결은 그대로 둔다.
+	 * 잔액은 저장하지 않고 계산하므로 옮기는 즉시 두 장부의 합계에 반영된다.
+	 */
+	public void moveTo(Ledger target) {
+		if (!groupId.equals(target.getGroup().getId())) {
+			throw new IllegalArgumentException("다른 모임의 장부로는 옮길 수 없다");
+		}
+		this.ledger = target;
+	}
+
 	public void update(String title, Long amount, LocalDate occurredOn, String memo) {
 		if (title != null) {
 			this.title = title;

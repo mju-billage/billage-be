@@ -16,6 +16,7 @@ import com.billage.common.exception.ErrorCode;
 import com.billage.entry.dto.EntryCreateRequest;
 import com.billage.entry.dto.EntryDetailResponse;
 import com.billage.entry.dto.EntryUpdateRequest;
+import com.billage.entry.dto.EntryUpdateResponse;
 import com.billage.entry.dto.GroupEntryListResponse;
 import com.billage.folder.FolderService;
 import com.billage.folder.dto.FolderCreateRequest;
@@ -160,7 +161,7 @@ class EntryServiceTest extends IntegrationTest {
 		Long entryId = createExpense(ownerId, "대관료", 500_000L);
 
 		entryService.update(entryId, ownerId, new EntryUpdateRequest("대관료 정정", 520_000L,
-				LocalDate.of(2026, 7, 21), "금액 정정", null, null));
+				LocalDate.of(2026, 7, 21), "금액 정정", null, null, null));
 
 		Entry entry = entryRepository.findById(entryId).orElseThrow();
 		assertThat(entry.getTitle()).isEqualTo("대관료 정정");
@@ -173,7 +174,7 @@ class EntryServiceTest extends IntegrationTest {
 	void 전달하지_않은_필드는_수정되지_않는다() {
 		Long entryId = createExpense(ownerId, "대관료", 500_000L);
 
-		entryService.update(entryId, ownerId, new EntryUpdateRequest(null, 520_000L, null, null, null, null));
+		entryService.update(entryId, ownerId, new EntryUpdateRequest(null, 520_000L, null, null, null, null, null));
 
 		Entry entry = entryRepository.findById(entryId).orElseThrow();
 		assertThat(entry.getAmount()).isEqualTo(520_000L);
@@ -182,11 +183,56 @@ class EntryServiceTest extends IntegrationTest {
 	}
 
 	@Test
+	void 총무는_내역을_같은_모임의_다른_장부로_옮길_수_있다() {
+		createIncome(ownerId, "회비 수입", 1_000_000L);
+		Long entryId = createExpense(ownerId, "대관료", 400_000L);
+		Long otherLedgerId = createLedger(groupId, "행사 장부");
+
+		EntryUpdateResponse response = entryService.update(entryId, ownerId,
+				new EntryUpdateRequest(null, null, null, null, null, otherLedgerId, null));
+
+		assertThat(response.ledgerId()).isEqualTo(otherLedgerId);
+		assertThat(response.ledgerName()).isEqualTo("행사 장부");
+		Entry entry = entryRepository.findById(entryId).orElseThrow();
+		assertThat(entry.getApprovalStatus()).isEqualTo(ApprovalStatus.APPROVED);
+		// 잔액은 계산값이라 옮기는 즉시 두 장부 모두에 반영된다.
+		assertThat(ledgerService.getDetail(ledgerId, ownerId).totalExpense()).isZero();
+		assertThat(ledgerService.getDetail(otherLedgerId, ownerId).totalExpense()).isEqualTo(400_000L);
+	}
+
+	@Test
+	void 다른_모임의_장부로는_옮길_수_없다() {
+		Long entryId = createExpense(ownerId, "대관료", 400_000L);
+		Long otherGroupId = groupService.create(outsiderId, new GroupCreateRequest("남의모임", null, null)).groupId();
+		Long foreignLedgerId = createLedger(otherGroupId, outsiderId, "남의 장부");
+
+		assertThatThrownBy(() -> entryService.update(entryId, ownerId,
+				new EntryUpdateRequest(null, null, null, null, null, foreignLedgerId, null)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.LEDGER_NOT_FOUND);
+
+		assertThat(entryRepository.findById(entryId).orElseThrow().getLedger().getId()).isEqualTo(ledgerId);
+	}
+
+	@Test
+	void 일반_관리자는_내역의_장부를_바꿀_수_없다() {
+		Long entryId = createExpense(adminId, "간식비", 30_000L);
+		Long otherLedgerId = createLedger(groupId, "행사 장부");
+
+		assertThatThrownBy(() -> entryService.update(entryId, adminId,
+				new EntryUpdateRequest(null, null, null, null, null, otherLedgerId, null)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.ACCESS_DENIED);
+	}
+
+	@Test
 	void 내역명을_공백만으로_수정할_수_없다() {
 		Long entryId = createExpense(ownerId, "대관료", 500_000L);
 
 		assertThatThrownBy(() -> entryService.update(entryId, ownerId,
-				new EntryUpdateRequest("   ", null, null, null, null, null)))
+				new EntryUpdateRequest("   ", null, null, null, null, null, null)))
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
 				.isEqualTo(ErrorCode.INVALID_REQUEST);
@@ -199,7 +245,7 @@ class EntryServiceTest extends IntegrationTest {
 		Long entryId = createExpense(adminId, "간식비", 30_000L);
 
 		assertThatThrownBy(() -> entryService.update(entryId, adminId,
-				new EntryUpdateRequest("간식비 정정", null, null, null, null, null)))
+				new EntryUpdateRequest("간식비 정정", null, null, null, null, null, null)))
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
 				.isEqualTo(ErrorCode.ACCESS_DENIED);
@@ -228,7 +274,7 @@ class EntryServiceTest extends IntegrationTest {
 		Long entryId = createExpense(ownerId, "대관료", 500_000L);
 
 		assertThatThrownBy(() -> entryService.update(entryId, outsiderId,
-				new EntryUpdateRequest("몰래 수정", null, null, null, null, null)))
+				new EntryUpdateRequest("몰래 수정", null, null, null, null, null, null)))
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
 				.isEqualTo(ErrorCode.ACCESS_DENIED);
@@ -337,7 +383,7 @@ class EntryServiceTest extends IntegrationTest {
 		assertThat(entryService.getDetail(entryId, ownerId).createdBy().userId()).isEqualTo(ownerId);
 
 		entryService.update(entryId, ownerId,
-				new EntryUpdateRequest(null, null, null, null, ownerId, null));
+				new EntryUpdateRequest(null, null, null, null, ownerId, null, null));
 
 		assertThat(entryService.getDetail(entryId, ownerId).manager().userId()).isEqualTo(ownerId);
 	}
@@ -477,6 +523,16 @@ class EntryServiceTest extends IntegrationTest {
 	private Long otherLedger(String name) {
 		Long folderId = folderService.create(groupId, ownerId, new FolderCreateRequest(name + " 폴더", null)).folderId();
 		return ledgerService.create(folderId, ownerId, new LedgerCreateRequest(name, null)).ledgerId();
+	}
+
+	private Long createLedger(Long targetGroupId, String name) {
+		return createLedger(targetGroupId, ownerId, name);
+	}
+
+	private Long createLedger(Long targetGroupId, Long ownerUserId, String name) {
+		Long folderId = folderService.create(targetGroupId, ownerUserId,
+				new FolderCreateRequest("폴더 " + name, null)).folderId();
+		return ledgerService.create(folderId, ownerUserId, new LedgerCreateRequest(name, 0L)).ledgerId();
 	}
 
 	private Long createExpense(Long userId, String title, long amount) {
