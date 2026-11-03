@@ -110,6 +110,10 @@ oauth:
     # 구글 ID Token의 aud 클레임 검증용. RN 앱이 Google Sign-In에서 발급받는 서버(Web) 클라이언트 ID.
     # 미설정 시 빈 값 → 구글 로그인은 항상 SOCIAL_TOKEN_INVALID (다른 기능 기동을 막지 않기 위함).
     client-id: ${GOOGLE_CLIENT_ID:}
+  kakao:
+    # 카카오 access token 이 우리 앱에서 발급됐는지(app_id) 확인한다. 카카오 디벨로퍼스 > 앱 설정의 "앱 ID"(숫자).
+    # 미설정 시 빈 값 → 카카오 로그인은 항상 SOCIAL_TOKEN_INVALID (다른 기능 기동을 막지 않기 위함).
+    app-id: ${KAKAO_APP_ID:}
 
 ---
 spring:

@@ -150,6 +150,9 @@ public class EntryService {
 	/**
 	 * 내역 수정(총무 전용). 승인 완료 내역도 그대로 수정하며 재승인을 요구하지 않는다.
 	 * 유형(type)은 바꿀 수 없고, 작성자·승인자 기록은 등록·승인 시점 값을 유지한다.
+	 *
+	 * <p>장부 변경은 같은 모임의 장부로만 된다. 다른 모임의 장부는 있어도 없는 것처럼 {@code LEDGER_NOT_FOUND} 로
+	 * 응답한다 — 남의 모임 장부 ID 가 있는지 알려 주지 않기 위해서다.
 	 */
 	@Transactional
 	public EntryUpdateResponse update(Long entryId, Long userId, EntryUpdateRequest request) {
@@ -160,6 +163,9 @@ public class EntryService {
 		if (title != null && title.isEmpty()) {
 			// `@Size(min = 1)` 은 " " 를 통과시켜 trim 후 빈 내역명이 되므로 여기서 막는다.
 			throw new BusinessException(ErrorCode.INVALID_REQUEST, "내역명은 공백일 수 없습니다.");
+		}
+		if (request.ledgerId() != null) {
+			entry.moveTo(findLedgerInGroup(request.ledgerId(), entry.getGroupId()));
 		}
 		entry.update(title, request.amount(), request.occurredOn(), request.memo());
 		if (request.managerUserId() != null) {
@@ -210,6 +216,14 @@ public class EntryService {
 	private String userName(Long userId) {
 		return userRepository.findById(userId).map(User::getName)
 				.orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHORIZED));
+	}
+
+	private Ledger findLedgerInGroup(Long ledgerId, Long groupId) {
+		Ledger ledger = findLedger(ledgerId);
+		if (!ledger.getGroup().getId().equals(groupId)) {
+			throw new BusinessException(ErrorCode.LEDGER_NOT_FOUND);
+		}
+		return ledger;
 	}
 
 	private Ledger findLedger(Long ledgerId) {
