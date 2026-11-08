@@ -363,11 +363,16 @@ class EntryServiceTest extends IntegrationTest {
 				LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 31), null, PageRequest.of(0, 20));
 		var fromOnly = entryService.getEntries(ledgerId, ownerId, null, null,
 				LocalDate.of(2026, 7, 31), null, null, PageRequest.of(0, 20));
+		var toOnly = entryService.getEntries(ledgerId, ownerId, null, null,
+				null, LocalDate.of(2026, 7, 1), null, PageRequest.of(0, 20));
 
 		assertThat(july.content()).extracting(entry -> entry.title())
 				.containsExactlyInAnyOrder("7월 첫날", "7월 말일");
+		assertThat(july.totalElements()).isEqualTo(2);
 		assertThat(fromOnly.content()).extracting(entry -> entry.title())
 				.containsExactlyInAnyOrder("7월 말일", "8월 첫날");
+		assertThat(toOnly.content()).extracting(entry -> entry.title())
+				.containsExactlyInAnyOrder("6월 말", "7월 첫날");
 	}
 
 	@Test

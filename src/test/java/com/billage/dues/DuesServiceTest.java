@@ -482,6 +482,16 @@ class DuesServiceTest extends IntegrationTest {
 	}
 
 	@Test
+	void 마감일을_오늘로_바꾸는_것은_된다() {
+		Long duesId = createDues(List.of(member1));
+		LocalDate today = LocalDate.now(KoreanTime.ZONE);
+
+		duesService.update(duesId, ownerId, new DuesUpdateRequest(null, null, today, null, null, null));
+
+		assertThat(duesRepository.findById(duesId).orElseThrow().getDueDate()).isEqualTo(today);
+	}
+
+	@Test
 	void 마감일이_지난_진행중_회비도_마감일을_그대로_두면_다른_값을_고칠_수_있다() {
 		Long duesId = createDues(List.of(member1));
 		LocalDate today = LocalDate.now(KoreanTime.ZONE);

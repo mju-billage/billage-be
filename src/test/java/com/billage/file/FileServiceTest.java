@@ -31,6 +31,7 @@ import com.billage.group.dto.GroupCreateRequest;
 import com.billage.ledger.LedgerService;
 import com.billage.ledger.dto.LedgerCreateRequest;
 import com.billage.membership.GroupMembershipService;
+import com.billage.membership.dto.RoleUpdateRequest;
 import com.billage.support.IntegrationTest;
 import com.billage.user.User;
 import com.billage.user.UserRepository;
@@ -216,6 +217,8 @@ class FileServiceTest extends IntegrationTest {
 	@Test
 	void 같은_모임_관리자는_서로의_프로필_사진을_열_수_있고_남의_모임_사람은_못_연다() {
 		Long fileId = uploadProfile(adminId);
+		// 다른 모임의 관리자여도 모임을 공유하지 않으면 못 연다.
+		groupService.create(outsiderId, new GroupCreateRequest("남의모임", null, null));
 
 		assertThat(fileService.getAccessibleFile(fileId, adminId).getId()).isEqualTo(fileId);
 		assertThat(fileService.getAccessibleFile(fileId, ownerId).getId()).isEqualTo(fileId);
@@ -235,6 +238,18 @@ class FileServiceTest extends IntegrationTest {
 				.satisfies(m -> assertThat(m.profileImageUrl()).endsWith("/api/v1/files/" + fileId + "/content"));
 		assertThat(memberships).filteredOn(m -> m.userId().equals(ownerId)).singleElement()
 				.satisfies(m -> assertThat(m.profileImageUrl()).isNull());
+	}
+
+	@Test
+	void 권한_변경_응답도_대상_관리자의_프로필_사진_주소를_담는다() {
+		Long fileId = uploadProfile(adminId);
+		Long adminMembershipId = groupMembershipService.getMemberships(groupId, ownerId).stream()
+				.filter(m -> m.userId().equals(adminId)).findFirst().orElseThrow().membershipId();
+
+		var changed = groupMembershipService.changeRole(groupId, ownerId, adminMembershipId,
+				new RoleUpdateRequest("OWNER"));
+
+		assertThat(changed.profileImageUrl()).endsWith("/api/v1/files/" + fileId + "/content");
 	}
 
 	// --- 삭제 ---
