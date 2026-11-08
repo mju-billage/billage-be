@@ -84,7 +84,8 @@ class ReceiptLimitConcurrencyTest extends IntegrationTest {
 	private List<Long> upload(Long userId, int from, int to) {
 		return IntStream.rangeClosed(from, to)
 				.mapToObj(i -> fileService.upload(userId,
-						new MockMultipartFile("file", "receipt" + i + ".jpg", "image/jpeg", "image".getBytes()),
+						new MockMultipartFile("file", "receipt" + i + ".jpg", "image/jpeg",
+								("image" + i + "-" + userId).getBytes()),
 						FilePurpose.RECEIPT).fileId())
 				.toList();
 	}

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.io.InputStream;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -361,7 +362,8 @@ class FileServiceTest extends IntegrationTest {
 
 	@Test
 	void 내려받기는_리다이렉트_없이_본문과_메타데이터_헤더를_직접_준다() throws Exception {
-		Long fileId = upload(ownerId, "receipt.jpg");
+		Long fileId = fileService.upload(ownerId, new MockMultipartFile("file", "receipt.jpg", "image/jpeg",
+				"image-bytes".getBytes()), FilePurpose.RECEIPT).fileId();
 
 		ResponseEntity<Resource> response = fileController.download(ownerId, fileId);
 
@@ -375,8 +377,78 @@ class FileServiceTest extends IntegrationTest {
 		}
 	}
 
+	// --- 중복 사진(해시) ---
+
+	@Test
+	void 같은_바이트를_두_번_올리면_해시가_같다() {
+		byte[] bytes = "same-photo".getBytes();
+		var first = fileService.upload(ownerId, new MockMultipartFile("file", "a.jpg", "image/jpeg", bytes),
+				FilePurpose.RECEIPT);
+		var second = fileService.upload(ownerId, new MockMultipartFile("file", "b.jpg", "image/jpeg", bytes),
+				FilePurpose.RECEIPT);
+
+		assertThat(first.contentHash()).hasSize(64).matches("[0-9a-f]+").isEqualTo(second.contentHash());
+		assertThat(first.contentHash())
+				.isEqualTo(java.util.HexFormat.of().formatHex(sha256(bytes)));
+	}
+
+	@Test
+	void 같은_사진을_한_내역에_함께_붙이면_거절한다() {
+		Long first = uploadBytes("same-photo");
+		Long second = uploadBytes("same-photo");
+
+		assertThatThrownBy(() -> createEntryWithReceipts(ownerId, List.of(first, second)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.DUPLICATE_RECEIPT_FILE);
+	}
+
+	@Test
+	void 이미_붙은_사진과_같은_사진을_교체_목록에_더하면_거절하고_다른_내역에는_허용한다() {
+		Long first = uploadBytes("same-photo");
+		Long entryId = createEntryWithReceipts(ownerId, List.of(first));
+		Long again = uploadBytes("same-photo");
+
+		assertThatThrownBy(() -> entryService.update(entryId, ownerId,
+				new EntryUpdateRequest(null, null, null, null, null, null, List.of(first, again))))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.DUPLICATE_RECEIPT_FILE);
+
+		Long otherEntryId = createEntryWithReceipts(ownerId, List.of(again));
+		assertThat(fileService.getReceipts(otherEntryId)).singleElement()
+				.satisfies(receipt -> assertThat(receipt.contentHash()).isNotNull());
+	}
+
+	@Test
+	void 교체로_기존_사진을_빼고_같은_사진을_새로_넣는_것은_허용한다() {
+		Long first = uploadBytes("same-photo");
+		Long entryId = createEntryWithReceipts(ownerId, List.of(first));
+		Long again = uploadBytes("same-photo");
+
+		entryService.update(entryId, ownerId,
+				new EntryUpdateRequest(null, null, null, null, null, null, List.of(again)));
+
+		assertThat(fileService.getReceipts(entryId)).extracting(receipt -> receipt.fileId()).containsExactly(again);
+	}
+
+	private Long uploadBytes(String content) {
+		return fileService.upload(ownerId, new MockMultipartFile("file", "photo.jpg", "image/jpeg",
+				content.getBytes()), FilePurpose.RECEIPT).fileId();
+	}
+
+	private static byte[] sha256(byte[] bytes) {
+		try {
+			return java.security.MessageDigest.getInstance("SHA-256").digest(bytes);
+		} catch (java.security.NoSuchAlgorithmException e) {
+			throw new IllegalStateException(e);
+		}
+	}
+
 	private Long upload(Long userId, String fileName) {
-		MockMultipartFile file = new MockMultipartFile("file", fileName, "image/jpeg", "image-bytes".getBytes());
+		// 바이트가 같으면 같은 내역에 붙일 때 중복 사진으로 거절되므로 매번 다른 바이트를 쓴다.
+		MockMultipartFile file = new MockMultipartFile("file", fileName, "image/jpeg",
+				("image-bytes-" + UUID.randomUUID()).getBytes());
 		return fileService.upload(userId, file, FilePurpose.RECEIPT).fileId();
 	}
 

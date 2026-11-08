@@ -7,8 +7,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
+import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -177,7 +179,11 @@ class ReceiptOcrPersistenceTest extends IntegrationTest {
 	}
 
 	private Long uploadReceipt() {
-		return fileService.upload(ownerId, new MockMultipartFile("file", "receipt.png", "image/png", VALID_PNG),
+		// 같은 바이트는 한 내역에 두 장 붙일 수 없으므로(중복 사진) PNG 끝(IEND 뒤)에 매번 다른 바이트를 덧붙인다.
+		byte[] suffix = UUID.randomUUID().toString().getBytes();
+		byte[] png = Arrays.copyOf(VALID_PNG, VALID_PNG.length + suffix.length);
+		System.arraycopy(suffix, 0, png, VALID_PNG.length, suffix.length);
+		return fileService.upload(ownerId, new MockMultipartFile("file", "receipt.png", "image/png", png),
 				FilePurpose.RECEIPT).fileId();
 	}
 
