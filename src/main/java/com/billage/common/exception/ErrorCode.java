@@ -94,6 +94,7 @@ public enum ErrorCode {
 	FILE_NOT_FOUND("FILE_NOT_FOUND", HttpStatus.NOT_FOUND, "파일을 찾을 수 없습니다."),
 	UNSUPPORTED_FILE_TYPE("UNSUPPORTED_FILE_TYPE", HttpStatus.UNSUPPORTED_MEDIA_TYPE, "지원하지 않는 파일 형식입니다."),
 	FILE_SIZE_EXCEEDED("FILE_SIZE_EXCEEDED", HttpStatus.PAYLOAD_TOO_LARGE, "파일 용량이 허용 범위를 초과했습니다."),
+	DUPLICATE_RECEIPT_FILE("DUPLICATE_RECEIPT_FILE", HttpStatus.CONFLICT, "이미 첨부된 사진입니다."),
 	FILE_IN_USE("FILE_IN_USE", HttpStatus.CONFLICT, "다른 곳에 연결된 파일은 삭제할 수 없습니다."),
 	FILE_UPLOAD_FAILED("FILE_UPLOAD_FAILED", HttpStatus.INTERNAL_SERVER_ERROR, "파일 저장에 실패했습니다."),
 	FILE_DELETE_FAILED("FILE_DELETE_FAILED", HttpStatus.INTERNAL_SERVER_ERROR, "파일 삭제에 실패했습니다."),
