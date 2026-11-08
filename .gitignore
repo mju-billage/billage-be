@@ -45,3 +45,5 @@ deploy/*.env
 
 ### Billage 로컬 파일 저장소 (LocalFileStorage · 테스트 산출물) ###
 data/
+
+.DS_Store
