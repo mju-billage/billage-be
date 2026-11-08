@@ -89,12 +89,19 @@ public enum ErrorCode {
 			"진행 중인 회비를 먼저 마감해 주세요."),
 	REPORT_RANGE_EMPTY("REPORT_RANGE_EMPTY", HttpStatus.UNPROCESSABLE_ENTITY, "선택한 기간에 보고서로 만들 내역이 없습니다."),
 
+	// 고객지원
+	NOTICE_NOT_FOUND("NOTICE_NOT_FOUND", HttpStatus.NOT_FOUND, "공지사항을 찾을 수 없습니다."),
+	TERMS_NOT_FOUND("TERMS_NOT_FOUND", HttpStatus.NOT_FOUND, "약관을 찾을 수 없습니다."),
+	INQUIRY_LIMIT_EXCEEDED("INQUIRY_LIMIT_EXCEEDED", HttpStatus.TOO_MANY_REQUESTS,
+			"문의는 하루 5건까지 보낼 수 있습니다. 내일 다시 시도해 주세요."),
+
 	// 파일
 	INVALID_FILE("INVALID_FILE", HttpStatus.BAD_REQUEST, "파일이 비어 있거나 올바르지 않습니다."),
 	INVALID_FILE_PURPOSE("INVALID_FILE_PURPOSE", HttpStatus.BAD_REQUEST, "허용되지 않은 파일 용도입니다."),
 	FILE_NOT_FOUND("FILE_NOT_FOUND", HttpStatus.NOT_FOUND, "파일을 찾을 수 없습니다."),
 	UNSUPPORTED_FILE_TYPE("UNSUPPORTED_FILE_TYPE", HttpStatus.UNSUPPORTED_MEDIA_TYPE, "지원하지 않는 파일 형식입니다."),
 	FILE_SIZE_EXCEEDED("FILE_SIZE_EXCEEDED", HttpStatus.PAYLOAD_TOO_LARGE, "파일 용량이 허용 범위를 초과했습니다."),
+	DUPLICATE_RECEIPT_FILE("DUPLICATE_RECEIPT_FILE", HttpStatus.CONFLICT, "이미 첨부된 사진입니다."),
 	FILE_IN_USE("FILE_IN_USE", HttpStatus.CONFLICT, "다른 곳에 연결된 파일은 삭제할 수 없습니다."),
 	FILE_UPLOAD_FAILED("FILE_UPLOAD_FAILED", HttpStatus.INTERNAL_SERVER_ERROR, "파일 저장에 실패했습니다."),
 	FILE_DELETE_FAILED("FILE_DELETE_FAILED", HttpStatus.INTERNAL_SERVER_ERROR, "파일 삭제에 실패했습니다."),

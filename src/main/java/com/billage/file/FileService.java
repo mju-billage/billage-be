@@ -1,11 +1,19 @@
 package com.billage.file;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Collection;
+import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -68,7 +76,7 @@ public class FileService {
 
 		String key = storageKey(purpose, file.getOriginalFilename());
 		UploadedFile saved = fileRepository.saveAndFlush(UploadedFile.create(purpose, key,
-				originalFileName(file), file.getContentType(), file.getSize(), userId));
+				originalFileName(file), file.getContentType(), file.getSize(), sha256Hex(file), userId));
 
 		// 정리는 쓰기를 시작하기 전에 걸어 둔다. 쓰다가 실패해도 조각이 남을 수 있는데,
 		// 쓰기 뒤에 걸면 그 경우에는 정리가 아예 등록되지 않는다.
@@ -76,6 +84,27 @@ public class FileService {
 		fileStorage.store(key, file);
 
 		return FileResponse.of(saved, fileUrl(saved.getId()));
+	}
+
+	/**
+	 * 업로드한 바이트 그대로의 SHA-256(소문자 hex). 앱도 <b>업로드하는 그 바이트</b>로 계산해야 같은 값이 나온다 —
+	 * 리사이즈·재압축하면 같은 사진이라도 값이 달라진다.
+	 * MultipartFile 은 스트림을 여러 번 열 수 있어 저장 전에 한 번 따로 읽는다(크기 상한이 있어 비용이 작다).
+	 */
+	private String sha256Hex(MultipartFile file) {
+		try (InputStream in = file.getInputStream()) {
+			MessageDigest digest = MessageDigest.getInstance("SHA-256");
+			byte[] buffer = new byte[8192];
+			int read;
+			while ((read = in.read(buffer)) != -1) {
+				digest.update(buffer, 0, read);
+			}
+			return HexFormat.of().formatHex(digest.digest());
+		} catch (IOException e) {
+			throw new BusinessException(ErrorCode.INVALID_FILE);
+		} catch (NoSuchAlgorithmException e) {
+			throw new IllegalStateException("SHA-256 을 쓸 수 없습니다.", e);
+		}
 	}
 
 	/**
@@ -155,6 +184,8 @@ public class FileService {
 	/**
 	 * 증빙 파일을 내역에 연결한다. 업로더 본인의 RECEIPT 파일이면서 아직 연결되지 않은 것만 허용한다.
 	 * 이미 붙어 있는 증빙까지 합쳐 {@value #MAX_RECEIPTS} 장을 넘길 수 없다.
+	 * 같은 내역에 바이트가 같은 사진(해시 동일)이 두 장 붙으면 {@code DUPLICATE_RECEIPT_FILE} —
+	 * 요청 안끼리든, 이미 붙은 것과든. 해시가 없는(V24 이전) 파일은 검사에서 빠진다.
 	 */
 	@Transactional
 	public void linkReceipts(Entry entry, List<Long> fileIds, Long userId) {
@@ -163,10 +194,13 @@ public class FileService {
 		}
 		// 내역 행을 먼저 잠가 "세고 나서 붙이는" 사이에 다른 요청이 끼어들지 못하게 한다.
 		entryRepository.findByIdForUpdate(entry.getId());
-		if (fileRepository.findByEntryIdForUpdate(entry.getId()).size() + fileIds.size() > MAX_RECEIPTS) {
+		List<UploadedFile> alreadyLinked = fileRepository.findByEntryIdForUpdate(entry.getId());
+		if (alreadyLinked.size() + fileIds.size() > MAX_RECEIPTS) {
 			throw new BusinessException(ErrorCode.INVALID_REQUEST,
 					"증빙 자료는 최대 " + MAX_RECEIPTS + "장까지 첨부할 수 있습니다.");
 		}
+		Set<String> hashes = new HashSet<>();
+		alreadyLinked.stream().map(UploadedFile::getContentHash).filter(Objects::nonNull).forEach(hashes::add);
 		for (Long fileId : fileIds) {
 			UploadedFile file = fileRepository.findById(fileId)
 					.orElseThrow(() -> new BusinessException(ErrorCode.FILE_NOT_FOUND));
@@ -179,6 +213,9 @@ public class FileService {
 			if (file.isLinked()) {
 				throw new BusinessException(ErrorCode.FILE_IN_USE);
 			}
+			if (file.getContentHash() != null && !hashes.add(file.getContentHash())) {
+				throw new BusinessException(ErrorCode.DUPLICATE_RECEIPT_FILE);
+			}
 			file.linkTo(entry);
 		}
 	}
@@ -187,6 +224,7 @@ public class FileService {
 	 * 내역 수정 시 증빙 전체 교체. 전달된 목록이 최종 상태가 된다.
 	 * 이미 연결된 파일은 그대로 두고, 목록에서 빠진 증빙은 완전 삭제하며, 새로 들어온 것만 연결 검증을 거친다.
 	 * {@code fileIds} 가 null 이면 "변경 없음"이라 아무것도 하지 않는다.
+	 * 빠진 증빙을 먼저 지우므로 중복 사진 검사는 교체 후 최종 목록 기준이 된다.
 	 */
 	@Transactional
 	public void replaceReceipts(Entry entry, List<Long> fileIds, Long userId) {

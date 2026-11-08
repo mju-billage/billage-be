@@ -77,6 +77,9 @@ billage:
       region: ${S3_REGION:us-east-1}
       # 한 버킷을 dev·prod 가 공유할 수 있도록 환경 프리픽스로 구분한다.
       prefix: ${S3_PREFIX:dev}
+  help-center:
+    # 문의가 들어오면 알림 메일을 받을 운영자 주소. 비우면 저장만 한다.
+    inquiry-email: ${BILLAGE_INQUIRY_EMAIL:}
   ocr:
     # STUB(고정값 반환) | CLOVA_RECEIPT(영수증 모델) | CLOVA_GENERAL(범용 모델, 임시).
     # 로컬·테스트는 STUB. STUB 은 로컬·테스트 프로필에서만 뜬다 — 배포 환경에서 켜면 기동이 실패한다
