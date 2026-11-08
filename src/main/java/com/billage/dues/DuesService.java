@@ -96,6 +96,7 @@ public class DuesService {
 		if (request.startDate().isAfter(request.dueDate())) {
 			throw new BusinessException(ErrorCode.INVALID_REQUEST);
 		}
+		requireNotPast(request.dueDate());
 		Dues dues = duesRepository.save(Dues.create(groupId, request.title().trim(), request.amount(),
 				request.startDate(), request.dueDate(), ledger.getId(), targets));
 
@@ -127,6 +128,11 @@ public class DuesService {
 			dues.updateTitle(requireNonBlank(request.title()));
 		}
 		if (request.startDate() != null || request.dueDate() != null) {
+			// 마감일을 바꿀 때만 검사한다. 마감일이 지난 진행 중 회비의 제목만 고치려고 같은 값을 다시 보내도
+			// 막히면 안 된다.
+			if (request.dueDate() != null && !request.dueDate().equals(dues.getDueDate())) {
+				requireNotPast(request.dueDate());
+			}
 			dues.updatePeriod(request.startDate(), request.dueDate());
 		}
 		if (request.ledgerId() != null) {
@@ -353,6 +359,13 @@ public class DuesService {
 			return PaymentStatus.valueOf(status.trim().toUpperCase());
 		} catch (IllegalArgumentException e) {
 			throw new BusinessException(ErrorCode.INVALID_PAYMENT_STATUS);
+		}
+	}
+
+	/** 마감일은 오늘(한국 시간) 이후여야 한다. 오늘 마감은 허용한다. */
+	private void requireNotPast(LocalDate dueDate) {
+		if (dueDate.isBefore(LocalDate.now(KoreanTime.ZONE))) {
+			throw new BusinessException(ErrorCode.DUES_DUE_DATE_PAST);
 		}
 	}
 

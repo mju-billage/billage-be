@@ -339,17 +339,49 @@ class EntryServiceTest extends IntegrationTest {
 		createExpense(ownerId, "대관료", 400_000L);
 		createExpense(adminId, "승인 대기 지출", 900_000L);
 
-		var expenses = entryService.getEntries(ledgerId, ownerId, EntryType.EXPENSE, null, null,
+		var expenses = entryService.getEntries(ledgerId, ownerId, EntryType.EXPENSE, null, null, null, null,
 				PageRequest.of(0, 20));
-		var pending = entryService.getEntries(ledgerId, ownerId, null, ApprovalStatus.PENDING, null,
+		var pending = entryService.getEntries(ledgerId, ownerId, null, ApprovalStatus.PENDING, null, null, null,
 				PageRequest.of(0, 20));
-		var keyword = entryService.getEntries(ledgerId, ownerId, null, null, "대관",
+		var keyword = entryService.getEntries(ledgerId, ownerId, null, null, null, null, "대관",
 				PageRequest.of(0, 20));
 
 		assertThat(expenses.totalElements()).isEqualTo(2);
 		assertThat(pending.totalElements()).isEqualTo(1);
 		assertThat(keyword.content()).singleElement()
 				.satisfies(entry -> assertThat(entry.title()).isEqualTo("대관료"));
+	}
+
+	@Test
+	void 장부별_목록은_발생일_기간으로_거르며_양끝_날짜를_포함한다() {
+		createOn("6월 말", LocalDate.of(2026, 6, 30));
+		createOn("7월 첫날", LocalDate.of(2026, 7, 1));
+		createOn("7월 말일", LocalDate.of(2026, 7, 31));
+		createOn("8월 첫날", LocalDate.of(2026, 8, 1));
+
+		var july = entryService.getEntries(ledgerId, ownerId, null, null,
+				LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 31), null, PageRequest.of(0, 20));
+		var fromOnly = entryService.getEntries(ledgerId, ownerId, null, null,
+				LocalDate.of(2026, 7, 31), null, null, PageRequest.of(0, 20));
+		var toOnly = entryService.getEntries(ledgerId, ownerId, null, null,
+				null, LocalDate.of(2026, 7, 1), null, PageRequest.of(0, 20));
+
+		assertThat(july.content()).extracting(entry -> entry.title())
+				.containsExactlyInAnyOrder("7월 첫날", "7월 말일");
+		assertThat(july.totalElements()).isEqualTo(2);
+		assertThat(fromOnly.content()).extracting(entry -> entry.title())
+				.containsExactlyInAnyOrder("7월 말일", "8월 첫날");
+		assertThat(toOnly.content()).extracting(entry -> entry.title())
+				.containsExactlyInAnyOrder("6월 말", "7월 첫날");
+	}
+
+	@Test
+	void 장부별_목록의_시작일이_종료일보다_늦으면_거부된다() {
+		assertThatThrownBy(() -> entryService.getEntries(ledgerId, ownerId, null, null,
+				LocalDate.of(2026, 8, 1), LocalDate.of(2026, 7, 1), null, PageRequest.of(0, 20)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.INVALID_QUERY_PARAMETER);
 	}
 
 	@Test
@@ -395,7 +427,14 @@ class EntryServiceTest extends IntegrationTest {
 						outsiderId, null)))
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
-				.isEqualTo(ErrorCode.ACCESS_DENIED);
+				.isEqualTo(ErrorCode.MANAGER_NOT_IN_GROUP);
+
+		Long entryId = createExpense(ownerId, "대관료", 400_000L);
+		assertThatThrownBy(() -> entryService.update(entryId, ownerId,
+				new EntryUpdateRequest(null, null, null, null, outsiderId, null, null)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.MANAGER_NOT_IN_GROUP);
 	}
 
 	// --- 모임 전체 내역 목록 (GNB 「내역」 탭) ---
@@ -543,5 +582,10 @@ class EntryServiceTest extends IntegrationTest {
 	private Long createIncome(Long userId, String title, long amount) {
 		return entryService.create(ledgerId, userId,
 				new EntryCreateRequest(EntryType.INCOME, title, amount, LocalDate.of(2026, 7, 20), null, null, null)).entryId();
+	}
+
+	private Long createOn(String title, LocalDate occurredOn) {
+		return entryService.create(ledgerId, ownerId,
+				new EntryCreateRequest(EntryType.EXPENSE, title, 10_000L, occurredOn, null, null, null)).entryId();
 	}
 }

@@ -75,6 +75,9 @@ public interface FileRepository extends JpaRepository<UploadedFile, Long> {
 	@Query("select f from UploadedFile f where f.userId = :userId")
 	Optional<UploadedFile> findProfileImage(@Param("userId") Long userId);
 
+	@Query("select f from UploadedFile f where f.userId in :userIds")
+	List<UploadedFile> findProfileImages(@Param("userIds") Collection<Long> userIds);
+
 	/**
 	 * 올렸지만 아직 어디에도 연결하지 않은 파일. 탈퇴 처리에서 먼저 지우려고 찾는다 —
 	 * 남겨 두면 업로더 표시가 비어 아무도 열지도 지우지도 못하는 고아가 된다.
