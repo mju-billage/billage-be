@@ -277,3 +277,13 @@
   구글은 ID Token 의 `aud` 로 같은 확인을 한다. 거부 사유는 응답에서는 `SOCIAL_TOKEN_INVALID` 하나지만 WARN 로그로 남긴다.
 - 이메일/비밀번호 로그인은 당분간 함께 유지. 실패 code 는 없는 이메일 `USER_NOT_FOUND(404)` / 비밀번호 오류 `INVALID_PASSWORD(401)`
   로 나눈다(2026-11-03) — 가입 쪽이 이미 `EMAIL_ALREADY_EXISTS` 로 존재 여부를 알려 주므로 새로 드러나는 정보가 없다.
+
+## 고객지원 (helpcenter, 2026-11-08)
+
+- 패키지 `com.billage.helpcenter`(테스트 지원 패키지 `com.billage.support` 와 헷갈리지 않게 이름을 달리했다).
+- FAQ(`faq`)·공지(`notice`)·약관(`terms`)은 서비스 전역 데이터라 모임 권한 검사가 없고 **로그인 없이** 조회한다.
+  백오피스가 없어 내용은 Flyway 로만 넣고 고친다 — 기존 마이그레이션을 고치지 말고 새 버전에서 UPDATE/INSERT.
+- FAQ 답변의 줄바꿈은 `\n`, 빈 줄은 `\n\n` 그대로 내려 준다. 시드는 프론트 확인요청(2026-11-08)의 4건.
+- 약관 종류 `SERVICE | PRIVACY | MARKETING | AUTO_RECORD`. 원문이 없는 종류는 행이 없고 `TERMS_NOT_FOUND(404)`.
+- 문의(`inquiry`): 로그인 필수, `{email, title(≤50), content(≤1000)}` → `204`. 길이 상한은 화면명세에 값이 없어 정했다.
+  회원이 탈퇴하면 FK `ON DELETE SET NULL` 로 작성자 연결만 끊고 문의는 남긴다. 답장은 앱이 아니라 메일로 한다.

@@ -88,6 +88,10 @@ public enum ErrorCode {
 			"진행 중인 회비를 먼저 마감해 주세요."),
 	REPORT_RANGE_EMPTY("REPORT_RANGE_EMPTY", HttpStatus.UNPROCESSABLE_ENTITY, "선택한 기간에 보고서로 만들 내역이 없습니다."),
 
+	// 고객지원
+	NOTICE_NOT_FOUND("NOTICE_NOT_FOUND", HttpStatus.NOT_FOUND, "공지사항을 찾을 수 없습니다."),
+	TERMS_NOT_FOUND("TERMS_NOT_FOUND", HttpStatus.NOT_FOUND, "약관을 찾을 수 없습니다."),
+
 	// 파일
 	INVALID_FILE("INVALID_FILE", HttpStatus.BAD_REQUEST, "파일이 비어 있거나 올바르지 않습니다."),
 	INVALID_FILE_PURPOSE("INVALID_FILE_PURPOSE", HttpStatus.BAD_REQUEST, "허용되지 않은 파일 용도입니다."),

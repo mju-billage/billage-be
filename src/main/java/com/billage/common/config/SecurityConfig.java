@@ -44,6 +44,11 @@ public class SecurityConfig {
 								"/api/v1/auth/password/reset",
 								"/api/v1/auth/refresh",
 								"/api/v1/auth/logout").permitAll()
+						// 고객지원의 읽기 전용 콘텐츠는 가입 전 화면(약관 보기 등)에서도 열 수 있어야 한다.
+						.requestMatchers(HttpMethod.GET,
+								"/api/v1/faqs",
+								"/api/v1/notices", "/api/v1/notices/*",
+								"/api/v1/terms/*").permitAll()
 						.requestMatchers(
 								"/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**",
 								"/actuator/health/**").permitAll()
