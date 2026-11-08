@@ -68,11 +68,13 @@ public enum ErrorCode {
 	ENTRY_NOT_FOUND("ENTRY_NOT_FOUND", HttpStatus.NOT_FOUND, "내역을 찾을 수 없습니다."),
 	ENTRY_ALREADY_APPROVED("ENTRY_ALREADY_APPROVED", HttpStatus.CONFLICT, "이미 승인된 내역입니다."),
 	INVALID_QUERY_PARAMETER("INVALID_QUERY_PARAMETER", HttpStatus.BAD_REQUEST, "조회 조건이 올바르지 않습니다."),
+	MANAGER_NOT_IN_GROUP("MANAGER_NOT_IN_GROUP", HttpStatus.BAD_REQUEST, "담당자는 이 모임의 관리자여야 합니다."),
 
 	// 회비
 	DUES_NOT_FOUND("DUES_NOT_FOUND", HttpStatus.NOT_FOUND, "회비를 찾을 수 없습니다."),
 	DUES_ALREADY_CLOSED("DUES_ALREADY_CLOSED", HttpStatus.CONFLICT, "이미 마감된 회비입니다."),
 	DUES_NOT_STARTED("DUES_NOT_STARTED", HttpStatus.CONFLICT, "아직 시작되지 않은 회비입니다."),
+	DUES_DUE_DATE_PAST("DUES_DUE_DATE_PAST", HttpStatus.BAD_REQUEST, "마감일은 오늘 이후여야 합니다."),
 	DUES_AMOUNT_IMMUTABLE("DUES_AMOUNT_IMMUTABLE", HttpStatus.BAD_REQUEST, "회비 금액은 수정할 수 없습니다."),
 	INVALID_PAYMENT_STATUS("INVALID_PAYMENT_STATUS", HttpStatus.BAD_REQUEST, "허용되지 않은 납부 상태 값입니다."),
 

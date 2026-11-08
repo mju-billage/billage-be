@@ -30,20 +30,24 @@ public interface EntryRepository extends JpaRepository<Entry, Long> {
 	Optional<Entry> findByIdForUpdate(@Param("entryId") Long entryId);
 
 	/**
-	 * 장부의 내역 목록. type·status·keyword 는 선택값이며 null 이면 조건에서 제외된다.
-	 * keyword 는 제목과 메모를 함께 검색한다.
+	 * 장부의 내역 목록. type·status·from·to·keyword 는 선택값이며 null 이면 조건에서 제외된다.
+	 * 기간은 발생일 기준 양끝 포함이고, keyword 는 제목과 메모를 함께 검색한다.
 	 */
 	@Query("""
 			select e from Entry e
 			where e.ledger.id = :ledgerId
 			  and (:type is null or e.type = :type)
 			  and (:status is null or e.approvalStatus = :status)
+			  and (:from is null or e.occurredOn >= :from)
+			  and (:to is null or e.occurredOn <= :to)
 			  and (:keyword is null or e.title like concat('%', :keyword, '%')
 			       or e.memo like concat('%', :keyword, '%'))
 			""")
 	Page<Entry> search(@Param("ledgerId") Long ledgerId,
 			@Param("type") EntryType type,
 			@Param("status") ApprovalStatus status,
+			@Param("from") LocalDate from,
+			@Param("to") LocalDate to,
 			@Param("keyword") String keyword,
 			Pageable pageable);
 

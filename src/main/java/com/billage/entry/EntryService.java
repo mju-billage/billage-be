@@ -55,12 +55,13 @@ public class EntryService {
 
 	@Transactional(readOnly = true)
 	public PageResponse<EntrySummaryResponse> getEntries(Long ledgerId, Long userId, EntryType type,
-			ApprovalStatus status, String keyword, Pageable pageable) {
+			ApprovalStatus status, LocalDate from, LocalDate to, String keyword, Pageable pageable) {
 		Ledger ledger = findLedger(ledgerId);
 		guard.requireMembership(ledger.getGroup().getId(), userId);
 
 		String normalizedKeyword = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
-		Page<Entry> entries = entryRepository.search(ledgerId, type, status, normalizedKeyword, pageable);
+		requireValidPeriod(from, to);
+		Page<Entry> entries = entryRepository.search(ledgerId, type, status, from, to, normalizedKeyword, pageable);
 		Map<Long, Long> receiptCounts = fileService.countReceipts(
 				entries.getContent().stream().map(Entry::getId).toList());
 
@@ -82,9 +83,7 @@ public class EntryService {
 		// JPQL 의 in 은 빈 컬렉션을 받으면 문법 오류가 난다. '장부 미선택 = 전체'이므로 조건에서 뺀다.
 		List<Long> targetLedgerIds = (ledgerIds == null || ledgerIds.isEmpty()) ? null : ledgerIds;
 		String normalizedKeyword = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
-		if (from != null && to != null && from.isAfter(to)) {
-			throw new BusinessException(ErrorCode.INVALID_QUERY_PARAMETER);
-		}
+		requireValidPeriod(from, to);
 
 		Page<Entry> entries = entryRepository.searchInGroup(groupId, targetLedgerIds, type, status,
 				from, to, normalizedKeyword, pageable);
@@ -209,8 +208,16 @@ public class EntryService {
 	 * 남의 모임 사용자를 담당자로 박아 두면 이름 스냅샷이 엉뚱해진다.
 	 */
 	private String requireGroupManager(Long groupId, Long managerUserId) {
-		guard.requireMembership(groupId, managerUserId);
+		if (!guard.isMember(groupId, managerUserId)) {
+			throw new BusinessException(ErrorCode.MANAGER_NOT_IN_GROUP);
+		}
 		return userName(managerUserId);
+	}
+
+	private void requireValidPeriod(LocalDate from, LocalDate to) {
+		if (from != null && to != null && from.isAfter(to)) {
+			throw new BusinessException(ErrorCode.INVALID_QUERY_PARAMETER);
+		}
 	}
 
 	private String userName(Long userId) {

@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
+import com.billage.file.FileService;
 import com.billage.group.GroupSpace;
 import com.billage.group.GroupSpaceRepository;
 import com.billage.membership.dto.InvitationResponse;
@@ -45,6 +46,7 @@ public class GroupMembershipService {
 	private final GroupSpaceRepository groupSpaceRepository;
 	private final UserRepository userRepository;
 	private final GroupAccessGuard guard;
+	private final FileService fileService;
 
 	@Transactional(readOnly = true)
 	public List<MembershipResponse> getMemberships(Long groupId, Long userId) {
@@ -52,9 +54,12 @@ public class GroupMembershipService {
 
 		List<GroupMembership> memberships = groupMembershipRepository.findByGroupId(groupId);
 		Map<Long, User> users = usersOf(memberships);
+		Map<Long, String> profileImages = fileService.profileImageUrls(
+				memberships.stream().map(GroupMembership::getUserId).toList());
 
 		return memberships.stream()
-				.map(ms -> MembershipResponse.of(ms, users.get(ms.getUserId())))
+				.map(ms -> MembershipResponse.of(ms, users.get(ms.getUserId()),
+						profileImages.get(ms.getUserId())))
 				.toList();
 	}
 
@@ -160,7 +165,8 @@ public class GroupMembershipService {
 
 		// 목록 조회와 같은 형태로 돌려준다 — 클라이언트가 응답으로 목록 캐시를 갱신하므로
 		// 필드가 좁으면 email·joinedAt 이 지워진다.
-		return MembershipResponse.of(target, userRepository.findById(target.getUserId()).orElse(null));
+		return MembershipResponse.of(target, userRepository.findById(target.getUserId()).orElse(null),
+				fileService.profileImageUrl(target.getUserId()));
 	}
 
 	/**

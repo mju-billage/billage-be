@@ -14,6 +14,7 @@ import org.springframework.data.domain.PageRequest;
 
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
+import com.billage.common.response.KoreanTime;
 import com.billage.dues.dto.DuesCloseResponse;
 import com.billage.dues.dto.DuesCreateRequest;
 import com.billage.dues.dto.DuesUpdateRequest;
@@ -450,6 +451,51 @@ class DuesServiceTest extends IntegrationTest {
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
 				.isEqualTo(ErrorCode.INVALID_REQUEST);
+	}
+
+	@Test
+	void 마감일이_지난_날짜면_만들_수_없고_오늘은_된다() {
+		LocalDate today = LocalDate.now(KoreanTime.ZONE);
+
+		assertThatThrownBy(() -> duesService.create(groupId, ownerId,
+				new DuesCreateRequest("지난 회비", 30_000L, today.minusDays(5), today.minusDays(1),
+						List.of(member1), ledgerId)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.DUES_DUE_DATE_PAST);
+
+		Long duesId = duesService.create(groupId, ownerId,
+				new DuesCreateRequest("오늘 마감", 30_000L, today, today, List.of(member1), ledgerId)).duesId();
+		assertThat(duesRepository.findById(duesId).orElseThrow().getDueDate()).isEqualTo(today);
+	}
+
+	@Test
+	void 마감일을_지난_날짜로_바꿀_수_없다() {
+		Long duesId = createDues(List.of(member1));
+		LocalDate yesterday = LocalDate.now(KoreanTime.ZONE).minusDays(1);
+
+		assertThatThrownBy(() -> duesService.update(duesId, ownerId,
+				new DuesUpdateRequest(null, yesterday.minusDays(3), yesterday, null, null, null)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.DUES_DUE_DATE_PAST);
+	}
+
+	@Test
+	void 마감일이_지난_진행중_회비도_마감일을_그대로_두면_다른_값을_고칠_수_있다() {
+		Long duesId = createDues(List.of(member1));
+		LocalDate today = LocalDate.now(KoreanTime.ZONE);
+		// 만든 뒤 시간이 흘러 마감일이 지난 상태를 흉내 낸다.
+		Dues dues = duesRepository.findById(duesId).orElseThrow();
+		dues.updatePeriod(today.minusDays(10), today.minusDays(1));
+		duesRepository.saveAndFlush(dues);
+
+		duesService.update(duesId, ownerId,
+				new DuesUpdateRequest("제목만 수정", null, today.minusDays(1), null, null, null));
+
+		Dues updated = duesRepository.findById(duesId).orElseThrow();
+		assertThat(updated.getTitle()).isEqualTo("제목만 수정");
+		assertThat(updated.getDueDate()).isEqualTo(today.minusDays(1));
 	}
 
 	@Test

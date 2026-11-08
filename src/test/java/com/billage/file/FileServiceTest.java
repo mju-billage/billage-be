@@ -162,7 +162,7 @@ class FileServiceTest extends IntegrationTest {
 					assertThat(receipt.fileUrl()).isEqualTo("/api/v1/files/" + fileId + "/content");
 				});
 
-		var list = entryService.getEntries(ledgerId, ownerId, null, null, null,
+		var list = entryService.getEntries(ledgerId, ownerId, null, null, null, null, null,
 				org.springframework.data.domain.PageRequest.of(0, 20));
 		assertThat(list.content().get(0).receiptCount()).isEqualTo(1);
 	}
@@ -209,6 +209,32 @@ class FileServiceTest extends IntegrationTest {
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
 				.isEqualTo(ErrorCode.INVALID_FILE_PURPOSE);
+	}
+
+	// --- 프로필 이미지 열람·관리자 목록 ---
+
+	@Test
+	void 같은_모임_관리자는_서로의_프로필_사진을_열_수_있고_남의_모임_사람은_못_연다() {
+		Long fileId = uploadProfile(adminId);
+
+		assertThat(fileService.getAccessibleFile(fileId, adminId).getId()).isEqualTo(fileId);
+		assertThat(fileService.getAccessibleFile(fileId, ownerId).getId()).isEqualTo(fileId);
+		assertThatThrownBy(() -> fileService.getAccessibleFile(fileId, outsiderId))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.ACCESS_DENIED);
+	}
+
+	@Test
+	void 관리자_목록은_각자의_프로필_사진_주소를_담고_없으면_null_이다() {
+		Long fileId = uploadProfile(adminId);
+
+		var memberships = groupMembershipService.getMemberships(groupId, ownerId);
+
+		assertThat(memberships).filteredOn(m -> m.userId().equals(adminId)).singleElement()
+				.satisfies(m -> assertThat(m.profileImageUrl()).endsWith("/api/v1/files/" + fileId + "/content"));
+		assertThat(memberships).filteredOn(m -> m.userId().equals(ownerId)).singleElement()
+				.satisfies(m -> assertThat(m.profileImageUrl()).isNull());
 	}
 
 	// --- 삭제 ---
@@ -383,5 +409,12 @@ class FileServiceTest extends IntegrationTest {
 	private Long createEntryWithReceipts(Long userId, List<Long> fileIds) {
 		return entryService.create(ledgerId, userId, new EntryCreateRequest(EntryType.EXPENSE, "대관료",
 				500_000L, LocalDate.of(2026, 7, 20), null, null, fileIds)).entryId();
+	}
+
+	private Long uploadProfile(Long userId) {
+		MockMultipartFile image = new MockMultipartFile("file", "profile.png", "image/png", "image".getBytes());
+		Long fileId = fileService.upload(userId, image, FilePurpose.PROFILE_IMAGE).fileId();
+		fileService.claimProfileImage(fileId, userId);
+		return fileId;
 	}
 }

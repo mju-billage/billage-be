@@ -109,8 +109,8 @@ public class FileService {
 			// 여기서 걸러 내지 않으면 "업로더 본인만" 규칙에 걸려 보관함 상세의 이미지가 남에게 안 열린다.
 			guard.requireMembership(archiveGroupIdOf(file), userId);
 		} else if (file.getUserId() != null) {
-			// 프로필 이미지는 본인만 연다. 남의 프로필을 보여 주는 화면이 아직 없다.
-			if (!file.getUserId().equals(userId)) {
+			// 프로필 이미지는 본인과, 본인과 같은 모임의 관리자가 연다 — 「모임 관리자」 목록이 다른 관리자 사진을 그린다.
+			if (!guard.sharesGroup(userId, file.getUserId())) {
 				throw new BusinessException(ErrorCode.ACCESS_DENIED);
 			}
 		} else if (file.getGroupId() != null) {
@@ -282,6 +282,16 @@ public class FileService {
 	@Transactional(readOnly = true)
 	public String profileImageUrl(Long userId) {
 		return fileRepository.findProfileImage(userId).map(file -> fileUrl(file.getId())).orElse(null);
+	}
+
+	/** 여러 사용자의 프로필 이미지 URL. 관리자 목록에서 N+1 을 피하려고 한 번에 가져온다. */
+	@Transactional(readOnly = true)
+	public Map<Long, String> profileImageUrls(Collection<Long> userIds) {
+		if (userIds.isEmpty()) {
+			return Map.of();
+		}
+		return fileRepository.findProfileImages(userIds).stream()
+				.collect(Collectors.toMap(UploadedFile::getUserId, file -> fileUrl(file.getId()), (a, b) -> a));
 	}
 
 	/**
