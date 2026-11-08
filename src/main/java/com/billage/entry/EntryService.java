@@ -29,6 +29,10 @@ import com.billage.ledger.LedgerRepository;
 import com.billage.membership.GroupAccessGuard;
 import com.billage.membership.GroupMembership;
 import com.billage.ocr.ReceiptOcrService;
+import com.billage.notification.NotificationCategory;
+import com.billage.notification.NotificationMessage;
+import com.billage.notification.NotificationService;
+import com.billage.notification.NotificationTargetType;
 import com.billage.ocr.dto.ReceiptOcrResponse;
 import com.billage.user.User;
 import com.billage.user.UserRepository;
@@ -52,6 +56,7 @@ public class EntryService {
 	private final DuesService duesService;
 	private final GroupAccessGuard guard;
 	private final ReceiptOcrService receiptOcrService;
+	private final NotificationService notificationService;
 
 	@Transactional(readOnly = true)
 	public PageResponse<EntrySummaryResponse> getEntries(Long ledgerId, Long userId, EntryType type,
@@ -115,6 +120,12 @@ public class EntryService {
 				requireNonBlank(request.title()), request.amount(), request.occurredOn(), request.memo(),
 				managerUserId, managerName));
 		fileService.linkReceipts(entry, request.receiptFileIds(), userId);
+		if (!entry.isApproved()) {
+			notificationService.notifyOwners(entry.getGroupId(), userId, new NotificationMessage(entry.getGroupId(),
+					NotificationCategory.APPROVAL, "승인 요청이 도착했어요",
+					authorName + "님이 " + entry.getTitle() + " 내역을 올렸어요",
+					NotificationTargetType.ENTRY, entry.getId()));
+		}
 
 		return EntryCreateResponse.of(entry, fileService.getReceipts(entry.getId()));
 	}
@@ -197,6 +208,9 @@ public class EntryService {
 		guard.requireOwner(entry.getGroupId(), userId);
 
 		entry.approve(userId, userName(userId));
+		notificationService.notifyUser(entry.getCreatedByUserId(), userId, new NotificationMessage(entry.getGroupId(),
+				NotificationCategory.APPROVAL, "내역이 승인됐어요", entry.getTitle() + " 내역이 승인됐어요",
+				NotificationTargetType.ENTRY, entry.getId()));
 
 		return EntryApproveResponse.from(entry);
 	}

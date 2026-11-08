@@ -20,6 +20,10 @@ import com.billage.membership.dto.InvitationResponse;
 import com.billage.membership.dto.JoinGroupResponse;
 import com.billage.membership.dto.MembershipResponse;
 import com.billage.membership.dto.RoleUpdateRequest;
+import com.billage.notification.NotificationCategory;
+import com.billage.notification.NotificationMessage;
+import com.billage.notification.NotificationService;
+import com.billage.notification.NotificationTargetType;
 import com.billage.user.User;
 import com.billage.user.UserRepository;
 
@@ -47,6 +51,7 @@ public class GroupMembershipService {
 	private final UserRepository userRepository;
 	private final GroupAccessGuard guard;
 	private final FileService fileService;
+	private final NotificationService notificationService;
 
 	@Transactional(readOnly = true)
 	public List<MembershipResponse> getMemberships(Long groupId, Long userId) {
@@ -142,6 +147,10 @@ public class GroupMembershipService {
 		try {
 			GroupMembership membership = groupMembershipRepository.saveAndFlush(
 					GroupMembership.join(group, userId));
+			String name = userRepository.findById(userId).map(User::getName).orElse("새 관리자");
+			notificationService.notifyManagers(group.getId(), userId, new NotificationMessage(group.getId(),
+					NotificationCategory.GROUP_ACTIVITY, "새 관리자가 참여했어요",
+					name + "님이 " + group.getName() + "에 참여했어요", NotificationTargetType.GROUP, group.getId()));
 			return JoinGroupResponse.from(membership);
 		} catch (DataIntegrityViolationException e) {
 			throw new BusinessException(ErrorCode.ALREADY_GROUP_MEMBER);
@@ -161,7 +170,13 @@ public class GroupMembershipService {
 		if (target.isOwner() && newRole != GroupRole.OWNER) {
 			requireNotLastOwner(groupId);
 		}
+		boolean becomesOwner = !target.isOwner() && newRole == GroupRole.OWNER;
 		target.changeRole(newRole);
+		if (becomesOwner) {
+			notificationService.notifyUser(target.getUserId(), userId, new NotificationMessage(groupId,
+					NotificationCategory.GROUP_ACTIVITY, "총무 권한을 받았어요",
+					target.getGroup().getName() + "의 총무가 되었어요", NotificationTargetType.GROUP, groupId));
+		}
 
 		// 목록 조회와 같은 형태로 돌려준다 — 클라이언트가 응답으로 목록 캐시를 갱신하므로
 		// 필드가 좁으면 email·joinedAt 이 지워진다.
@@ -200,6 +215,10 @@ public class GroupMembershipService {
 		if (target.isOwner()) {
 			requireNotLastOwner(groupId);
 		}
+		// 내보내진 사람은 모임을 더 열 수 없으므로 이동 대상 없이 알린다.
+		notificationService.notifyUser(target.getUserId(), userId, new NotificationMessage(groupId,
+				NotificationCategory.GROUP_ACTIVITY, "모임에서 내보내졌어요",
+				target.getGroup().getName() + " 모임 관리자에서 제외됐어요", null, null));
 		groupMembershipRepository.delete(target);
 	}
 
