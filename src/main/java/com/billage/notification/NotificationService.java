@@ -5,6 +5,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -76,10 +77,14 @@ public class NotificationService {
 		if (userIds.isEmpty()) {
 			return;
 		}
+		// 탈퇴한 사용자(예: 승인 대기 내역을 남기고 탈퇴한 등록자)에게 보내면 FK 에 걸려 본 작업까지 롤백된다.
+		// 남아 있는 계정에만 보낸다.
+		Set<Long> existing = userRepository.findAllById(userIds).stream().map(User::getId).collect(Collectors.toSet());
 		Map<Long, NotificationSetting> settings = settingRepository.findAllById(userIds).stream()
 				.collect(Collectors.toMap(NotificationSetting::getUserId, Function.identity()));
 		List<Notification> notifications = userIds.stream()
 				.distinct()
+				.filter(existing::contains)
 				.filter(userId -> settings.getOrDefault(userId, NotificationSetting.defaults(userId))
 						.receives(message.category()))
 				.map(userId -> Notification.create(userId, message))
@@ -116,9 +121,15 @@ public class NotificationService {
 		return NotificationSettingResponse.of(settingOf(userId), user.getMarketingAgreedAt() != null);
 	}
 
+	/**
+	 * 설정 부분 수정. 토글 하나씩 즉시 저장하는 화면이라 요청이 겹칠 수 있다 — 사용자 행을 잠가 같은 사람의 수정을
+	 * 줄 세운다. 잠그지 않으면 두 요청이 같은 원래 값을 읽고 서로의 변경을 덮어쓰고, 첫 저장 때는 행 생성이 겹쳐
+	 * PK 충돌이 난다.
+	 */
 	@Transactional
 	public NotificationSettingResponse updateSettings(Long userId, NotificationSettingUpdateRequest request) {
-		User user = findUser(userId);
+		User user = userRepository.findByIdForUpdate(Objects.requireNonNull(userId))
+				.orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 		NotificationSetting setting = settingRepository.findById(userId)
 				.orElseGet(() -> settingRepository.save(NotificationSetting.defaults(userId)));
 		setting.update(request.groupActivity(), request.approval(), request.dues(), request.noticeAndUpdate(),

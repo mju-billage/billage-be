@@ -181,6 +181,27 @@ class NotificationServiceTest extends IntegrationTest {
 		assertThat(notificationsOf(adminId)).hasSize(2);
 	}
 
+	@Test
+	void 등록자가_탈퇴한_승인_대기_내역도_승인할_수_있다() {
+		Long entryId = createEntry(adminId, "대관료");
+		userService.withdraw(adminId, new WithdrawRequest(List.of(),
+				List.of(WithdrawalReasonType.NO_LONGER_NEEDED), null));
+
+		entryService.approve(entryId, ownerId);
+
+		assertThat(notificationRepository.findAll()).noneMatch(n -> n.getUserId().equals(adminId));
+	}
+
+	@Test
+	void 탈퇴하며_총무를_넘기면_넘겨받은_사람에게_알림이_간다() {
+		userService.withdraw(ownerId, new WithdrawRequest(
+				List.of(new WithdrawRequest.OwnershipTransfer(groupId, adminId)),
+				List.of(WithdrawalReasonType.NO_LONGER_NEEDED), null));
+
+		assertThat(notificationsOf(adminId)).singleElement()
+				.satisfies(n -> assertThat(n.body()).isEqualTo("주리랑의 총무가 되었어요"));
+	}
+
 	// --- 설정 ---
 
 	@Test
@@ -215,6 +236,33 @@ class NotificationServiceTest extends IntegrationTest {
 		notificationService.updateSettings(ownerId,
 				new NotificationSettingUpdateRequest(null, null, null, null, false, null));
 		assertThat(userRepository.findById(ownerId).orElseThrow().getMarketingAgreedAt()).isNull();
+	}
+
+	@Test
+	void 설정을_동시에_바꿔도_서로의_변경을_덮어쓰지_않는다() throws Exception {
+		var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+		var start = new java.util.concurrent.CountDownLatch(1);
+		try {
+			var first = pool.submit(() -> {
+				start.await();
+				return notificationService.updateSettings(ownerId,
+						new NotificationSettingUpdateRequest(null, false, null, null, null, null));
+			});
+			var second = pool.submit(() -> {
+				start.await();
+				return notificationService.updateSettings(ownerId,
+						new NotificationSettingUpdateRequest(null, null, false, null, null, null));
+			});
+			start.countDown();
+			first.get();
+			second.get();
+		} finally {
+			pool.shutdown();
+		}
+
+		var settings = notificationService.getSettings(ownerId);
+		assertThat(settings.approval()).isFalse();
+		assertThat(settings.dues()).isFalse();
 	}
 
 	// --- 읽음·배지 ---
