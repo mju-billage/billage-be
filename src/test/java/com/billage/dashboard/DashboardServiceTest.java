@@ -128,7 +128,8 @@ class DashboardServiceTest extends IntegrationTest {
 		DashboardResponse ownerView = dashboardService.getDashboard(groupId, ownerId, 5);
 		DashboardResponse adminView = dashboardService.getDashboard(groupId, adminId, 5);
 
-		assertThat(adminView).isEqualTo(ownerView);
+		// 안 읽은 알림 표시만 사람마다 다르다(총무에게는 승인 요청 알림이 있다).
+		assertThat(adminView).usingRecursiveComparison().ignoringFields("hasUnreadNotification").isEqualTo(ownerView);
 		assertThat(adminView.approval().pendingEntryCount()).isEqualTo(1);
 	}
 
@@ -256,8 +257,10 @@ class DashboardServiceTest extends IntegrationTest {
 	}
 
 	@Test
-	void 알림_도메인이_없어_안읽음_표시는_항상_꺼져_있다() {
-		assertThat(dashboardService.getDashboard(groupId, ownerId, 5).hasUnreadNotification()).isFalse();
+	void 안읽음_표시는_내_알림_기준이다() {
+		// 준비 과정에서 일반 관리자가 참여해 총무에게만 참여 알림이 쌓여 있다.
+		assertThat(dashboardService.getDashboard(groupId, ownerId, 5).hasUnreadNotification()).isTrue();
+		assertThat(dashboardService.getDashboard(groupId, adminId, 5).hasUnreadNotification()).isFalse();
 	}
 
 	private Long createDues(String title, LocalDate dueDate, Long memberId) {

@@ -36,6 +36,10 @@ import com.billage.member.Member;
 import com.billage.member.MemberRepository;
 import com.billage.membership.GroupAccessGuard;
 import com.billage.membership.GroupMembership;
+import com.billage.notification.NotificationCategory;
+import com.billage.notification.NotificationMessage;
+import com.billage.notification.NotificationService;
+import com.billage.notification.NotificationTargetType;
 import com.billage.user.User;
 import com.billage.user.UserRepository;
 
@@ -59,6 +63,7 @@ public class DuesService {
 	private final EntryRepository entryRepository;
 	private final UserRepository userRepository;
 	private final GroupAccessGuard guard;
+	private final NotificationService notificationService;
 
 	@Transactional(readOnly = true)
 	public PageResponse<DuesSummaryResponse> getDuesList(Long groupId, Long userId, DuesStatus status,
@@ -99,6 +104,9 @@ public class DuesService {
 		requireNotPast(request.dueDate());
 		Dues dues = duesRepository.save(Dues.create(groupId, request.title().trim(), request.amount(),
 				request.startDate(), request.dueDate(), ledger.getId(), targets));
+		notificationService.notifyManagers(groupId, userId, new NotificationMessage(groupId,
+				NotificationCategory.DUES, "새 회비가 등록됐어요", dues.getTitle() + " 회비가 등록됐어요",
+				NotificationTargetType.DUES, dues.getId()));
 
 		return DuesCreateResponse.from(dues);
 	}
@@ -236,6 +244,9 @@ public class DuesService {
 			generatedEntryId = entry.getId();
 		}
 		dues.close(generatedEntryId);
+		notificationService.notifyManagers(dues.getGroupId(), userId, new NotificationMessage(dues.getGroupId(),
+				NotificationCategory.DUES, "회비가 마감됐어요", dues.getTitle() + " 회비가 마감됐어요",
+				NotificationTargetType.DUES, dues.getId()));
 
 		return DuesCloseResponse.from(dues);
 	}

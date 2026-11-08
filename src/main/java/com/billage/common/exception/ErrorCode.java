@@ -79,6 +79,7 @@ public enum ErrorCode {
 	INVALID_PAYMENT_STATUS("INVALID_PAYMENT_STATUS", HttpStatus.BAD_REQUEST, "허용되지 않은 납부 상태 값입니다."),
 
 	// 보고서
+	NOTIFICATION_NOT_FOUND("NOTIFICATION_NOT_FOUND", HttpStatus.NOT_FOUND, "알림을 찾을 수 없습니다."),
 	REPORT_NOT_FOUND("REPORT_NOT_FOUND", HttpStatus.NOT_FOUND, "보고서를 찾을 수 없습니다."),
 
 	// 기록 보관
