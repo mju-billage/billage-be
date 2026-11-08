@@ -26,6 +26,8 @@ public class Inquiry {
 
 	public static final int MAX_TITLE_LENGTH = 50;
 	public static final int MAX_CONTENT_LENGTH = 1000;
+	/** 한 사람이 24시간 안에 보낼 수 있는 문의 수. 알림 메일이 인증 메일과 같은 발송 한도를 쓰기 때문이다. */
+	public static final int DAILY_LIMIT_PER_USER = 5;
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)

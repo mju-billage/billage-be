@@ -287,3 +287,4 @@
 - 약관 종류 `SERVICE | PRIVACY | MARKETING | AUTO_RECORD`. 원문이 없는 종류는 행이 없고 `TERMS_NOT_FOUND(404)`.
 - 문의(`inquiry`): 로그인 필수, `{email, title(≤50), content(≤1000)}` → `204`. 길이 상한은 화면명세에 값이 없어 정했다.
   회원이 탈퇴하면 FK `ON DELETE SET NULL` 로 작성자 연결만 끊고 문의는 남긴다. 답장은 앱이 아니라 메일로 한다.
+- 문의는 **한 사람당 24시간에 5건**까지(`INQUIRY_LIMIT_EXCEEDED`, 429). 알림 메일이 인증 메일과 같은 Gmail 발송 한도를 쓰기 때문이다.

@@ -1,5 +1,6 @@
 package com.billage.helpcenter;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.data.domain.Pageable;
@@ -66,11 +67,19 @@ public class HelpCenterService {
 	/**
 	 * 문의 접수. 저장한 뒤 운영자 주소가 설정돼 있으면 커밋 후 알림 메일을 보낸다.
 	 * 메일 실패는 접수 실패가 아니다 — 문의는 이미 저장됐으니 로그만 남긴다.
+	 *
+	 * <p>한 사람당 24시간에 {@value Inquiry#DAILY_LIMIT_PER_USER} 건까지만 받는다. 알림 메일이 회원가입·비밀번호
+	 * 메일과 같은 Gmail 발송 한도(하루 500통)를 쓰므로, 한 계정이 문의를 쏟아내면 인증 메일이 막힌다.
+	 * 같은 사용자의 동시 요청이 한도를 한두 건 넘길 수는 있지만 목적(대량 발송 차단)에는 충분하다.
 	 */
 	@Transactional
 	public void createInquiry(Long userId, InquiryCreateRequest request) {
 		String title = requireNonBlank(request.title(), "문의 제목");
 		String content = requireNonBlank(request.content(), "문의 내용");
+		if (inquiryRepository.countByUserIdAndCreatedAtAfter(userId, LocalDateTime.now().minusDays(1))
+				>= Inquiry.DAILY_LIMIT_PER_USER) {
+			throw new BusinessException(ErrorCode.INQUIRY_LIMIT_EXCEEDED);
+		}
 		Inquiry inquiry = inquiryRepository.save(Inquiry.create(userId, request.email().trim(), title, content));
 
 		if (properties.notifiesByMail()) {

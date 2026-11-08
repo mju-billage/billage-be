@@ -131,6 +131,22 @@ class HelpCenterIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
+	void 문의는_한_사람당_하루_5건까지다() {
+		Long userId = userRepository.save(User.create("member@example.com", "encoded", "회원")).getId();
+		String token = jwtTokenProvider.createAccessToken(userId);
+		Map<String, String> body = Map.of("email", "member@example.com", "title", "제목", "content", "내용");
+
+		for (int i = 0; i < Inquiry.DAILY_LIMIT_PER_USER; i++) {
+			assertThat(http.postJson("/api/v1/inquiries", body, token).status()).isEqualTo(204);
+		}
+		Response sixth = http.postJson("/api/v1/inquiries", body, token);
+
+		assertThat(sixth.status()).isEqualTo(429);
+		assertThat(sixth.at("code")).isEqualTo("INQUIRY_LIMIT_EXCEEDED");
+		assertThat(inquiryRepository.count()).isEqualTo(Inquiry.DAILY_LIMIT_PER_USER);
+	}
+
+	@Test
 	void 탈퇴하면_문의는_남고_작성자_연결만_끊긴다() {
 		Long userId = userRepository.save(User.create("member@example.com", "encoded", "회원")).getId();
 		http.postJson("/api/v1/inquiries", Map.of("email", "member@example.com", "title", "제목", "content", "내용"),
