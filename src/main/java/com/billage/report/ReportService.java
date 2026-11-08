@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -16,6 +17,7 @@ import com.billage.common.response.PageResponse;
 import com.billage.entry.Entry;
 import com.billage.entry.EntryRepository;
 import com.billage.entry.EntryType;
+import com.billage.file.FileService;
 import com.billage.ledger.Ledger;
 import com.billage.ledger.LedgerRepository;
 import com.billage.membership.GroupAccessGuard;
@@ -28,9 +30,9 @@ import lombok.RequiredArgsConstructor;
 
 /**
  * 결산 보고서. 생성 시점의 장부·내역을 스냅샷으로 복사해 두므로 이후 원본이 바뀌어도 보고서는 변하지 않는다.
- * 수정·삭제 API 는 명세에 없고, 모임이 삭제될 때만 함께 지워진다.
+ * 수정 API 는 없다. 삭제는 총무만 할 수 있고(Hard Delete), 모임이 삭제될 때도 함께 지워진다.
  *
- * <p>권한은 노션 명세상 아직 {@code TBD} 라 제안안(조회 MEMBER / 생성 OWNER)대로 구현했다.
+ * <p>권한: 조회 MEMBER / 생성·삭제 OWNER.
  */
 @Service
 @RequiredArgsConstructor
@@ -40,6 +42,7 @@ public class ReportService {
 	private final ReportLedgerRepository reportLedgerRepository;
 	private final LedgerRepository ledgerRepository;
 	private final EntryRepository entryRepository;
+	private final FileService fileService;
 	private final GroupAccessGuard guard;
 
 	@Transactional(readOnly = true)
@@ -139,7 +142,27 @@ public class ReportService {
 				.orElseThrow(() -> new BusinessException(ErrorCode.REPORT_NOT_FOUND));
 		guard.requireMembership(report.getGroupId(), userId);
 
-		return ReportDetailResponse.of(report, reportLedgerRepository.findAllByReportIdWithEntries(reportId));
+		List<ReportLedger> ledgers = reportLedgerRepository.findAllByReportIdWithEntries(reportId);
+		List<Long> entryIds = ledgers.stream()
+				.flatMap(ledger -> ledger.getEntries().stream())
+				.map(ReportEntry::getEntryId)
+				.filter(Objects::nonNull)
+				.distinct()
+				.toList();
+		return ReportDetailResponse.of(report, ledgers, fileService.getReceiptsByEntryIds(entryIds));
+	}
+
+	/**
+	 * 보고서 삭제. 총무만 할 수 있으며 장부·내역 스냅샷까지 완전히 지운다(Hard Delete).
+	 * 원본 장부·내역·증빙은 건드리지 않는다.
+	 */
+	@Transactional
+	public void delete(Long reportId, Long userId) {
+		Report report = reportRepository.findById(reportId)
+				.orElseThrow(() -> new BusinessException(ErrorCode.REPORT_NOT_FOUND));
+		guard.requireOwner(report.getGroupId(), userId);
+
+		reportRepository.delete(report);
 	}
 
 	/**
