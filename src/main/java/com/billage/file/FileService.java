@@ -385,6 +385,21 @@ public class FileService {
 	}
 
 	/**
+	 * 여러 내역의 현재 증빙을 내역 ID 별로 묶어 한 번에 조회한다(보고서 상세용, N+1 방지).
+	 * 증빙이 없는 내역은 결과에 키가 없다.
+	 */
+	@Transactional(readOnly = true)
+	public Map<Long, List<ReceiptFileResponse>> getReceiptsByEntryIds(Collection<Long> entryIds) {
+		if (entryIds.isEmpty()) {
+			return Map.of();
+		}
+		return fileRepository.findByEntryIds(entryIds).stream()
+				.collect(Collectors.groupingBy(file -> file.getEntry().getId(),
+						Collectors.mapping(file -> ReceiptFileResponse.of(file, fileUrl(file.getId())),
+								Collectors.toList())));
+	}
+
+	/**
 	 * 증빙자료 앨범(「더보기 &gt; 증빙자료 앨범」). 모임의 증빙을 원본 내역과 함께 최신 발생일 순으로 모아 본다.
 	 *
 	 * <p>지금까지는 내역을 하나씩 열어야만 증빙을 볼 수 있었다. 필터·검색 조건은 내역 목록과 같은 것을

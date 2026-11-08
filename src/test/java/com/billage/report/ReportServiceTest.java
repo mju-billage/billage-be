@@ -10,12 +10,16 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.mock.web.MockMultipartFile;
 
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
 import com.billage.entry.EntryService;
 import com.billage.entry.EntryType;
 import com.billage.entry.dto.EntryCreateRequest;
+import com.billage.entry.dto.EntryUpdateRequest;
+import com.billage.file.FilePurpose;
+import com.billage.file.FileService;
 import com.billage.folder.FolderService;
 import com.billage.folder.dto.FolderCreateRequest;
 import com.billage.group.GroupService;
@@ -51,6 +55,8 @@ class ReportServiceTest extends IntegrationTest {
 	ReportRepository reportRepository;
 	@Autowired
 	UserRepository userRepository;
+	@Autowired
+	FileService fileService;
 
 	private static final LocalDate START = LocalDate.of(2026, 1, 1);
 	private static final LocalDate END = LocalDate.of(2026, 6, 30);
@@ -147,6 +153,78 @@ class ReportServiceTest extends IntegrationTest {
 		groupService.delete(groupId, ownerId);
 
 		assertThat(reportRepository.findAllByGroupId(groupId)).isEmpty();
+	}
+
+	// --- 메모·증빙 ---
+
+	@Test
+	void 메모는_생성_시점_값으로_남는다() {
+		Long entryId = entryService.create(ledgerId, ownerId, new EntryCreateRequest(EntryType.EXPENSE, "대관료",
+				400_000L, LocalDate.of(2026, 5, 20), "3시간", null, null)).entryId();
+		Long reportId = createReport("상반기", List.of(ledgerId)).reportId();
+
+		entryService.update(entryId, ownerId, new EntryUpdateRequest(null, null, null, "4시간", null, null, null));
+
+		assertThat(onlyEntryLine(reportId).memo()).isEqualTo("3시간");
+	}
+
+	@Test
+	void 증빙은_원본_내역의_현재_파일을_보여주고_원본이_지워지면_빈_배열이다() {
+		Long fileId = fileService.upload(ownerId,
+				new MockMultipartFile("file", "receipt.jpg", "image/jpeg", "image".getBytes()),
+				FilePurpose.RECEIPT).fileId();
+		Long entryId = entryService.create(ledgerId, ownerId, new EntryCreateRequest(EntryType.EXPENSE, "대관료",
+				400_000L, LocalDate.of(2026, 5, 20), null, null, List.of(fileId))).entryId();
+		Long reportId = createReport("상반기", List.of(ledgerId)).reportId();
+
+		assertThat(onlyEntryLine(reportId).receiptFiles()).singleElement().satisfies(receipt -> {
+			assertThat(receipt.fileId()).isEqualTo(fileId);
+			assertThat(receipt.fileName()).isEqualTo("receipt.jpg");
+		});
+
+		entryService.delete(entryId, ownerId);
+
+		ReportDetailResponse.EntryLine line = onlyEntryLine(reportId);
+		assertThat(line.title()).isEqualTo("대관료");
+		assertThat(line.receiptFiles()).isEmpty();
+	}
+
+	// --- 삭제 ---
+
+	@Test
+	void 총무는_보고서를_삭제할_수_있다() {
+		createEntry(ownerId, EntryType.EXPENSE, "대관료", 400_000L, LocalDate.of(2026, 5, 20));
+		Long reportId = createReport("상반기", List.of(ledgerId)).reportId();
+
+		reportService.delete(reportId, ownerId);
+
+		assertThat(reportRepository.findById(reportId)).isEmpty();
+		assertThatThrownBy(() -> reportService.getDetail(reportId, ownerId))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.REPORT_NOT_FOUND);
+	}
+
+	@Test
+	void 일반_관리자와_다른_모임_사람은_보고서를_삭제할_수_없다() {
+		createEntry(ownerId, EntryType.EXPENSE, "대관료", 400_000L, LocalDate.of(2026, 5, 20));
+		Long reportId = createReport("상반기", List.of(ledgerId)).reportId();
+
+		assertThatThrownBy(() -> reportService.delete(reportId, adminId))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.ACCESS_DENIED);
+		assertThatThrownBy(() -> reportService.delete(reportId, outsiderId))
+				.isInstanceOf(BusinessException.class);
+		assertThat(reportRepository.findById(reportId)).isPresent();
+	}
+
+	@Test
+	void 없는_보고서는_삭제할_수_없다() {
+		assertThatThrownBy(() -> reportService.delete(999_999L, ownerId))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.REPORT_NOT_FOUND);
 	}
 
 	// --- 권한·소유권 ---
@@ -295,6 +373,10 @@ class ReportServiceTest extends IntegrationTest {
 				.satisfies(report -> assertThat(report.title()).isEqualTo("장부별 결산"));
 		assertThat(byPeriod.content()).singleElement()
 				.satisfies(report -> assertThat(report.title()).isEqualTo("기간별 결산"));
+	}
+
+	private ReportDetailResponse.EntryLine onlyEntryLine(Long reportId) {
+		return reportService.getDetail(reportId, ownerId).ledgers().get(0).entries().get(0);
 	}
 
 	private Long createLedger(Long groupId, Long userId, String name) {
