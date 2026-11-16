@@ -43,6 +43,11 @@ final class ReceiptItemExtractor {
 	private static final Pattern ITEM_CODE = Pattern.compile("^(?:\\d{1,4}|\\d{8,})$");
 	/** 이름 앞에 붙는 표시(면세 품목의 "*", "#" 등). */
 	private static final Pattern NAME_MARKER = Pattern.compile("^[*#\\[\\]()]+");
+	/** 금액 뒤에 붙는 같은 표시("4,280*", "3,960*#", "3,960 #"). 떼고 읽는다. */
+	private static final Pattern AMOUNT_MARKER = Pattern.compile("[*#]+$");
+
+	/** 합계 묶음 바로 위에 끼는 소제목("[결제 내역]") 중 건너뛸 줄 수. 그 위로는 품목표여야 한다. */
+	private static final int MAX_SKIPPED_TITLES = 1;
 	private static final Pattern LETTER = Pattern.compile("\\p{L}");
 	private static final Pattern WHITESPACE = Pattern.compile("\\s+");
 
@@ -62,6 +67,7 @@ final class ReceiptItemExtractor {
 		List<ReceiptOcrItem> items = new ArrayList<>();
 		long adjustments = 0;
 		List<Long> pendingNumbers = null;
+		int skippedTitles = 0;
 
 		for (int i = summaryStart - 1; i >= 0; i--) {
 			Row row = Row.of(lines.get(i));
@@ -78,6 +84,11 @@ final class ReceiptItemExtractor {
 			}
 
 			if (row.numbers().isEmpty()) {
+				if (items.isEmpty() && pendingNumbers == null && skippedTitles < MAX_SKIPPED_TITLES) {
+					// 아직 품목을 하나도 못 만났으면 합계 묶음 위의 소제목이다.
+					skippedTitles++;
+					continue;
+				}
 				// 이름만 있는 줄 — 바로 아래 줄의 숫자와 짝이다. 짝이 없으면 품목표 위의 다른 내용이다.
 				if (pendingNumbers == null || !row.hasName()) {
 					break;
@@ -113,9 +124,18 @@ final class ReceiptItemExtractor {
 	/**
 	 * 합계 묶음이 시작되는 줄. 위에서부터 처음 걸리는 줄이다 — 영수증은 "합계"보다 "과세물품가액"이
 	 * 먼저 찍히기도 해서 마지막 총액 줄이 아니라 묶음의 첫 줄을 찾아야 한다. 머리글의 "수량"은 건너뛴다.
+	 * 품목표 머리글이 있으면 <b>그 아래에서만</b> 찾는다 — 맨 위 안내문("면세상품 일부는 적립 제외")의
+	 * "면세"를 합계 묶음으로 보면 품목을 하나도 못 읽는다.
 	 */
 	private static int findSummaryStart(List<String> lines) {
+		int from = 0;
 		for (int i = 0; i < lines.size(); i++) {
+			if (Row.of(lines.get(i)).isHeader()) {
+				from = i + 1;
+				break;
+			}
+		}
+		for (int i = from; i < lines.size(); i++) {
 			Row row = Row.of(lines.get(i));
 			if (!row.isHeader() && ReceiptTextParser.containsAny(row.compact(), SUMMARY_KEYWORDS)) {
 				return i;
@@ -176,7 +196,12 @@ final class ReceiptItemExtractor {
 			int nameEnd = tokens.length;
 			List<Long> numbers = new ArrayList<>();
 			while (nameEnd > 0 && numbers.size() < MAX_TRAILING_NUMBERS) {
-				Long value = ReceiptAmounts.parseToken(tokens[nameEnd - 1]);
+				String token = AMOUNT_MARKER.matcher(tokens[nameEnd - 1]).replaceFirst("");
+				if (token.isEmpty()) {
+					nameEnd--;
+					continue;
+				}
+				Long value = ReceiptAmounts.parseToken(token);
 				if (value == null) {
 					break;
 				}

@@ -140,4 +140,59 @@ class ReceiptItemExtractorTest {
 
 		assertThat(items).extracting(ReceiptOcrItem::amount).containsExactly(2_000L, 1_500L);
 	}
+
+	/** 마트 영수증의 금액 뒤 표시("*" 할인 적용, "#" 면세). 떼고 읽는다. */
+	@Test
+	void 금액_뒤에_붙은_표시를_떼고_읽는다() {
+		List<ReceiptOcrItem> items = itemsOf(
+				"001 아침에우유 900ml",
+				"8801069416540 1,980 2 3,960*#",
+				"002 햇 무 1개",
+				"22008824 1,980 2 3,960 #",
+				"합계 7,920");
+
+		assertThat(items).extracting(ReceiptOcrItem::amount).containsExactly(3_960L, 3_960L);
+	}
+
+	/** 맨 위 안내문의 "면세"를 합계 묶음으로 보지 않는다. 품목표 머리글 아래에서만 찾는다. */
+	@Test
+	void 머리글_위의_안내문은_합계_묶음이_아니다() {
+		List<ReceiptOcrItem> items = itemsOf(
+				"*행사상품 및 면세상품 일부는",
+				"포인트 적립이 제외됩니다",
+				"NO. 상품명 단가 수량 금액",
+				"001 스팸라이트 120g",
+				"8801392049187 990 5 4,950*",
+				"(#)면세물품: 0",
+				"합 계: 4,950");
+
+		assertThat(items).containsExactly(new ReceiptOcrItem("스팸라이트 120g", 5, 990L, 4_950L, null));
+	}
+
+	/** 카드 앱 영수증: 품목표와 합계 사이에 "[결제 내역]" 소제목이 끼고, 0원 옵션 줄이 섞인다. */
+	@Test
+	void 합계_위의_소제목과_0원_옵션_줄을_넘긴다() {
+		List<ReceiptOcrItem> items = itemsOf(
+				"상품명 단가 수량 금액",
+				"바닐라라떼 4,200 1 4,200",
+				"- ICE 0 1 0",
+				"[결제 내역]",
+				"공급가액 3,818원",
+				"부가세 382원",
+				"결제금액 4,200원");
+
+		assertThat(items).containsExactly(new ReceiptOcrItem("바닐라라떼", 1, 4_200L, 4_200L, null));
+	}
+
+	/** 소제목은 한 줄만 넘긴다. 품목표가 아닌 줄이 더 이어지면 품목을 찾지 않는다. */
+	@Test
+	void 합계_위에_숫자_없는_줄이_여럿이면_품목을_찾지_않는다() {
+		List<ReceiptOcrItem> items = itemsOf(
+				"아메리카노 4,500",
+				"감사합니다",
+				"또 오세요",
+				"합계 4,500");
+
+		assertThat(items).isEmpty();
+	}
 }

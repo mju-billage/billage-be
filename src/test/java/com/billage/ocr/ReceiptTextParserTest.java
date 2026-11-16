@@ -51,6 +51,38 @@ class ReceiptTextParserTest {
 		assertThat(ReceiptTextParser.parse(List.of("합    계        6,500")).totalAmount()).isEqualTo(6_500L);
 	}
 
+	/** 택시 영수증은 "요금" 한 줄이 총액이다. 합계 같은 말이 없을 때만 본다. */
+	@Test
+	void 총액_키워드가_없으면_요금_줄을_총액으로_쓴다() {
+		ReceiptOcrResult result = ReceiptTextParser.parse(List.of(
+				"승차/ 기타: 10,900원 / 0원",
+				"요 금: 10,900원",
+				"승인 번호: 84462387 / 우리카드"));
+
+		assertThat(result.totalAmount()).isEqualTo(10_900L);
+	}
+
+	/** "주차요금" 같은 품목 줄이 합계보다 아래 있어도 합계를 덮어쓰지 않는다. */
+	@Test
+	void 합계가_있으면_요금_줄은_총액이_아니다() {
+		ReceiptOcrResult result = ReceiptTextParser.parse(List.of(
+				"합계 12,000",
+				"주차요금 2시간 6,000"));
+
+		assertThat(result.totalAmount()).isEqualTo(12_000L);
+	}
+
+	/** 합계 줄이 가려진 영수증. 개별 요금을 총액으로 채우지 않고 못 읽었다고 한다. */
+	@Test
+	void 합계가_가려지면_개별_요금_줄을_총액으로_쓰지_않는다() {
+		assertThatThrownBy(() -> ReceiptTextParser.parse(List.of(
+				"기본요금 3,800",
+				"주차요금 2시간 6,000")))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.OCR_RESULT_EMPTY);
+	}
+
 	/** 영수증은 아래쪽에 최종 금액을 한 번 더 찍는다. 뒤에 나온 것이 최종이다. */
 	@Test
 	void 총액_키워드가_여러_번이면_마지막_것을_쓴다() {

@@ -4,6 +4,7 @@ import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -32,6 +33,13 @@ final class ReceiptTextParser {
 	 */
 	static final List<String> TOTAL_KEYWORDS = List.of(
 			"합계", "총액", "총계", "결제금액", "총결제금액", "받을금액", "청구금액", "판매금액", "총구매액");
+
+	/**
+	 * 위 키워드가 하나도 없을 때만 보는 줄. 택시 영수증은 "요 금: 10,900원" 한 줄이 총액이다.
+	 * <b>"요금"이 줄 맨 앞에 혼자 올 때만</b> 본다 — "주차요금 2시간 6,000"·"기본요금 3,800"은 개별 요금이라,
+	 * 합계 줄이 가려진 영수증에서 이걸 집으면 못 읽었다고 하는 대신 틀린 총액을 채우게 된다.
+	 */
+	private static final Pattern FARE_LINE = Pattern.compile("^요금[:：]?[\\d₩\\\\]");
 
 	/**
 	 * 총액처럼 보이지만 구성 요소인 줄. 이 말이 있으면 총액 줄로 보지 않는다.
@@ -70,7 +78,11 @@ final class ReceiptTextParser {
 		if (totalAmount == null) {
 			throw new BusinessException(ErrorCode.OCR_RESULT_EMPTY);
 		}
-		List<ReceiptOcrItem> items = ReceiptItemExtractor.extract(lines, printedTotals(lines));
+		List<Long> printedTotals = printedTotals(lines);
+		if (!printedTotals.contains(totalAmount)) {
+			printedTotals.add(totalAmount);
+		}
+		List<ReceiptOcrItem> items = ReceiptItemExtractor.extract(lines, printedTotals);
 		return new ReceiptOcrResult(findStoreName(lines), findDate(lines), totalAmount, items);
 	}
 
@@ -80,9 +92,14 @@ final class ReceiptTextParser {
 	 * {@link ReceiptAmounts} 가 한다.
 	 */
 	private static Long findTotalAmount(List<String> lines) {
+		Long found = lastAmountOfLines(lines, ReceiptTextParser::isTotalLine);
+		return found != null ? found : lastAmountOfLines(lines, line -> FARE_LINE.matcher(normalize(line)).find());
+	}
+
+	private static Long lastAmountOfLines(List<String> lines, Predicate<String> isTarget) {
 		Long found = null;
 		for (String line : lines) {
-			if (!isTotalLine(line)) {
+			if (!isTarget.test(line)) {
 				continue;
 			}
 			Long amount = ReceiptAmounts.lastAmountOf(line);
