@@ -47,7 +47,7 @@ class ReceiptOcrEvaluationTest {
 		List<Row> rows = new ArrayList<>();
 		for (String line : Files.readAllLines(dir.resolve("answers.csv"), StandardCharsets.UTF_8).stream()
 				.skip(1).toList()) {
-			String[] cells = line.replace("﻿", "").split(",", 4);
+			String[] cells = csvCells(line.replace("﻿", ""));
 			if (cells.length == 0 || cells[0].isBlank()) {
 				continue;
 			}
@@ -56,13 +56,47 @@ class ReceiptOcrEvaluationTest {
 		return render(rows);
 	}
 
+	/**
+	 * 쉼표로 나눈 4칸. record.py 가 csv 모듈로 쓰므로 쉼표·따옴표가 든 칸은 따옴표로 감싸져 온다.
+	 * 마지막 메모 칸은 쉼표를 그대로 둔다.
+	 */
+	static String[] csvCells(String line) {
+		List<String> cells = new ArrayList<>();
+		StringBuilder cell = new StringBuilder();
+		boolean quoted = false;
+		for (int i = 0; i < line.length(); i++) {
+			char c = line.charAt(i);
+			if (quoted) {
+				if (c == '"' && i + 1 < line.length() && line.charAt(i + 1) == '"') {
+					cell.append('"');
+					i++;
+				} else if (c == '"') {
+					quoted = false;
+				} else {
+					cell.append(c);
+				}
+			} else if (c == '"') {
+				quoted = true;
+			} else if (c == ',' && cells.size() < 3) {
+				cells.add(cell.toString());
+				cell.setLength(0);
+			} else {
+				cell.append(c);
+			}
+		}
+		cells.add(cell.toString());
+		return cells.toArray(String[]::new);
+	}
+
 	private static String cell(String[] cells, int index) {
 		return index < cells.length ? cells[index].trim() : "";
 	}
 
 	private static Row score(Path dir, String file, String total, String itemAmounts, String memo) throws IOException {
 		Long expectedTotal = total.isEmpty() ? null : Long.parseLong(total.replace(",", ""));
-		List<Long> expectedItems = itemAmounts.isEmpty() ? null
+		// "-" 는 채점 제외, 빈칸은 "품목 없음"(채우면 틀림). 둘을 섞으면 품목 없는 영수증의 오채움을 못 잡는다.
+		List<Long> expectedItems = itemAmounts.equals("-") ? null
+				: itemAmounts.isEmpty() ? List.of()
 				: Arrays.stream(itemAmounts.split("\\|")).map(String::trim).map(Long::parseLong).toList();
 		String stem = file.replaceFirst("\\.[^.]+$", "");
 		Path image = dir.resolve(file);
@@ -103,8 +137,10 @@ class ReceiptOcrEvaluationTest {
 		StringBuilder out = new StringBuilder("# 영수증 인식 정확도\n\n");
 		long answered = rows.stream().filter(row -> row.expectedTotal() != null).count();
 		long totalCorrect = rows.stream().filter(Row::totalCorrect).count();
-		long withItems = rows.stream().filter(row -> row.expectedItems() != null).count();
-		long filled = rows.stream().filter(row -> row.expectedItems() != null && !row.items().isEmpty()).count();
+		long withItems = rows.stream().filter(Row::expectsItems).count();
+		long filled = rows.stream().filter(row -> row.expectsItems() && !row.items().isEmpty()).count();
+		long withoutItems = rows.stream().filter(row -> row.expectedItems() != null && !row.expectsItems()).count();
+		long keptEmpty = rows.stream().filter(row -> "없음".equals(row.itemVerdict())).count();
 		long itemsCorrect = rows.stream().filter(row -> "맞음".equals(row.itemVerdict())).count();
 		long itemsWrong = rows.stream().filter(row -> "틀림".equals(row.itemVerdict())).count();
 		long oversized = rows.stream().filter(row -> row.bytes() > SERVER_LIMIT_BYTES).count();
@@ -113,6 +149,7 @@ class ReceiptOcrEvaluationTest {
 				.append("| 총액 정확도 | %d / %d |\n".formatted(totalCorrect, answered))
 				.append("| 품목 채움 | %d / %d |\n".formatted(filled, withItems))
 				.append("| 품목 정확(금액 목록 일치) | %d / %d |\n".formatted(itemsCorrect, withItems))
+				.append("| 품목 없는 영수증을 비움 | %d / %d |\n".formatted(keptEmpty, withoutItems))
 				.append("| **품목을 채웠는데 틀림 (0 이어야 함)** | **%d** |\n".formatted(itemsWrong))
 				.append("| 서버 상한 4MB 초과 사진 | %d / %d |\n\n".formatted(oversized, rows.size()));
 
@@ -148,9 +185,16 @@ class ReceiptOcrEvaluationTest {
 			return expectedTotal != null && expectedTotal.equals(actualTotal);
 		}
 
+		boolean expectsItems() {
+			return expectedItems != null && !expectedItems.isEmpty();
+		}
+
 		String itemVerdict() {
 			if (expectedItems == null) {
 				return "-";
+			}
+			if (expectedItems.isEmpty()) {
+				return items.isEmpty() ? "없음" : "틀림";
 			}
 			if (items.isEmpty()) {
 				return "비움";

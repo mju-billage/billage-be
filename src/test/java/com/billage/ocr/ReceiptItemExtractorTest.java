@@ -195,4 +195,28 @@ class ReceiptItemExtractorTest {
 
 		assertThat(items).isEmpty();
 	}
+
+	/** 품목 없는 카드전표의 결제 정보 줄은 이름·금액이 있고 금액이 합계와 같아도 품목이 아니다. */
+	@Test
+	void 결제_정보_줄을_품목으로_집지_않는다() {
+		List<ReceiptOcrItem> items = itemsOf(
+				"카드매출전표",
+				"결제방법 일시불 12,000",
+				"합계 12,000");
+
+		assertThat(items).isEmpty();
+	}
+
+	/** 중간 소계 위만 읽으면 합이 소계와 맞아도 뒤쪽 품목이 빠져 있다. 최종 금액보다 작은 합계는 믿지 않는다. */
+	@Test
+	void 최종_금액보다_작은_소계와_맞으면_비운다() {
+		List<ReceiptOcrItem> items = itemsOf(
+				"상품명 금액",
+				"음료 2,000",
+				"소계 2,000",
+				"빵 3,000",
+				"합계 5,000");
+
+		assertThat(items).isEmpty();
+	}
 }

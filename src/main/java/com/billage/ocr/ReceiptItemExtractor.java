@@ -34,6 +34,13 @@ final class ReceiptItemExtractor {
 	/** 품목 사이에 끼는 할인 줄. 품목이 아니라 합에서 빼는 금액이다. */
 	private static final List<String> DISCOUNT_WORDS = List.of("할인", "쿠폰", "에누리");
 
+	/**
+	 * 결제 정보 줄("결제방법 일시불 12,000"). 이름과 금액이 있어 품목처럼 생겼고 금액이 합계와 같아
+	 * 합 검증도 통과하므로, 품목이 없는 카드전표에서 가짜 품목 하나가 생긴다. 품목으로 세지 않는다.
+	 */
+	private static final List<String> PAYMENT_WORDS = List.of(
+			"결제방법", "결제수단", "일시불", "할부", "승인", "카드번호", "신용카드", "체크카드");
+
 	/** 한 줄 끝에서 읽을 숫자 개수 상한(수량·단가·할인·금액). */
 	private static final int MAX_TRAILING_NUMBERS = 4;
 	/** 이보다 크면 수량이 아니다. */
@@ -56,9 +63,10 @@ final class ReceiptItemExtractor {
 
 	/**
 	 * @param printedTotals 영수증에 찍힌 합계들(총액 후보와 소계). 품목 합이 이 중 하나와 맞아야 한다.
+	 * @param totalAmount   최종 결제 금액. 품목 합이 이보다 작은 합계와 맞으면 뒤쪽 품목을 빠뜨린 것이다.
 	 * @return 위에서 아래 순서의 품목. 확신이 없으면 빈 목록.
 	 */
-	static List<ReceiptOcrItem> extract(List<String> lines, List<Long> printedTotals) {
+	static List<ReceiptOcrItem> extract(List<String> lines, List<Long> printedTotals, long totalAmount) {
 		int summaryStart = findSummaryStart(lines);
 		if (summaryStart <= 0 || printedTotals.isEmpty()) {
 			return List.of();
@@ -107,6 +115,9 @@ final class ReceiptItemExtractor {
 				continue;
 			}
 
+			if (row.isPayment()) {
+				continue;
+			}
 			long amount = row.numbers().getLast();
 			if (row.isDiscount() || amount < 0) {
 				adjustments -= Math.abs(amount);
@@ -115,7 +126,7 @@ final class ReceiptItemExtractor {
 			addItem(items, row.name(), row.numbers());
 		}
 
-		if (items.isEmpty() || !matchesPrintedTotal(items, adjustments, printedTotals)) {
+		if (items.isEmpty() || !matchesPrintedTotal(items, adjustments, printedTotals, totalAmount)) {
 			return List.of();
 		}
 		return items.reversed();
@@ -180,10 +191,19 @@ final class ReceiptItemExtractor {
 	/**
 	 * 품목 합이 영수증에 찍힌 합계와 맞는지. 할인 줄을 뺀 합(최종 금액)과 빼기 전 합(할인 전 합계)
 	 * 둘 다 영수증에 찍힐 수 있는 값이라 어느 쪽이든 맞으면 믿는다.
+	 *
+	 * <p>단 <b>최종 금액보다 작은 합계</b>와 맞은 것은 믿지 않는다. 할인·포인트는 금액을 줄이기만 하므로
+	 * 최종 금액보다 작은 합계는 중간 소계다 — "음료 2,000 / 소계 2,000 / 빵 3,000 / 합계 5,000"에서
+	 * 첫 소계 위만 읽으면 합이 소계와 맞아도 빵이 빠져 있다.
 	 */
-	private static boolean matchesPrintedTotal(List<ReceiptOcrItem> items, long adjustments, List<Long> printedTotals) {
+	private static boolean matchesPrintedTotal(
+			List<ReceiptOcrItem> items, long adjustments, List<Long> printedTotals, long totalAmount) {
 		long sum = items.stream().mapToLong(ReceiptOcrItem::amount).sum();
-		return printedTotals.contains(sum) || printedTotals.contains(sum + adjustments);
+		return matches(sum, printedTotals, totalAmount) || matches(sum + adjustments, printedTotals, totalAmount);
+	}
+
+	private static boolean matches(long sum, List<Long> printedTotals, long totalAmount) {
+		return sum >= totalAmount && printedTotals.contains(sum);
 	}
 
 	/** 줄 하나를 "이름 + 끝에 붙은 숫자들"로 나눈 것. */
@@ -233,6 +253,10 @@ final class ReceiptItemExtractor {
 
 		boolean isDiscount() {
 			return ReceiptTextParser.containsAny(compact, DISCOUNT_WORDS);
+		}
+
+		boolean isPayment() {
+			return ReceiptTextParser.containsAny(compact, PAYMENT_WORDS);
 		}
 	}
 }

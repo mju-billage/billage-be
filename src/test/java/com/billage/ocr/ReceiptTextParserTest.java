@@ -72,6 +72,30 @@ class ReceiptTextParserTest {
 		assertThat(result.totalAmount()).isEqualTo(12_000L);
 	}
 
+	/** 합계 줄은 있는데 금액이 가려졌으면 요금 줄로 넘어가지 않는다. */
+	@Test
+	void 합계_금액이_가려지면_요금_줄을_총액으로_쓰지_않는다() {
+		assertThatThrownBy(() -> ReceiptTextParser.parse(List.of(
+				"요금 10,000",
+				"추가요금 2,000",
+				"합계")))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.OCR_RESULT_EMPTY);
+	}
+
+	/** 개수와 금액 합계가 한 줄에 찍히면 금액 쪽을 총액으로 읽는다. */
+	@Test
+	void 수량과_금액_합계가_한_줄이면_금액을_읽는다() {
+		assertThat(ReceiptTextParser.parse(List.of("총수량 3 합계 15,000")).totalAmount()).isEqualTo(15_000L);
+	}
+
+	/** 개수만 세는 합계 줄은 총액이 아니다. */
+	@Test
+	void 수량만_센_합계_줄은_총액이_아니다() {
+		assertThat(ReceiptTextParser.parse(List.of("합계 15,000", "총 수량 합계 3")).totalAmount()).isEqualTo(15_000L);
+	}
+
 	/** 합계 줄이 가려진 영수증. 개별 요금을 총액으로 채우지 않고 못 읽었다고 한다. */
 	@Test
 	void 합계가_가려지면_개별_요금_줄을_총액으로_쓰지_않는다() {

@@ -15,6 +15,7 @@
 외부 패키지 없이 표준 라이브러리만 쓴다.
 """
 import base64
+import csv
 import json
 import os
 import shutil
@@ -89,6 +90,17 @@ def main() -> None:
 
     photos = sorted(p for p in folder.iterdir()
                     if p.suffix.lower() in (*IMAGE_SUFFIXES, ".heic", ".heif"))
+    # 응답·TSV 는 확장자를 뺀 이름으로 저장한다(채점기도 같은 규칙). receipt.jpg 와 receipt.png 가 같이 있으면
+    # 한쪽 응답을 다른 쪽이 재사용하게 되므로 시작 전에 멈춘다.
+    stems = {}
+    for photo in photos:
+        if photo.suffix.lower() in (".jpg", ".jpeg") and photo.with_suffix(".heic").exists():
+            continue
+        stems.setdefault(photo.stem, []).append(photo.name)
+    clashes = [names for names in stems.values() if len(names) > 1]
+    if clashes:
+        sys.exit("확장자만 다른 사진이 있습니다. 이름을 바꿔 주세요: " + "; ".join(", ".join(n) for n in clashes))
+
     called = 0
     for photo in photos:
         if photo.suffix.lower() in (".jpg", ".jpeg") and photo.with_suffix(".heic").exists():
@@ -115,10 +127,12 @@ def main() -> None:
 
     answers = folder / "answers.csv"
     if not answers.exists():
-        answers.write_text("file,total,item_amounts,memo\n" + "".join(
-            f"{to_jpg_if_heic(p).name},,,\n" for p in photos
-            if not (p.suffix.lower() in (".jpg", ".jpeg") and p.with_suffix(".heic").exists())),
-            encoding="utf-8")
+        with answers.open("w", encoding="utf-8", newline="") as out:
+            writer = csv.writer(out)
+            writer.writerow(["file", "total", "item_amounts", "memo"])
+            for p in photos:
+                if not (p.suffix.lower() in (".jpg", ".jpeg") and p.with_suffix(".heic").exists()):
+                    writer.writerow([to_jpg_if_heic(p).name, "", "", ""])
         print(f"\nanswers.csv 를 만들었습니다 — 정답을 채워 주세요.")
     print(f"\n완료: 사진 {len(photos)}장, 이번에 CLOVA 호출 {called}회")
 
