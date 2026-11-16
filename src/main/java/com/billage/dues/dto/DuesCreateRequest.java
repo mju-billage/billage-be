@@ -5,6 +5,7 @@ import java.util.List;
 
 import com.billage.dues.Dues;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -26,6 +27,7 @@ public record DuesCreateRequest(
 		@NotNull(message = "시작일은 필수입니다.")
 		LocalDate startDate,
 		@NotNull(message = "마감일은 필수입니다.")
+		@Schema(description = "오늘(한국 시간) 이후. 지난 날짜면 DUES_DUE_DATE_PAST(400).")
 		LocalDate dueDate,
 
 		@NotEmpty(message = "납부 대상을 1명 이상 지정해야 합니다.")

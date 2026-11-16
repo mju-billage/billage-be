@@ -24,6 +24,7 @@ import com.billage.entry.EntryRepository;
 import com.billage.entry.EntryType;
 import com.billage.ledger.LedgerRepository;
 import com.billage.membership.GroupAccessGuard;
+import com.billage.notification.NotificationService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -48,6 +49,7 @@ public class DashboardService {
 	private final DuesMemberRepository duesMemberRepository;
 	private final LedgerRepository ledgerRepository;
 	private final GroupAccessGuard guard;
+	private final NotificationService notificationService;
 
 	@Transactional(readOnly = true)
 	public DashboardResponse getDashboard(Long groupId, Long userId, int recentEntrySize) {
@@ -82,7 +84,7 @@ public class DashboardService {
 		DashboardResponse.Calendar calendar = calendarOf(groupId, today.minusDays(CALENDAR_DAYS - 1), today);
 
 		return new DashboardResponse(groupId, summary, approval, dues, recentEntries, calendar,
-				upcomingDuesOf(groupId, today), false);
+				upcomingDuesOf(groupId, today), notificationService.hasUnread(userId));
 	}
 
 	/**

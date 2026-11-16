@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.billage.auth.security.CurrentUserId;
 import com.billage.common.response.ApiResponse;
+import com.billage.group.dto.GroupDeleteRequest;
 import com.billage.group.dto.GroupCreateRequest;
 import com.billage.group.dto.GroupCreateResponse;
 import com.billage.group.dto.GroupDetailResponse;
@@ -64,7 +65,8 @@ public class GroupController {
 
 	@DeleteMapping("/{groupId}")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
-	public void delete(@CurrentUserId Long userId, @PathVariable Long groupId) {
-		groupService.delete(groupId, userId);
+	public void delete(@CurrentUserId Long userId, @PathVariable Long groupId,
+			@RequestBody(required = false) GroupDeleteRequest request) {
+		groupService.delete(groupId, userId, request == null ? null : request.confirmName());
 	}
 }

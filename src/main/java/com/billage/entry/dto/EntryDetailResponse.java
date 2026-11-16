@@ -9,6 +9,7 @@ import com.billage.entry.ApprovalStatus;
 import com.billage.entry.Entry;
 import com.billage.entry.EntryType;
 import com.billage.file.dto.ReceiptFileResponse;
+import com.billage.ocr.dto.ReceiptOcrResponse;
 
 /**
  * 내역 상세. 작성자·승인자 이름은 기록 시점 값이라 이후 해당 관리자가 탈퇴해도 그대로 유지된다.
@@ -41,7 +42,14 @@ public record EntryDetailResponse(
 		String duesTitle,
 		boolean duesExists,
 		int payerCount,
-		List<Payer> payers
+		List<Payer> payers,
+		/**
+		 * 이 내역의 증빙을 영수증 인식(OCR)에 넣었을 때 읽힌 값. 인식한 증빙이 없으면 null 이다.
+		 *
+		 * <p>사용자가 폼에서 고친 값이 아니라 <b>영수증에서 읽은 원래 값</b>이다 — 내역의 금액·날짜와 다를 수 있다.
+		 * 증빙이 여러 장이면 가장 최근에 인식한 것 하나만 담는다.
+		 */
+		ReceiptOcrResponse ocr
 ) {
 
 	/** 납부자 한 명. 마감 시점에 이 사람이 낸 금액을 함께 보여 준다. */
@@ -51,12 +59,13 @@ public record EntryDetailResponse(
 	public record Actor(Long userId, String name) {
 	}
 
-	public static EntryDetailResponse of(Entry entry, List<ReceiptFileResponse> receiptFiles) {
-		return of(entry, receiptFiles, false, List.of());
+	public static EntryDetailResponse of(Entry entry, List<ReceiptFileResponse> receiptFiles,
+			ReceiptOcrResponse ocr) {
+		return of(entry, receiptFiles, ocr, false, List.of());
 	}
 
 	public static EntryDetailResponse of(Entry entry, List<ReceiptFileResponse> receiptFiles,
-			boolean duesExists, List<Payer> payers) {
+			ReceiptOcrResponse ocr, boolean duesExists, List<Payer> payers) {
 		Actor approvedBy = entry.getApprovedByUserId() == null
 				? null
 				: new Actor(entry.getApprovedByUserId(), entry.getApprovedByName());
@@ -68,6 +77,6 @@ public record EntryDetailResponse(
 				entry.getType(), entry.getTitle(), entry.getAmount(), entry.getOccurredOn(), entry.getMemo(),
 				entry.getApprovalStatus(), new Actor(entry.getCreatedByUserId(), entry.getCreatedByName()),
 				manager, approvedBy, KoreanTime.toOffset(entry.getApprovedAt()), receiptFiles,
-				entry.getDuesId(), entry.getDuesTitle(), duesExists, payers.size(), payers);
+				entry.getDuesId(), entry.getDuesTitle(), duesExists, payers.size(), payers, ocr);
 	}
 }

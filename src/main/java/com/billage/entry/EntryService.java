@@ -23,10 +23,17 @@ import com.billage.dues.DuesService;
 import com.billage.entry.dto.GroupEntryListResponse;
 import com.billage.entry.dto.GroupEntrySummaryResponse;
 import com.billage.file.FileService;
+import com.billage.file.dto.ReceiptFileResponse;
 import com.billage.ledger.Ledger;
 import com.billage.ledger.LedgerRepository;
 import com.billage.membership.GroupAccessGuard;
 import com.billage.membership.GroupMembership;
+import com.billage.ocr.ReceiptOcrService;
+import com.billage.notification.NotificationCategory;
+import com.billage.notification.NotificationMessage;
+import com.billage.notification.NotificationService;
+import com.billage.notification.NotificationTargetType;
+import com.billage.ocr.dto.ReceiptOcrResponse;
 import com.billage.user.User;
 import com.billage.user.UserRepository;
 
@@ -48,15 +55,18 @@ public class EntryService {
 	private final FileService fileService;
 	private final DuesService duesService;
 	private final GroupAccessGuard guard;
+	private final ReceiptOcrService receiptOcrService;
+	private final NotificationService notificationService;
 
 	@Transactional(readOnly = true)
 	public PageResponse<EntrySummaryResponse> getEntries(Long ledgerId, Long userId, EntryType type,
-			ApprovalStatus status, String keyword, Pageable pageable) {
+			ApprovalStatus status, LocalDate from, LocalDate to, String keyword, Pageable pageable) {
 		Ledger ledger = findLedger(ledgerId);
 		guard.requireMembership(ledger.getGroup().getId(), userId);
 
 		String normalizedKeyword = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
-		Page<Entry> entries = entryRepository.search(ledgerId, type, status, normalizedKeyword, pageable);
+		requireValidPeriod(from, to);
+		Page<Entry> entries = entryRepository.search(ledgerId, type, status, from, to, normalizedKeyword, pageable);
 		Map<Long, Long> receiptCounts = fileService.countReceipts(
 				entries.getContent().stream().map(Entry::getId).toList());
 
@@ -78,9 +88,7 @@ public class EntryService {
 		// JPQL 의 in 은 빈 컬렉션을 받으면 문법 오류가 난다. '장부 미선택 = 전체'이므로 조건에서 뺀다.
 		List<Long> targetLedgerIds = (ledgerIds == null || ledgerIds.isEmpty()) ? null : ledgerIds;
 		String normalizedKeyword = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
-		if (from != null && to != null && from.isAfter(to)) {
-			throw new BusinessException(ErrorCode.INVALID_QUERY_PARAMETER);
-		}
+		requireValidPeriod(from, to);
 
 		Page<Entry> entries = entryRepository.searchInGroup(groupId, targetLedgerIds, type, status,
 				from, to, normalizedKeyword, pageable);
@@ -112,6 +120,12 @@ public class EntryService {
 				requireNonBlank(request.title()), request.amount(), request.occurredOn(), request.memo(),
 				managerUserId, managerName));
 		fileService.linkReceipts(entry, request.receiptFileIds(), userId);
+		if (!entry.isApproved()) {
+			notificationService.notifyOwners(entry.getGroupId(), userId, new NotificationMessage(entry.getGroupId(),
+					NotificationCategory.APPROVAL, "승인 요청이 도착했어요",
+					authorName + "님이 " + entry.getTitle() + " 내역을 올렸어요",
+					NotificationTargetType.ENTRY, entry.getId()));
+		}
 
 		return EntryCreateResponse.of(entry, fileService.getReceipts(entry.getId()));
 	}
@@ -121,8 +135,14 @@ public class EntryService {
 		Entry entry = findEntry(entryId);
 		guard.requireMembership(entry.getGroupId(), userId);
 
+		List<ReceiptFileResponse> receipts = fileService.getReceipts(entryId);
+		// 보관된 인식 결과를 읽을 뿐이다. 상세를 열 때마다 OCR 을 부르지 않는다.
+		ReceiptOcrResponse ocr = receiptOcrService
+				.findLatestOf(receipts.stream().map(ReceiptFileResponse::fileId).toList())
+				.orElse(null);
+
 		if (entry.getDuesId() == null) {
-			return EntryDetailResponse.of(entry, fileService.getReceipts(entryId));
+			return EntryDetailResponse.of(entry, receipts, ocr);
 		}
 
 		// 마감된 회비가 만든 수입 내역이면 납부자 명단을 함께 보여 준다.
@@ -134,12 +154,15 @@ public class EntryService {
 						.toList())
 				.orElse(List.of());
 
-		return EntryDetailResponse.of(entry, fileService.getReceipts(entryId), payerViews.isPresent(), payers);
+		return EntryDetailResponse.of(entry, receipts, ocr, payerViews.isPresent(), payers);
 	}
 
 	/**
 	 * 내역 수정(총무 전용). 승인 완료 내역도 그대로 수정하며 재승인을 요구하지 않는다.
 	 * 유형(type)은 바꿀 수 없고, 작성자·승인자 기록은 등록·승인 시점 값을 유지한다.
+	 *
+	 * <p>장부 변경은 같은 모임의 장부로만 된다. 다른 모임의 장부는 있어도 없는 것처럼 {@code LEDGER_NOT_FOUND} 로
+	 * 응답한다 — 남의 모임 장부 ID 가 있는지 알려 주지 않기 위해서다.
 	 */
 	@Transactional
 	public EntryUpdateResponse update(Long entryId, Long userId, EntryUpdateRequest request) {
@@ -150,6 +173,9 @@ public class EntryService {
 		if (title != null && title.isEmpty()) {
 			// `@Size(min = 1)` 은 " " 를 통과시켜 trim 후 빈 내역명이 되므로 여기서 막는다.
 			throw new BusinessException(ErrorCode.INVALID_REQUEST, "내역명은 공백일 수 없습니다.");
+		}
+		if (request.ledgerId() != null) {
+			entry.moveTo(findLedgerInGroup(request.ledgerId(), entry.getGroupId()));
 		}
 		entry.update(title, request.amount(), request.occurredOn(), request.memo());
 		if (request.managerUserId() != null) {
@@ -182,6 +208,9 @@ public class EntryService {
 		guard.requireOwner(entry.getGroupId(), userId);
 
 		entry.approve(userId, userName(userId));
+		notificationService.notifyUser(entry.getCreatedByUserId(), userId, new NotificationMessage(entry.getGroupId(),
+				NotificationCategory.APPROVAL, "내역이 승인됐어요", entry.getTitle() + " 내역이 승인됐어요",
+				NotificationTargetType.ENTRY, entry.getId()));
 
 		return EntryApproveResponse.from(entry);
 	}
@@ -193,13 +222,29 @@ public class EntryService {
 	 * 남의 모임 사용자를 담당자로 박아 두면 이름 스냅샷이 엉뚱해진다.
 	 */
 	private String requireGroupManager(Long groupId, Long managerUserId) {
-		guard.requireMembership(groupId, managerUserId);
+		if (!guard.isMember(groupId, managerUserId)) {
+			throw new BusinessException(ErrorCode.MANAGER_NOT_IN_GROUP);
+		}
 		return userName(managerUserId);
+	}
+
+	private void requireValidPeriod(LocalDate from, LocalDate to) {
+		if (from != null && to != null && from.isAfter(to)) {
+			throw new BusinessException(ErrorCode.INVALID_QUERY_PARAMETER);
+		}
 	}
 
 	private String userName(Long userId) {
 		return userRepository.findById(userId).map(User::getName)
 				.orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHORIZED));
+	}
+
+	private Ledger findLedgerInGroup(Long ledgerId, Long groupId) {
+		Ledger ledger = findLedger(ledgerId);
+		if (!ledger.getGroup().getId().equals(groupId)) {
+			throw new BusinessException(ErrorCode.LEDGER_NOT_FOUND);
+		}
+		return ledger;
 	}
 
 	private Ledger findLedger(Long ledgerId) {

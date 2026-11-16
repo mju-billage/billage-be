@@ -247,7 +247,7 @@ class MemberProfileServiceTest extends IntegrationTest {
 		Long memberId = memberService.addMember(groupId, ownerId,
 				new MemberCreateRequest("김모임원", null, null, null)).memberId();
 
-		var payments = memberService.getPayments(groupId, ownerId, memberId, null, null);
+		var payments = memberService.getPayments(groupId, ownerId, memberId, null, null, null, MemberPaymentPaging.of(null, null, null));
 
 		assertThat(payments.totalPaidAmount()).isZero();
 		assertThat(payments.payments()).isEmpty();

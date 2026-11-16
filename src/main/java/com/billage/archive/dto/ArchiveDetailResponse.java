@@ -2,6 +2,7 @@ package com.billage.archive.dto;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
@@ -28,7 +29,12 @@ public record ArchiveDetailResponse(
 	public record Summary(long totalIncome, long totalExpense, long balance, long entryCount) {
 	}
 
+	/**
+	 * @param startDate 이 장부에 담긴 내역 중 가장 이른 발생일. 내역이 없으면 null.
+	 * @param endDate   가장 늦은 발생일. 장부에는 기간이라는 값이 따로 없어 내역에서 구한다.
+	 */
 	public record Ledger(String folderName, String ledgerName, Long budget,
+			LocalDate startDate, LocalDate endDate,
 			long totalIncome, long totalExpense, long balance, List<Entry> entries) {
 	}
 
@@ -57,7 +63,12 @@ public record ArchiveDetailResponse(
 		List<Entry> entries = ledger.getEntries().stream()
 				.map(entry -> toEntry(entry, receiptsByArchiveEntryId))
 				.toList();
+		LocalDate startDate = ledger.getEntries().stream().map(ArchiveEntry::getOccurredOn)
+				.min(Comparator.naturalOrder()).orElse(null);
+		LocalDate endDate = ledger.getEntries().stream().map(ArchiveEntry::getOccurredOn)
+				.max(Comparator.naturalOrder()).orElse(null);
 		return new Ledger(ledger.getFolderName(), ledger.getLedgerName(), ledger.getBudget(),
+				startDate, endDate,
 				ledger.getTotalIncome(), ledger.getTotalExpense(), ledger.balance(), entries);
 	}
 

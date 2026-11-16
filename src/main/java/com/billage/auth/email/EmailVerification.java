@@ -93,6 +93,14 @@ public class EmailVerification {
 		return verifiedAt != null;
 	}
 
+	/**
+	 * 인증을 마쳤고 그 인증이 아직 유효한지. 인증은 가입 직전 단계라 오래 살려 둘 이유가 없다 —
+	 * 기한 없이 두면 예전에 인증만 해 둔 주소로 한참 뒤에 다른 사람이 가입할 수 있다.
+	 */
+	public boolean isVerifiedWithin(int ttlSeconds, LocalDateTime now) {
+		return verifiedAt != null && !verifiedAt.plusSeconds(ttlSeconds).isBefore(now);
+	}
+
 	public boolean sendLimitExceeded(LocalDateTime now, int sendWindowMinutes, int maxSends) {
 		boolean windowAlive = !sendWindowStartedAt.plusMinutes(sendWindowMinutes).isBefore(now);
 		return windowAlive && sendCount >= maxSends;

@@ -20,6 +20,13 @@ public interface GroupMembershipRepository extends JpaRepository<GroupMembership
 
 	boolean existsByGroupIdAndUserId(Long groupId, Long userId);
 
+	/** 두 사용자가 함께 관리자로 있는 모임이 하나라도 있는지. 남의 프로필 사진 열람 판정에 쓴다. */
+	@Query("""
+			select count(a) > 0 from GroupMembership a, GroupMembership b
+			where a.userId = :userId and b.userId = :otherUserId and a.group = b.group
+			""")
+	boolean sharesGroup(@Param("userId") Long userId, @Param("otherUserId") Long otherUserId);
+
 	long countByGroupIdAndRole(Long groupId, GroupRole role);
 
 	/**

@@ -223,15 +223,25 @@ class AuthIntegrationTest extends IntegrationTest {
 		Response response = login(EMAIL, "wrong-password");
 
 		assertThat(response.status()).isEqualTo(401);
-		assertThat(response.at("code")).isEqualTo("INVALID_CREDENTIALS");
+		assertThat(response.at("code")).isEqualTo("INVALID_PASSWORD");
 	}
 
 	@Test
 	void 로그인_실패_없는_사용자() {
 		Response response = login("nobody@example.com", PASSWORD);
 
+		assertThat(response.status()).isEqualTo(404);
+		assertThat(response.at("code")).isEqualTo("USER_NOT_FOUND");
+	}
+
+	@Test
+	void 로그인_실패_소셜_전용_계정은_비밀번호_오류로_본다() {
+		userRepository.save(User.createSocial("social@example.com", "소셜", LocalDateTime.now()));
+
+		Response response = login("social@example.com", PASSWORD);
+
 		assertThat(response.status()).isEqualTo(401);
-		assertThat(response.at("code")).isEqualTo("INVALID_CREDENTIALS");
+		assertThat(response.at("code")).isEqualTo("INVALID_PASSWORD");
 	}
 
 	// --- 현재 사용자 / 보호 API ---

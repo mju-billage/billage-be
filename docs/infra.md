@@ -5,7 +5,7 @@
 - dev / prod 서버 분리 (개발 중엔 EC2 공용 dev 서버 1대). DB도 분리, 공유 금지.
 - Caddy = HTTPS + reverse proxy. Spring Boot는 systemd 실행.
 - GitHub Actions: develop push → dev 배포 / release tag 또는 수동 → prod 배포.
-- 파일은 S3(`billage-files-442908904609`, `ap-northeast-2`). 앱 설정 `billage.file.storage=S3`, dev·prod 는 `prefix` 로 구분. 로컬 개발은 `LOCAL`(디스크). DB는 주기적 덤프 → S3 백업.
+- 파일은 **서버 안의 MinIO**(S3 호환 API, 포크 `pgsty/silo` 고정 태그, `127.0.0.1:9000` 전용 — 외부 공개·Caddy 연결 금지). 앱 설정 `billage.file.storage=S3` + `S3_ENDPOINT/ACCESS_KEY/SECRET_KEY/BUCKET/REGION/PREFIX`. AWS SDK for S3 를 그대로 쓴다. 로컬 개발은 `LOCAL`(디스크). 구성·용량 정책은 `deploy/README.md` 의 "업로드 파일 MinIO"·"디스크 용량 정책". **파일 오프사이트 백업은 없다**(외부 저장소 미사용 결정, 런칭 전 재검토).
 - 초기에 RDS·ALB·Redis·Kafka 사용 안 함. 비밀값은 Git에 커밋 금지.
 - 로컬: 앱은 IDE 실행, MySQL만 Docker Compose.
 
@@ -14,7 +14,7 @@
 - **구조**: RN 앱 →HTTPS→ Caddy(443) →reverse_proxy→ Spring Boot(systemd, 127.0.0.1:8080) → MySQL 8.4(Docker, 127.0.0.1:3306). 단일 EC2 t3.micro(Ubuntu 24.04, RAM 1GB, 스왑 2G), ap-northeast-2.
 - **주소**: 탄력적 IP `52.78.148.114` 고정 → `https://52-78-148-114.nip.io` (Caddy 자동 Let's Encrypt). nip.io는 실도메인 생기면 `caddy.env`의 SITE_ADDRESS만 교체.
 - **배포**: `develop` push → Actions `deploy-dev.yml`(bootJar→scp→restart). 헬스체크 실패 시 **이전 jar 자동 롤백**. 시크릿 `EC2_HOST/EC2_USER/EC2_SSH_KEY`.
-- **백업**: 매일 03:30 KST mysqldump→gzip(로컬 14일) + S3 `billage-db-backup-442908904609`(SSE-S3, 30일). S3 인증은 EC2 인스턴스 역할(서버에 키 없음). 복구 `deploy/restore-db.sh`.
+- **백업**: 매일 03:30 KST mysqldump→gzip(로컬 7일) + S3 `billage-db-backup-442908904609`(SSE-S3, 30일). S3 인증은 EC2 인스턴스 역할(서버에 키 없음). 복구 `deploy/restore-db.sh`.
 - **하드닝**: 앱·MySQL 외부 미노출(localhost 바인딩+보안그룹 22/80/443만), JVM Xmx384m·MySQL mem_limit 360m·performance_schema OFF, journald 200M 상한, 자가점검 cron(`healthcheck.sh`) 5분.
 - **미완**: prod 환경, UptimeRobot 외부 알림 등록. (접근 제어는 auth 도메인 구현으로 해결 — `SecurityConfig` 가 `anyRequest().authenticated()`, 로그인·재발급 계열만 공개.)
 
@@ -49,15 +49,18 @@ Figma 화면명세서 ver 0.25 전 캔버스를 텍스트로 추출해 노션 AP
 - **회원가입 플로우 2단계 누락** — 이메일 인증(6자리·3분·재전송)은 완료(2026-09-04, V17). 약관 동의·비밀번호 변경·회원 탈퇴도 완료(2026-09-05, V20).
   - 약관 동의는 가입 요청의 `agreements`(필수 3종 + 마케팅)로 받는다. 프론트가 동의 화면을 붙이기 전까지는 없어도 통과하도록 `billage.auth.terms.required-for-signup` 을 꺼 두었다 — 값이 오면 설정과 무관하게 항상 검증한다.
   - 회원 탈퇴는 `DELETE /api/v1/auth/me`. 내가 유일한 총무인 모임은 관리자가 남아 있으면 권한을 넘겨야 하고(`OWNER_TRANSFER_REQUIRED`), 나 혼자면 모임째 삭제한다. 계정 행은 실제로 지우되 모임·초대 코드·증빙의 "누가 만들었나" 표시만 비워 회계 이력은 남긴다.
-  - **비밀번호 재설정(임시 비밀번호 메일)만 남았다.** 코드가 아니라 SES 프로덕션 액세스가 준비되면 붙인다.
-- **알림 도메인 전체** — 알림 목록·읽음·설정 토글 6종. 푸시 전제라 제외 범위(자체 푸시 서버)와 충돌하므로 런칭 포함 여부 결정이 먼저다.
-- **고객지원** — 공지사항, 약관 전문, FAQ, 문의 접수. 백오피스가 없어 채우는 방법부터 정해야 한다.
+  - ~~비밀번호 재설정(임시 비밀번호 메일)~~ — 완료(2026-10-06, V21). `POST /api/v1/auth/password/reset`. 가입되지 않은 주소·소셜 전용 계정·발송 횟수 초과 모두 같은 `204` 로 끝나고 아무것도 하지 않는다. 정책은 `docs/domain.md` 의 인증 절.
+- ~~**알림 도메인 전체**~~ — 완료(2026-11-08, V26). **앱 안 알림만**(목록·읽음·설정 토글 6종), **푸시·FCM 없음** —
+  제외 범위(자체 푸시 서버)와 충돌하지 않는다. 각 서비스가 같은 트랜잭션에서 직접 알림을 만든다(이벤트 버스·비동기 없음).
+- ~~**고객지원**~~ — 완료(2026-11-08, V25). FAQ·공지·약관은 **Flyway 마이그레이션으로만** 넣고 고친다(백오피스 없음).
+  FAQ·공지·약관 조회는 로그인 없이(가입 화면의 약관 보기), 문의 접수는 로그인 후. 약관 원문은 기획에서 받는 대로 넣는다(그전에는 `TERMS_NOT_FOUND`).
+  문의는 DB 에 저장하고, `BILLAGE_INQUIRY_EMAIL` 이 있으면 그 주소로 알림 메일을 보낸다.
 - ~~**통계/분석**~~ — 완료(#30). 활성 장부, 예산 소진율 랭킹, 장부별 지출 비중(상위 4 + 기타).
 - ~~**증빙자료 앨범**~~ — 완료(#30). 모임 전체 증빙을 모아 보고 원본 내역으로 역참조.
 - ~~**내역 화면 전반**~~ — 완료. 모임 전체 내역 목록(장부 다중 필터 + 잔액 요약)과 내역명·장부명 통합 검색은 #26, 담당자 필드와 마감 회비 연결은 #27(V15).
 - ~~**폴더 화면 전반**~~ — 완료. 폴더+장부 혼합 목록과 최상위 영역 조회는 #26, 선택 이동(다중)은 #28.
 - ~~**대시보드**~~ — 완료(#30). 최근 14일 캘린더, 월간 캘린더, 마감 임박 회비 3건.
-  안 읽은 알림 표시(`hasUnreadNotification`)는 필드만 열어 두고 알림 도메인이 생길 때까지 항상 false 다.
+  안 읽은 알림 표시(`hasUnreadNotification`)는 2026-11-08 부터 실제 값(사용자 기준)이다.
 - ~~**보고서 유형 분리**~~ — 완료(#28, V16). 장부별은 기간을, 기간별은 장부를 서버가 정한다.
 - ~~**회비**~~ — 완료(#25, V14). 시작일과 `SCHEDULED` 상태, 납부 상태 일괄 변경. 목록 검색은 기획 변경으로 제거.
 - ~~**모임원 상세**~~ — 완료(#28). 총 납부 금액, 납부 내역, 일괄 삭제.
@@ -123,24 +126,15 @@ Figma 화면명세서 ver 0.25 전 캔버스를 텍스트로 추출해 노션 AP
 - **응답**: `merchantName` / `purchasedOn` / `items[]` / `totalAmount` / `recognizedAt`.
   **`totalAmount` 만 필수**다 — 나머지는 못 읽으면 null(또는 빈 배열)로 내리고 사용자가 채운다.
   총액마저 못 읽으면 결과가 아니라 `OCR_RESULT_EMPTY(422)` 다.
-- **인식 결과는 저장하지 않는다.** 명세의 "별도 테이블 영구 보관 여부 미확정"은 보관하지 않는 쪽으로 뒀다 —
-  사용자가 확인·수정 후 내역 등록 API 를 부르는 흐름이라 서버가 들고 있을 이유가 없다. Flyway 마이그레이션도 없다.
+- **인식 결과는 파일에 붙여 보관한다**(2026-10-07, V22 — 처음에는 저장하지 않았다). 그 파일이 내역의 증빙이 되면
+  내역 상세의 `ocr` 로 다시 내려가고, 그때 OCR 을 다시 부르지 않는다. 정책은 `docs/domain.md` 의 UploadedFile 절.
 - **오류**: `INVALID_OCR_FILE(400)`(증빙 용도가 아니거나 OCR 이 못 받는 형식·크기) ·
   `OCR_RESULT_EMPTY(422)` · `OCR_PROCESSING_FAILED(502)`(외부 호출 실패) · `ACCESS_DENIED(403)` · `FILE_NOT_FOUND(404)`.
   **명세에 없던 `OCR_RATE_LIMITED(429)` 를 추가했다**(노션 명세에도 반영 완료).
 - **설정**: `billage.ocr.provider=STUB|CLOVA_RECEIPT|CLOVA_GENERAL`. 로컬·테스트는 STUB(고정값), 배포는 `CLOVA_GENERAL`.
   STUB 은 local/test 프로필 밖에서 뜨면 기동이 실패한다 — 가짜 금액이 장부에 올라가는 것이 조용히 틀리는 최악이라서다.
 - **시크릿**: `BILLAGE_OCR_INVOKE_URL` / `BILLAGE_OCR_SECRET_KEY` 를 EC2 환경변수로 주입한다.
-  S3·SES 와 달리 인스턴스 역할로 해결되지 않는 외부 서비스라 서버에 값이 생긴다. 커밋 금지.
-
-### 프론트 연동 상태 (2026-09-21)
-
-- `billage_FE` 에 `src/services/ocrService.ts` 가 있고 **경로·응답 필드가 서버 구현과 일치한다**(같은 노션 명세 기준).
-- **다만 그쪽 타입이 `null` 을 허용하지 않는다.** 서버는 `totalAmount` 만 항상 채우고 나머지는 못 읽으면 `null`·빈 배열로 내린다.
-  `items` 는 합이 맞지 않으면 비고(2026-11-17 부터는 채워질 수도 있다) 상호·결제일도 자주 비어서, 고치지 않으면 화면이 깨진다.
-- **아직 이 API 를 부를 데이터가 없다.** 카메라는 실제 촬영으로 바뀌었지만(2026-09-06) 그 결과를
-  `fileService.uploadFile()` 로 올려 진짜 `fileId` 를 받는 연결이 없고, 갤러리는 여전히 가짜 토큰만 만든다.
-  **업로드 배선이 이 기능의 마지막 관문이다** — 서버는 준비됐다.
+  서버에 값이 생기는 외부 서비스다. 커밋 금지. 메일(Gmail SMTP) 계정도 같은 방식이다.
   **둘 중 하나라도 비면 dev·prod 기동이 실패한다**(S3 버킷 미설정과 같은 방식) — 배포 전에 먼저 넣어야 한다.
 - **`inferResult` 는 세 값이다**: `SUCCESS` / `FAILURE`(못 읽음 → 422) / `ERROR`(클로바 장애 → 502).
   `ERROR` 는 장애뿐 아니라 **입력 이미지 문제**에도 온다(해상도가 10~8000px 를 벗어나면 200 + ERROR).

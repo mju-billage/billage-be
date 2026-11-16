@@ -1,0 +1,38 @@
+# 서버(VM)용 파일 저장소 MinIO. MySQL(compose.yaml)과 파일·프로젝트를 나눠 서로 재생성되지 않게 한다.
+# API(9000)·Console(9001) 모두 127.0.0.1 로만 바인딩한다 — 외부 공개 금지, Caddy 로도 연결하지 않는다.
+# 앱(Spring Boot)만 같은 호스트에서 http://127.0.0.1:9000 으로 접근한다.
+# 사용: cd /opt/billage && sudo docker compose -f compose.minio.yaml --env-file /etc/billage/minio.env up -d
+#
+# 이미지: 공식 minio/minio 는 Docker Hub·Quay 에서 내려갔고 원본 저장소도 보관 상태다.
+# 유지보수가 이어지는 포크 pgsty/silo 를 쓴다(S3 API·mc·환경변수 이름이 MinIO 와 같다).
+# latest 를 쓰지 않고 릴리스 태그 + digest 로 고정한다. 올릴 때는 태그와 digest 를 함께 바꾼다.
+
+name: billage-minio
+
+services:
+  minio:
+    image: pgsty/silo:RELEASE.2026-09-16T00-00-00Z@sha256:635197cb9f36d01bee221d34d1c7d7960f6a95c48b0b6c01d99cd13bdae51a46
+    container_name: billage-minio
+    restart: always
+    mem_limit: 1g
+    command: server /data --console-address ":9001"
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    environment:
+      TZ: Asia/Seoul
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set in /etc/billage/minio.env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set in /etc/billage/minio.env}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      # 실제 서비스 파일. 호스트 경로에 두어 컨테이너·볼륨 정리와 무관하게 남는다.
+      - /var/lib/billage/minio:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -3,7 +3,6 @@ package com.billage.file;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.Set;
 
 import org.junit.jupiter.api.AfterEach;
@@ -71,6 +70,6 @@ class FileUrlResolverTest {
 				DataSize.ofMegabytes(10),
 				Set.of("image/jpeg", "image/jpg", "image/png", "image/webp"),
 				baseUrl,
-				new FileProperties.S3("bucket", "dev", Duration.ofMinutes(5)));
+				new FileProperties.S3("http://127.0.0.1:9000", "access", "secret", "bucket", "us-east-1", "dev"));
 	}
 }

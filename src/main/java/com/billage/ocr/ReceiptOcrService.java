@@ -2,8 +2,11 @@ package com.billage.ocr;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.Collection;
+import java.util.Optional;
 
 import org.springframework.core.io.Resource;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 import com.billage.common.exception.BusinessException;
@@ -39,6 +42,7 @@ public class ReceiptOcrService {
 	private final ReceiptOcrClient ocrClient;
 	private final ReceiptOcrRateLimiter rateLimiter;
 	private final OcrProperties properties;
+	private final ReceiptOcrStore store;
 
 	public ReceiptOcrResponse recognize(Long fileId, Long userId) {
 		UploadedFile file = fileService.getAccessibleFile(fileId, userId);
@@ -62,7 +66,34 @@ public class ReceiptOcrService {
 		rateLimiter.check(userId);
 
 		ReceiptOcrResult result = ocrClient.recognize(image, format);
-		return ReceiptOcrResponse.of(fileId, result, LocalDateTime.now());
+		return keep(fileId, result, LocalDateTime.now());
+	}
+
+	/**
+	 * 인식 결과를 보관한다. 이 파일이 내역의 증빙으로 붙으면 내역 상세에서 다시 읽힌다.
+	 *
+	 * <p>보관에 실패해도 인식 결과는 돌려준다 — 이미 과금된 호출이고, 사용자는 지금 이 값으로 폼을 채워야 한다.
+	 * 실패는 드물다: 같은 파일을 동시에 두 번 인식해 UNIQUE 에 걸리거나, 그 사이 파일이 지워진 경우다.
+	 * 앞의 경우는 한 번 더 하면 상대가 만든 행을 덮어쓴다.
+	 */
+	private ReceiptOcrResponse keep(Long fileId, ReceiptOcrResult result, LocalDateTime recognizedAt) {
+		try {
+			return store.save(fileId, result, recognizedAt);
+		} catch (DataIntegrityViolationException first) {
+			try {
+				return store.save(fileId, result, recognizedAt);
+			} catch (DataIntegrityViolationException second) {
+				log.warn("영수증 인식 결과 보관 실패. fileId={} reason={}", fileId, second.getMessage());
+				return ReceiptOcrResponse.of(fileId, result, recognizedAt);
+			}
+		}
+	}
+
+	/**
+	 * 이 파일들 중 가장 최근에 인식한 결과. 내역 상세가 쓴다 — OCR 을 다시 부르지 않고 보관된 값을 읽는다.
+	 */
+	public Optional<ReceiptOcrResponse> findLatestOf(Collection<Long> fileIds) {
+		return store.findLatestOf(fileIds);
 	}
 
 	/**

@@ -23,7 +23,7 @@ import lombok.NoArgsConstructor;
 
 /**
  * 보고서에 담긴 내역 한 줄의 스냅샷. 원본 내역이 수정·삭제되어도 이 값은 변하지 않는다.
- * {@code entryId} 는 참고용이며 표시에는 쓰지 않는다.
+ * {@code entryId} 는 표시에는 쓰지 않고, 상세에서 원본 내역의 <b>현재</b> 증빙을 찾을 때만 쓴다.
  */
 @Entity
 @Table(name = "report_entry")
@@ -56,17 +56,23 @@ public class ReportEntry {
 	@Column(name = "occurred_on", nullable = false)
 	private LocalDate occurredOn;
 
-	private ReportEntry(Long entryId, EntryType type, String title, Long amount, LocalDate occurredOn) {
+	/** 생성 시점의 원본 메모. V23 이전에 만든 보고서는 null 이다. */
+	@Column(length = 30)
+	private String memo;
+
+	private ReportEntry(Long entryId, EntryType type, String title, Long amount, LocalDate occurredOn,
+			String memo) {
 		this.entryId = entryId;
 		this.type = type;
 		this.title = title;
 		this.amount = amount;
 		this.occurredOn = occurredOn;
+		this.memo = memo;
 	}
 
 	static ReportEntry snapshotOf(Entry entry) {
 		return new ReportEntry(entry.getId(), entry.getType(), entry.getTitle(), entry.getAmount(),
-				entry.getOccurredOn());
+				entry.getOccurredOn(), entry.getMemo());
 	}
 
 	void assignTo(ReportLedger reportLedger) {

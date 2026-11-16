@@ -57,6 +57,12 @@ public class HttpTestClient {
 		return send(authorized(request(path), bearerToken).DELETE());
 	}
 
+	public Response deleteJson(String path, Map<String, ?> body, String bearerToken) {
+		return send(authorized(request(path), bearerToken)
+				.method("DELETE", jsonBody(body))
+				.header("Content-Type", "application/json"));
+	}
+
 	public Response get(String path, String bearerToken) {
 		return send(authorized(request(path), bearerToken).GET());
 	}

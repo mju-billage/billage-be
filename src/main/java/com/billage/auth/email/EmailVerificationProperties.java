@@ -11,6 +11,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param maxSends          발송 창 안에서 허용할 발송 횟수(최초 발송 포함).
  * @param sendWindowMinutes 발송 횟수를 세는 창(분).
  * @param requiredForSignup 가입 시 인증 완료를 요구할지. 프론트가 인증 화면을 붙이기 전까지는 꺼 둔다.
+ * @param verifiedTtlSeconds 인증을 마친 뒤 가입 요청까지 허용하는 시간(초). 지나면 다시 인증해야 한다.
  */
 @ConfigurationProperties(prefix = "billage.auth.email-verification")
 public record EmailVerificationProperties(
@@ -18,6 +19,7 @@ public record EmailVerificationProperties(
 		@DefaultValue("5") int maxAttempts,
 		@DefaultValue("5") int maxSends,
 		@DefaultValue("60") int sendWindowMinutes,
-		@DefaultValue("false") boolean requiredForSignup
+		@DefaultValue("false") boolean requiredForSignup,
+		@DefaultValue("300") int verifiedTtlSeconds
 ) {
 }

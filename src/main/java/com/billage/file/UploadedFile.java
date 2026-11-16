@@ -53,6 +53,10 @@ public class UploadedFile {
 	@Column(nullable = false)
 	private Long size;
 
+	/** 업로드한 바이트의 SHA-256(소문자 hex). V24 이전 파일은 null 이며 중복 검사에서 빠진다. */
+	@Column(name = "content_hash", length = 64, updatable = false)
+	private String contentHash;
+
 	/** 올린 사람. 그 사람이 탈퇴하면 비워진다 — 증빙 자체는 모임의 회계 이력이라 남는다. */
 	@Column(name = "uploaded_by")
 	private Long uploadedBy;
@@ -88,8 +92,9 @@ public class UploadedFile {
 	private LocalDateTime createdAt;
 
 	private UploadedFile(FilePurpose purpose, String storageKey, String originalFileName, String contentType,
-			Long size, Long uploadedBy) {
+			Long size, String contentHash, Long uploadedBy) {
 		this.purpose = purpose;
+		this.contentHash = contentHash;
 		this.storageKey = storageKey;
 		this.originalFileName = originalFileName;
 		this.contentType = contentType;
@@ -98,8 +103,8 @@ public class UploadedFile {
 	}
 
 	public static UploadedFile create(FilePurpose purpose, String storageKey, String originalFileName,
-			String contentType, Long size, Long uploadedBy) {
-		return new UploadedFile(purpose, storageKey, originalFileName, contentType, size, uploadedBy);
+			String contentType, Long size, String contentHash, Long uploadedBy) {
+		return new UploadedFile(purpose, storageKey, originalFileName, contentType, size, contentHash, uploadedBy);
 	}
 
 	/** 어딘가에 쓰이고 있는 파일. 지우려면 먼저 연결을 끊어야 한다. */

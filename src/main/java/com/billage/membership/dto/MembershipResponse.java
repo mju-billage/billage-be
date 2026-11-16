@@ -17,13 +17,15 @@ public record MembershipResponse(
 		String name,
 		String email,
 		GroupRole role,
-		OffsetDateTime joinedAt
+		OffsetDateTime joinedAt,
+		String profileImageUrl
 ) {
 
-	public static MembershipResponse of(GroupMembership membership, User user) {
+	/** {@code profileImageUrl} 은 사진이 없으면 null 이다(클라이언트가 기본 아바타를 그린다). */
+	public static MembershipResponse of(GroupMembership membership, User user, String profileImageUrl) {
 		return new MembershipResponse(membership.getId(), membership.getUserId(),
 				user == null ? null : user.getName(),
 				user == null ? null : user.getEmail(),
-				membership.getRole(), KoreanTime.toOffset(membership.getJoinedAt()));
+				membership.getRole(), KoreanTime.toOffset(membership.getJoinedAt()), profileImageUrl);
 	}
 }

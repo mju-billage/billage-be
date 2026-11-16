@@ -27,6 +27,10 @@ import com.billage.membership.GroupInvitationRepository;
 import com.billage.membership.GroupMembership;
 import com.billage.membership.GroupMembershipRepository;
 import com.billage.membership.GroupRole;
+import com.billage.notification.NotificationCategory;
+import com.billage.notification.NotificationMessage;
+import com.billage.notification.NotificationService;
+import com.billage.notification.NotificationTargetType;
 import com.billage.user.dto.MyProfileResponse;
 import com.billage.user.dto.PasswordChangeRequest;
 import com.billage.user.dto.ProfileUpdateRequest;
@@ -59,6 +63,7 @@ public class UserService {
 	private final GroupService groupService;
 	private final EmailVerificationRepository emailVerificationRepository;
 	private final WithdrawalReasonRepository withdrawalReasonRepository;
+	private final NotificationService notificationService;
 
 	@Transactional(readOnly = true)
 	public MyProfileResponse getMyProfile(Long userId) {
@@ -176,7 +181,7 @@ public class UserService {
 		saveReasons(request);
 
 		for (Map.Entry<Long, Long> transfer : transfers.entrySet()) {
-			promoteToOwner(transfer.getKey(), transfer.getValue());
+			promoteToOwner(transfer.getKey(), transfer.getValue(), userId);
 		}
 		// 넘길 곳이 있는 모임은 관리자 관계만 끊고, 나 혼자 남은 모임은 통째로 지운다.
 		memberships.stream()
@@ -223,10 +228,17 @@ public class UserService {
 		return transfers;
 	}
 
-	private void promoteToOwner(Long groupId, Long newOwnerUserId) {
+	private void promoteToOwner(Long groupId, Long newOwnerUserId, Long withdrawingUserId) {
 		GroupMembership target = groupMembershipRepository.findByGroupIdAndUserId(groupId, newOwnerUserId)
 				.orElseThrow(() -> new BusinessException(ErrorCode.MEMBERSHIP_NOT_FOUND));
+		if (target.isOwner()) {
+			return;
+		}
 		target.changeRole(GroupRole.OWNER);
+		// 「관리자 권한 수정」으로 총무가 될 때와 같은 알림을 보낸다.
+		notificationService.notifyUser(newOwnerUserId, withdrawingUserId, new NotificationMessage(groupId,
+				NotificationCategory.GROUP_ACTIVITY, "총무 권한을 받았어요",
+				target.getGroup().getName() + "의 총무가 되었어요", NotificationTargetType.GROUP, groupId));
 	}
 
 	/** 사유는 통계용이라 계정과 잇지 않고 따로 남긴다. */

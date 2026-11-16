@@ -93,15 +93,20 @@ public class AuthService {
 	}
 
 	/**
-	 * 이메일·비밀번호 로그인. 실패 원인(미존재/불일치)을 구분하지 않고 동일 오류로 응답한다.
+	 * 이메일·비밀번호 로그인. 실패 원인을 code 로 구분한다 — 없는 이메일은 {@code USER_NOT_FOUND},
+	 * 비밀번호가 틀리면 {@code INVALID_PASSWORD}.
+	 *
+	 * <p>가입 쪽이 이미 {@code EMAIL_ALREADY_EXISTS} 로 이메일 존재 여부를 알려 주므로, 여기서 나눠도
+	 * 새로 드러나는 정보는 없다. 화면이 "가입되지 않은 이메일"과 "비밀번호 오류"를 따로 안내하려고 나눴다.
 	 */
 	@Transactional
 	public LoginResponse login(String email, String rawPassword) {
 		User user = userRepository.findByEmail(email)
-				.orElseThrow(() -> new BusinessException(ErrorCode.INVALID_CREDENTIALS));
+				.orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 		// 소셜 전용 계정은 비밀번호가 없다 — matches()에 null을 넘기면 예외가 나므로 먼저 걸러낸다.
+		// 이메일은 있으니 "비밀번호 오류"로 본다.
 		if (user.getPassword() == null || !passwordEncoder.matches(rawPassword, user.getPassword())) {
-			throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
+			throw new BusinessException(ErrorCode.INVALID_PASSWORD);
 		}
 
 		return issueLoginTokens(user);

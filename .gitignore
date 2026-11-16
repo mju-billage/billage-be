@@ -56,3 +56,5 @@ tools/ocr-eval/**/*.heic
 tools/ocr-eval/**/answers.csv
 tools/ocr-eval/**/report.md
 tools/ocr-eval/**/__pycache__/
+
+.DS_Store

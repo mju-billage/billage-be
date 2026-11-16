@@ -1,7 +1,6 @@
 package com.billage.file;
 
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.Set;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -33,13 +32,21 @@ public record FileProperties(
 	}
 
 	/**
-	 * @param prefix 버킷 안 최상위 경로. dev·prod 가 한 버킷을 쓸 때 환경을 구분한다.
-	 * @param presignExpiry 다운로드용 presigned URL 유효 시간
+	 * S3 호환 저장소. 서버 안의 MinIO 를 쓴다 — AWS SDK for S3 는 그대로 쓰고 엔드포인트·자격 증명만 명시한다.
+	 *
+	 * @param endpoint  S3 API 주소(예: {@code http://127.0.0.1:9000}). MinIO 는 외부에 열지 않으므로 서버 내부 주소다.
+	 * @param accessKey 앱 전용 액세스 키. 커밋 금지 — 환경변수로만 주입한다.
+	 * @param secretKey 앱 전용 시크릿 키. 커밋 금지.
+	 * @param region    SigV4 서명에 쓰는 리전. MinIO 기본값이 {@code us-east-1} 이다.
+	 * @param prefix    버킷 안 최상위 경로. dev·prod 가 한 버킷을 쓸 때 환경을 구분한다.
 	 */
 	public record S3(
+			String endpoint,
+			String accessKey,
+			String secretKey,
 			String bucket,
-			@DefaultValue("dev") String prefix,
-			@DefaultValue("5m") Duration presignExpiry
+			@DefaultValue("us-east-1") String region,
+			@DefaultValue("dev") String prefix
 	) {
 	}
 }

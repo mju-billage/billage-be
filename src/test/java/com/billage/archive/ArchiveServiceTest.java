@@ -161,6 +161,46 @@ class ArchiveServiceTest extends IntegrationTest {
 	}
 
 	@Test
+	void 보관함_목록은_담긴_증빙의_용량_합계를_내려준다() {
+		Long first = fileService.upload(ownerId,
+				new MockMultipartFile("file", "a.jpg", "image/jpeg", new byte[1_000]), FilePurpose.RECEIPT).fileId();
+		Long second = fileService.upload(ownerId,
+				new MockMultipartFile("file", "b.jpg", "image/jpeg", new byte[2_500]), FilePurpose.RECEIPT).fileId();
+		entryService.create(ledgerId, ownerId, new EntryCreateRequest(EntryType.EXPENSE, "대관료",
+				200_000L, LocalDate.of(2026, 5, 20), null, null, List.of(first, second)));
+
+		var created = archiveService.create(groupId, ownerId, "보관");
+
+		assertThat(created.sizeBytes()).isEqualTo(3_500L);
+		assertThat(archiveService.getArchives(groupId, adminId)).singleElement()
+				.satisfies(archive -> assertThat(archive.sizeBytes()).isEqualTo(3_500L));
+	}
+
+	@Test
+	void 증빙이_없는_보관함의_용량은_0이다() {
+		createEntry(ownerId, EntryType.INCOME, "회비 수입", 500_000L, LocalDate.of(2026, 3, 1));
+
+		archiveService.create(groupId, ownerId, "보관");
+
+		assertThat(archiveService.getArchives(groupId, ownerId)).singleElement()
+				.satisfies(archive -> assertThat(archive.sizeBytes()).isZero());
+	}
+
+	@Test
+	void 보관된_장부의_기간은_담긴_내역의_가장_이른_날과_늦은_날이다() {
+		createEntry(ownerId, EntryType.INCOME, "회비 수입", 500_000L, LocalDate.of(2026, 3, 1));
+		createEntry(ownerId, EntryType.EXPENSE, "대관료", 200_000L, LocalDate.of(2026, 5, 20));
+		createEntry(ownerId, EntryType.EXPENSE, "간식", 30_000L, LocalDate.of(2026, 4, 2));
+
+		Long archiveId = archiveService.create(groupId, ownerId, "보관").archiveId();
+
+		assertThat(archiveService.getDetail(archiveId, ownerId).ledgers()).singleElement().satisfies(ledger -> {
+			assertThat(ledger.startDate()).isEqualTo(LocalDate.of(2026, 3, 1));
+			assertThat(ledger.endDate()).isEqualTo(LocalDate.of(2026, 5, 20));
+		});
+	}
+
+	@Test
 	void 보관된_증빙은_모임_관리자_누구나_열_수_있다() {
 		Long fileId = fileService.upload(ownerId,
 				new MockMultipartFile("file", "receipt.jpg", "image/jpeg", "image".getBytes()),

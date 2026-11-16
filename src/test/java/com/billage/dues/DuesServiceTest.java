@@ -14,6 +14,7 @@ import org.springframework.data.domain.PageRequest;
 
 import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
+import com.billage.common.response.KoreanTime;
 import com.billage.dues.dto.DuesCloseResponse;
 import com.billage.dues.dto.DuesCreateRequest;
 import com.billage.dues.dto.DuesUpdateRequest;
@@ -23,6 +24,7 @@ import com.billage.entry.ApprovalStatus;
 import com.billage.entry.EntryRepository;
 import com.billage.entry.EntryService;
 import com.billage.entry.dto.EntryDetailResponse;
+import com.billage.entry.dto.EntryUpdateRequest;
 import com.billage.entry.EntryType;
 import com.billage.folder.FolderService;
 import com.billage.folder.dto.FolderCreateRequest;
@@ -147,6 +149,20 @@ class DuesServiceTest extends IntegrationTest {
 	}
 
 	@Test
+	void 마감이_만든_수입_내역은_모임_전체_목록에서도_회비를_가리킨다() {
+		Long duesId = createDues(List.of(member1, member2));
+		pay(duesId, member1);
+		DuesCloseResponse closed = duesService.close(duesId, ownerId);
+
+		var entries = entryService.getGroupEntries(groupId, ownerId, null, null, null, null, null, null,
+				PageRequest.of(0, 20)).entries().content();
+
+		assertThat(entries).filteredOn(entry -> entry.entryId().equals(closed.generatedEntryId()))
+				.singleElement()
+				.satisfies(entry -> assertThat(entry.duesId()).isEqualTo(duesId));
+	}
+
+	@Test
 	void 아무도_납부하지_않은_회비를_마감하면_수입_내역을_만들지_않는다() {
 		Long duesId = createDues(List.of(member1, member2));
 
@@ -268,7 +284,7 @@ class DuesServiceTest extends IntegrationTest {
 				new MemberCreateRequest("남의모임원", null, null, null)).memberId();
 
 		assertThatThrownBy(() -> duesService.create(groupId, ownerId,
-				new DuesCreateRequest("2학기 회비", 30_000L, LocalDate.now(), LocalDate.of(2026, 9, 30),
+				new DuesCreateRequest("2학기 회비", 30_000L, LocalDate.now(), LocalDate.now().plusDays(30),
 						List.of(otherMemberId), ledgerId)))
 				.isInstanceOf(BusinessException.class)
 				.extracting(e -> ((BusinessException) e).getErrorCode())
@@ -438,6 +454,61 @@ class DuesServiceTest extends IntegrationTest {
 	}
 
 	@Test
+	void 마감일이_지난_날짜면_만들_수_없고_오늘은_된다() {
+		LocalDate today = LocalDate.now(KoreanTime.ZONE);
+
+		assertThatThrownBy(() -> duesService.create(groupId, ownerId,
+				new DuesCreateRequest("지난 회비", 30_000L, today.minusDays(5), today.minusDays(1),
+						List.of(member1), ledgerId)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.DUES_DUE_DATE_PAST);
+
+		Long duesId = duesService.create(groupId, ownerId,
+				new DuesCreateRequest("오늘 마감", 30_000L, today, today, List.of(member1), ledgerId)).duesId();
+		assertThat(duesRepository.findById(duesId).orElseThrow().getDueDate()).isEqualTo(today);
+	}
+
+	@Test
+	void 마감일을_지난_날짜로_바꿀_수_없다() {
+		Long duesId = createDues(List.of(member1));
+		LocalDate yesterday = LocalDate.now(KoreanTime.ZONE).minusDays(1);
+
+		assertThatThrownBy(() -> duesService.update(duesId, ownerId,
+				new DuesUpdateRequest(null, yesterday.minusDays(3), yesterday, null, null, null)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.DUES_DUE_DATE_PAST);
+	}
+
+	@Test
+	void 마감일을_오늘로_바꾸는_것은_된다() {
+		Long duesId = createDues(List.of(member1));
+		LocalDate today = LocalDate.now(KoreanTime.ZONE);
+
+		duesService.update(duesId, ownerId, new DuesUpdateRequest(null, null, today, null, null, null));
+
+		assertThat(duesRepository.findById(duesId).orElseThrow().getDueDate()).isEqualTo(today);
+	}
+
+	@Test
+	void 마감일이_지난_진행중_회비도_마감일을_그대로_두면_다른_값을_고칠_수_있다() {
+		Long duesId = createDues(List.of(member1));
+		LocalDate today = LocalDate.now(KoreanTime.ZONE);
+		// 만든 뒤 시간이 흘러 마감일이 지난 상태를 흉내 낸다.
+		Dues dues = duesRepository.findById(duesId).orElseThrow();
+		dues.updatePeriod(today.minusDays(10), today.minusDays(1));
+		duesRepository.saveAndFlush(dues);
+
+		duesService.update(duesId, ownerId,
+				new DuesUpdateRequest("제목만 수정", null, today.minusDays(1), null, null, null));
+
+		Dues updated = duesRepository.findById(duesId).orElseThrow();
+		assertThat(updated.getTitle()).isEqualTo("제목만 수정");
+		assertThat(updated.getDueDate()).isEqualTo(today.minusDays(1));
+	}
+
+	@Test
 	void 예정_회비는_예정_탭에만_진행중_회비는_진행중_탭에만_나온다() {
 		createDues(List.of(member1));
 		duesService.create(groupId, ownerId, new DuesCreateRequest("다음 학기 회비", 30_000L,
@@ -514,12 +585,31 @@ class DuesServiceTest extends IntegrationTest {
 	}
 
 	private DuesCreateRequest createRequest(List<Long> memberIds) {
-		return new DuesCreateRequest("2학기 회비", 30_000L, LocalDate.now(), LocalDate.of(2026, 9, 30), memberIds,
+		return new DuesCreateRequest("2학기 회비", 30_000L, LocalDate.now(), LocalDate.now().plusDays(30), memberIds,
 				ledgerId);
 	}
 
 	private Long createDues(List<Long> memberIds) {
 		return duesService.create(groupId, ownerId, createRequest(memberIds)).duesId();
+	}
+
+	@Test
+	void 마감이_만든_수입_내역을_다른_장부로_옮겨도_회비_연결은_유지된다() {
+		Long duesId = createDues(List.of(member1, member2));
+		pay(duesId, member1);
+		Long entryId = duesService.close(duesId, ownerId).generatedEntryId();
+		Long folderId = folderService.create(groupId, ownerId, new FolderCreateRequest("행사", null)).folderId();
+		Long otherLedgerId = ledgerService.create(folderId, ownerId, new LedgerCreateRequest("행사 장부", null)).ledgerId();
+
+		entryService.update(entryId, ownerId,
+				new EntryUpdateRequest(null, null, null, null, null, otherLedgerId, null));
+
+		EntryDetailResponse detail = entryService.getDetail(entryId, ownerId);
+		assertThat(detail.ledgerId()).isEqualTo(otherLedgerId);
+		assertThat(detail.duesId()).isEqualTo(duesId);
+		assertThat(detail.duesTitle()).isEqualTo("2학기 회비");
+		assertThat(detail.duesExists()).isTrue();
+		assertThat(detail.payerCount()).isEqualTo(1);
 	}
 
 	private void pay(Long duesId, Long memberId) {

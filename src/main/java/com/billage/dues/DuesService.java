@@ -36,6 +36,10 @@ import com.billage.member.Member;
 import com.billage.member.MemberRepository;
 import com.billage.membership.GroupAccessGuard;
 import com.billage.membership.GroupMembership;
+import com.billage.notification.NotificationCategory;
+import com.billage.notification.NotificationMessage;
+import com.billage.notification.NotificationService;
+import com.billage.notification.NotificationTargetType;
 import com.billage.user.User;
 import com.billage.user.UserRepository;
 
@@ -59,6 +63,7 @@ public class DuesService {
 	private final EntryRepository entryRepository;
 	private final UserRepository userRepository;
 	private final GroupAccessGuard guard;
+	private final NotificationService notificationService;
 
 	@Transactional(readOnly = true)
 	public PageResponse<DuesSummaryResponse> getDuesList(Long groupId, Long userId, DuesStatus status,
@@ -96,8 +101,12 @@ public class DuesService {
 		if (request.startDate().isAfter(request.dueDate())) {
 			throw new BusinessException(ErrorCode.INVALID_REQUEST);
 		}
+		requireNotPast(request.dueDate());
 		Dues dues = duesRepository.save(Dues.create(groupId, request.title().trim(), request.amount(),
 				request.startDate(), request.dueDate(), ledger.getId(), targets));
+		notificationService.notifyManagers(groupId, userId, new NotificationMessage(groupId,
+				NotificationCategory.DUES, "새 회비가 등록됐어요", dues.getTitle() + " 회비가 등록됐어요",
+				NotificationTargetType.DUES, dues.getId()));
 
 		return DuesCreateResponse.from(dues);
 	}
@@ -127,6 +136,11 @@ public class DuesService {
 			dues.updateTitle(requireNonBlank(request.title()));
 		}
 		if (request.startDate() != null || request.dueDate() != null) {
+			// 마감일을 바꿀 때만 검사한다. 마감일이 지난 진행 중 회비의 제목만 고치려고 같은 값을 다시 보내도
+			// 막히면 안 된다.
+			if (request.dueDate() != null && !request.dueDate().equals(dues.getDueDate())) {
+				requireNotPast(request.dueDate());
+			}
 			dues.updatePeriod(request.startDate(), request.dueDate());
 		}
 		if (request.ledgerId() != null) {
@@ -230,32 +244,36 @@ public class DuesService {
 			generatedEntryId = entry.getId();
 		}
 		dues.close(generatedEntryId);
+		notificationService.notifyManagers(dues.getGroupId(), userId, new NotificationMessage(dues.getGroupId(),
+				NotificationCategory.DUES, "회비가 마감됐어요", dues.getTitle() + " 회비가 마감됐어요",
+				NotificationTargetType.DUES, dues.getId()));
 
 		return DuesCloseResponse.from(dues);
 	}
 
 	/**
-	 * 한 모임원이 낸 회비 목록. 최신 납부순이며 납부 완료 건만 담는다.
+	 * 한 모임원이 낸 회비 목록. 납부 완료 건만 담는다.
 	 *
 	 * <p>기간은 <b>납부 시각</b> 기준이다. 회비의 마감일이 아니라 총무가 납부를 확인한 시점이
 	 * 이 화면에서 말하는 "언제 냈나"에 해당한다.
 	 */
 	@Transactional(readOnly = true)
-	public List<MemberPaymentView> findPaymentsOf(Long memberId, LocalDate from, LocalDate to) {
-		List<DuesMember> payments = duesMemberRepository.findPaymentsOf(memberId,
+	public Page<MemberPaymentView> findPaymentsOf(Long memberId, LocalDate from, LocalDate to,
+			String keyword, Pageable pageable) {
+		Page<DuesMember> payments = duesMemberRepository.findPaymentsOf(memberId,
 				from == null ? null : from.atStartOfDay(),
 				// to 는 그날 하루를 포함해야 하므로 '다음 날 0시 미만'으로 비교한다.
-				to == null ? null : to.plusDays(1).atStartOfDay());
+				to == null ? null : to.plusDays(1).atStartOfDay(),
+				keyword, pageable);
 
-		Map<Long, String> ledgerNames = ledgerNamesOf(payments.stream().map(DuesMember::getDues).toList());
+		Map<Long, String> ledgerNames = ledgerNamesOf(
+				payments.getContent().stream().map(DuesMember::getDues).toList());
 
-		return payments.stream()
-				.map(payment -> {
-					Dues dues = payment.getDues();
-					return new MemberPaymentView(dues.getId(), dues.getTitle(), dues.getLedgerId(),
-							ledgerNames.get(dues.getLedgerId()), dues.getAmount(), payment.getPaidAt());
-				})
-				.toList();
+		return payments.map(payment -> {
+			Dues dues = payment.getDues();
+			return new MemberPaymentView(dues.getId(), dues.getTitle(), dues.getLedgerId(),
+					ledgerNames.get(dues.getLedgerId()), dues.getAmount(), payment.getPaidAt());
+		});
 	}
 
 	/** 모임원별 총 납부 금액. 목록에서 여러 명을 한 번에 채울 수 있게 Map 으로 돌려준다. */
@@ -352,6 +370,13 @@ public class DuesService {
 			return PaymentStatus.valueOf(status.trim().toUpperCase());
 		} catch (IllegalArgumentException e) {
 			throw new BusinessException(ErrorCode.INVALID_PAYMENT_STATUS);
+		}
+	}
+
+	/** 마감일은 오늘(한국 시간) 이후여야 한다. 오늘 마감은 허용한다. */
+	private void requireNotPast(LocalDate dueDate) {
+		if (dueDate.isBefore(LocalDate.now(KoreanTime.ZONE))) {
+			throw new BusinessException(ErrorCode.DUES_DUE_DATE_PAST);
 		}
 	}
 

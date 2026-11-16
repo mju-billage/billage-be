@@ -15,7 +15,7 @@ import lombok.extern.slf4j.Slf4j;
  * 메일을 실제로 보내지 않고 로그로 남긴다. 로컬 개발과 테스트에서 인증 코드를 확인하는 용도다.
  *
  * <p>이 구현이 실서버에서 선택되면 <b>가입자가 인증 코드를 영영 받지 못하는데 오류도 나지 않는다</b> —
- * 조용히 망가지는 종류라, 배포 환경에서는 아예 뜨지 못하게 막는다. dev 는 SES 비용 없이 확인하려고
+ * 조용히 망가지는 종류라, 배포 환경에서는 아예 뜨지 못하게 막는다. dev 는 실제 발송 없이 확인하려고
  * 일부러 이 모드를 쓸 수 있어 경고만 남기고, prod 는 시작을 실패시킨다.
  */
 @Slf4j
@@ -47,11 +47,11 @@ public class LogMailSender implements MailSender {
 		this.offline = environment.acceptsProfiles(OFFLINE);
 		if (environment.acceptsProfiles(PRODUCTION)) {
 			throw new IllegalStateException(
-					"운영 환경에서 메일이 로그로만 남습니다. billage.mail.sender=SES 로 설정하세요.");
+					"운영 환경에서 메일이 로그로만 남습니다. billage.mail.sender=SMTP 로 설정하세요.");
 		}
 		if (!offline) {
 			log.warn("메일이 실제로 발송되지 않습니다(LOG 모드). 실제 발송이 필요하면 "
-					+ "billage.mail.sender=SES 로 설정하세요. activeProfiles={}",
+					+ "billage.mail.sender=SMTP 로 설정하세요. activeProfiles={}",
 					List.of(environment.getActiveProfiles()));
 		}
 	}

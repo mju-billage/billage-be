@@ -3,13 +3,20 @@ package com.billage.file;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.io.InputStream;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.Resource;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockMultipartFile;
 
 import com.billage.common.exception.BusinessException;
@@ -25,6 +32,7 @@ import com.billage.group.dto.GroupCreateRequest;
 import com.billage.ledger.LedgerService;
 import com.billage.ledger.dto.LedgerCreateRequest;
 import com.billage.membership.GroupMembershipService;
+import com.billage.membership.dto.RoleUpdateRequest;
 import com.billage.support.IntegrationTest;
 import com.billage.user.User;
 import com.billage.user.UserRepository;
@@ -40,6 +48,8 @@ class FileServiceTest extends IntegrationTest {
 	FileRepository fileRepository;
 	@Autowired
 	FileStorage fileStorage;
+	@Autowired
+	FileController fileController;
 	@Autowired
 	GroupService groupService;
 	@Autowired
@@ -154,7 +164,7 @@ class FileServiceTest extends IntegrationTest {
 					assertThat(receipt.fileUrl()).isEqualTo("/api/v1/files/" + fileId + "/content");
 				});
 
-		var list = entryService.getEntries(ledgerId, ownerId, null, null, null,
+		var list = entryService.getEntries(ledgerId, ownerId, null, null, null, null, null,
 				org.springframework.data.domain.PageRequest.of(0, 20));
 		assertThat(list.content().get(0).receiptCount()).isEqualTo(1);
 	}
@@ -203,6 +213,46 @@ class FileServiceTest extends IntegrationTest {
 				.isEqualTo(ErrorCode.INVALID_FILE_PURPOSE);
 	}
 
+	// --- 프로필 이미지 열람·관리자 목록 ---
+
+	@Test
+	void 같은_모임_관리자는_서로의_프로필_사진을_열_수_있고_남의_모임_사람은_못_연다() {
+		Long fileId = uploadProfile(adminId);
+		// 다른 모임의 관리자여도 모임을 공유하지 않으면 못 연다.
+		groupService.create(outsiderId, new GroupCreateRequest("남의모임", null, null));
+
+		assertThat(fileService.getAccessibleFile(fileId, adminId).getId()).isEqualTo(fileId);
+		assertThat(fileService.getAccessibleFile(fileId, ownerId).getId()).isEqualTo(fileId);
+		assertThatThrownBy(() -> fileService.getAccessibleFile(fileId, outsiderId))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.ACCESS_DENIED);
+	}
+
+	@Test
+	void 관리자_목록은_각자의_프로필_사진_주소를_담고_없으면_null_이다() {
+		Long fileId = uploadProfile(adminId);
+
+		var memberships = groupMembershipService.getMemberships(groupId, ownerId);
+
+		assertThat(memberships).filteredOn(m -> m.userId().equals(adminId)).singleElement()
+				.satisfies(m -> assertThat(m.profileImageUrl()).endsWith("/api/v1/files/" + fileId + "/content"));
+		assertThat(memberships).filteredOn(m -> m.userId().equals(ownerId)).singleElement()
+				.satisfies(m -> assertThat(m.profileImageUrl()).isNull());
+	}
+
+	@Test
+	void 권한_변경_응답도_대상_관리자의_프로필_사진_주소를_담는다() {
+		Long fileId = uploadProfile(adminId);
+		Long adminMembershipId = groupMembershipService.getMemberships(groupId, ownerId).stream()
+				.filter(m -> m.userId().equals(adminId)).findFirst().orElseThrow().membershipId();
+
+		var changed = groupMembershipService.changeRole(groupId, ownerId, adminMembershipId,
+				new RoleUpdateRequest("OWNER"));
+
+		assertThat(changed.profileImageUrl()).endsWith("/api/v1/files/" + fileId + "/content");
+	}
+
 	// --- 삭제 ---
 
 	@Test
@@ -231,7 +281,7 @@ class FileServiceTest extends IntegrationTest {
 		Long entryId = createEntryWithReceipts(ownerId, List.of(oldFileId));
 		Long newFileId = upload(ownerId, "new.jpg");
 
-		entryService.update(entryId, ownerId, new EntryUpdateRequest(null, null, null, null, null, List.of(newFileId)));
+		entryService.update(entryId, ownerId, new EntryUpdateRequest(null, null, null, null, null, null, List.of(newFileId)));
 
 		assertThat(fileRepository.findById(oldFileId)).isEmpty();
 		assertThat(entryService.getDetail(entryId, ownerId).receiptFiles()).singleElement()
@@ -245,7 +295,7 @@ class FileServiceTest extends IntegrationTest {
 		Long extraFileId = upload(ownerId, "extra.jpg");
 
 		entryService.update(entryId, ownerId,
-				new EntryUpdateRequest(null, null, null, null, null, List.of(fileId, extraFileId)));
+				new EntryUpdateRequest(null, null, null, null, null, null, List.of(fileId, extraFileId)));
 
 		assertThat(entryService.getDetail(entryId, ownerId).receiptFiles()).hasSize(2);
 	}
@@ -349,13 +399,109 @@ class FileServiceTest extends IntegrationTest {
 				.isEqualTo(ErrorCode.ACCESS_DENIED);
 	}
 
+	// --- 내려받기 ---
+
+	@Test
+	void 내려받기는_리다이렉트_없이_본문과_메타데이터_헤더를_직접_준다() throws Exception {
+		Long fileId = fileService.upload(ownerId, new MockMultipartFile("file", "receipt.jpg", "image/jpeg",
+				"image-bytes".getBytes()), FilePurpose.RECEIPT).fileId();
+
+		ResponseEntity<Resource> response = fileController.download(ownerId, fileId);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+		assertThat(response.getHeaders().getContentType()).isEqualTo(MediaType.IMAGE_JPEG);
+		assertThat(response.getHeaders().getContentLength()).isEqualTo("image-bytes".length());
+		assertThat(response.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION))
+				.isEqualTo("inline; filename=\"receipt.jpg\"");
+		try (InputStream in = response.getBody().getInputStream()) {
+			assertThat(in.readAllBytes()).isEqualTo("image-bytes".getBytes());
+		}
+	}
+
+	// --- 중복 사진(해시) ---
+
+	@Test
+	void 같은_바이트를_두_번_올리면_해시가_같다() {
+		byte[] bytes = "same-photo".getBytes();
+		var first = fileService.upload(ownerId, new MockMultipartFile("file", "a.jpg", "image/jpeg", bytes),
+				FilePurpose.RECEIPT);
+		var second = fileService.upload(ownerId, new MockMultipartFile("file", "b.jpg", "image/jpeg", bytes),
+				FilePurpose.RECEIPT);
+
+		assertThat(first.contentHash()).hasSize(64).matches("[0-9a-f]+").isEqualTo(second.contentHash());
+		assertThat(first.contentHash())
+				.isEqualTo(java.util.HexFormat.of().formatHex(sha256(bytes)));
+	}
+
+	@Test
+	void 같은_사진을_한_내역에_함께_붙이면_거절한다() {
+		Long first = uploadBytes("same-photo");
+		Long second = uploadBytes("same-photo");
+
+		assertThatThrownBy(() -> createEntryWithReceipts(ownerId, List.of(first, second)))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.DUPLICATE_RECEIPT_FILE);
+	}
+
+	@Test
+	void 이미_붙은_사진과_같은_사진을_교체_목록에_더하면_거절하고_다른_내역에는_허용한다() {
+		Long first = uploadBytes("same-photo");
+		Long entryId = createEntryWithReceipts(ownerId, List.of(first));
+		Long again = uploadBytes("same-photo");
+
+		assertThatThrownBy(() -> entryService.update(entryId, ownerId,
+				new EntryUpdateRequest(null, null, null, null, null, null, List.of(first, again))))
+				.isInstanceOf(BusinessException.class)
+				.extracting(e -> ((BusinessException) e).getErrorCode())
+				.isEqualTo(ErrorCode.DUPLICATE_RECEIPT_FILE);
+
+		Long otherEntryId = createEntryWithReceipts(ownerId, List.of(again));
+		assertThat(fileService.getReceipts(otherEntryId)).singleElement()
+				.satisfies(receipt -> assertThat(receipt.contentHash()).isNotNull());
+	}
+
+	@Test
+	void 교체로_기존_사진을_빼고_같은_사진을_새로_넣는_것은_허용한다() {
+		Long first = uploadBytes("same-photo");
+		Long entryId = createEntryWithReceipts(ownerId, List.of(first));
+		Long again = uploadBytes("same-photo");
+
+		entryService.update(entryId, ownerId,
+				new EntryUpdateRequest(null, null, null, null, null, null, List.of(again)));
+
+		assertThat(fileService.getReceipts(entryId)).extracting(receipt -> receipt.fileId()).containsExactly(again);
+	}
+
+	private Long uploadBytes(String content) {
+		return fileService.upload(ownerId, new MockMultipartFile("file", "photo.jpg", "image/jpeg",
+				content.getBytes()), FilePurpose.RECEIPT).fileId();
+	}
+
+	private static byte[] sha256(byte[] bytes) {
+		try {
+			return java.security.MessageDigest.getInstance("SHA-256").digest(bytes);
+		} catch (java.security.NoSuchAlgorithmException e) {
+			throw new IllegalStateException(e);
+		}
+	}
+
 	private Long upload(Long userId, String fileName) {
-		MockMultipartFile file = new MockMultipartFile("file", fileName, "image/jpeg", "image-bytes".getBytes());
+		// 바이트가 같으면 같은 내역에 붙일 때 중복 사진으로 거절되므로 매번 다른 바이트를 쓴다.
+		MockMultipartFile file = new MockMultipartFile("file", fileName, "image/jpeg",
+				("image-bytes-" + UUID.randomUUID()).getBytes());
 		return fileService.upload(userId, file, FilePurpose.RECEIPT).fileId();
 	}
 
 	private Long createEntryWithReceipts(Long userId, List<Long> fileIds) {
 		return entryService.create(ledgerId, userId, new EntryCreateRequest(EntryType.EXPENSE, "대관료",
 				500_000L, LocalDate.of(2026, 7, 20), null, null, fileIds)).entryId();
+	}
+
+	private Long uploadProfile(Long userId) {
+		MockMultipartFile image = new MockMultipartFile("file", "profile.png", "image/png", "image".getBytes());
+		Long fileId = fileService.upload(userId, image, FilePurpose.PROFILE_IMAGE).fileId();
+		fileService.claimProfileImage(fileId, userId);
+		return fileId;
 	}
 }

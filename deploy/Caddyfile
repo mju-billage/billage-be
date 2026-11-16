@@ -14,7 +14,12 @@
 	reverse_proxy 127.0.0.1:8080
 
 	log {
-		output file /var/log/caddy/billage.log
+		# 접근 로그 회전: 20MB 마다 새 파일, 5개·14일까지만 보관(최대 약 100MB).
+		output file /var/log/caddy/billage.log {
+			roll_size 20MiB
+			roll_keep 5
+			roll_keep_for 336h
+		}
 		format json
 	}
 }

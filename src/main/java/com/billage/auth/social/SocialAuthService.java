@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.billage.auth.AuthService;
+import com.billage.auth.dto.AgreementsRequest;
 import com.billage.auth.dto.LoginResponse;
 import com.billage.auth.dto.SocialLoginResponse;
 import com.billage.common.exception.BusinessException;
@@ -43,12 +44,31 @@ public class SocialAuthService {
 	 * (Provider가 이메일 소유를 검증했으므로 안전).
 	 */
 	@Transactional
-	public LoginResponse signup(SocialProvider provider, String token, String name) {
+	public LoginResponse signup(SocialProvider provider, String token, String name,
+			AgreementsRequest agreements, Boolean termsAgreed) {
+		requireAgreed(agreements, termsAgreed);
 		OAuthUserInfo info = verify(provider, token);
+		Boolean marketing = agreements == null ? null : agreements.marketingAgreed();
 
 		return socialAccountRepository.findByProviderAndProviderUserId(provider, info.providerUserId())
 				.map(account -> authService.issueLoginTokens(account.getUser()))
-				.orElseGet(() -> createAccountAndLogin(provider, info, name));
+				.orElseGet(() -> createAccountAndLogin(provider, info, name, marketing));
+	}
+
+	/**
+	 * 항목별 동의({@code agreements})가 오면 필수 3종을 보고, 오지 않으면 예전 필드 {@code termsAgreed} 로 판정한다.
+	 * 예전 필드의 실패 응답은 바꾸지 않는다 — 그 필드로 부르는 앱이 이미 배포돼 있다.
+	 */
+	private void requireAgreed(AgreementsRequest agreements, Boolean termsAgreed) {
+		if (agreements != null) {
+			if (!agreements.allRequiredAgreed()) {
+				throw new BusinessException(ErrorCode.TERMS_NOT_AGREED);
+			}
+			return;
+		}
+		if (!Boolean.TRUE.equals(termsAgreed)) {
+			throw new BusinessException(ErrorCode.INVALID_REQUEST, "약관 동의가 필요합니다.");
+		}
 	}
 
 	/**
@@ -56,12 +76,13 @@ public class SocialAuthService {
 	 * 계정 생성은 {@link SocialAccountRegistrar}의 별도 트랜잭션에서 수행하므로, 여기서 충돌을 잡아도
 	 * 이 메서드의 트랜잭션은 rollback-only로 오염되지 않는다.
 	 */
-	private LoginResponse createAccountAndLogin(SocialProvider provider, OAuthUserInfo info, String name) {
+	private LoginResponse createAccountAndLogin(SocialProvider provider, OAuthUserInfo info, String name,
+			Boolean marketing) {
 		try {
-			User user = registrar.register(provider, info, name);
+			User user = registrar.register(provider, info, name, marketing);
 			return authService.issueLoginTokens(user);
 		} catch (DataIntegrityViolationException e) {
-			return recoverFromConflict(provider, info, name);
+			return recoverFromConflict(provider, info, name, marketing);
 		}
 	}
 
@@ -71,10 +92,11 @@ public class SocialAuthService {
 	 * - 다른 Provider가 같은 이메일로 먼저 User를 만든 경우(users.email 충돌) → User는 이미 커밋되어 있으므로
 	 *   {@link SocialAccountRegistrar#register}를 재시도하면 이번 Provider 연결만 추가로 만들어진다.
 	 */
-	private LoginResponse recoverFromConflict(SocialProvider provider, OAuthUserInfo info, String name) {
+	private LoginResponse recoverFromConflict(SocialProvider provider, OAuthUserInfo info, String name,
+			Boolean marketing) {
 		return socialAccountRepository.findByProviderAndProviderUserId(provider, info.providerUserId())
 				.map(account -> authService.issueLoginTokens(account.getUser()))
-				.orElseGet(() -> authService.issueLoginTokens(registrar.register(provider, info, name)));
+				.orElseGet(() -> authService.issueLoginTokens(registrar.register(provider, info, name, marketing)));
 	}
 
 	private OAuthUserInfo verify(SocialProvider provider, String token) {

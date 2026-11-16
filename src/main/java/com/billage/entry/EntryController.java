@@ -44,11 +44,13 @@ public class EntryController {
 			@PathVariable Long ledgerId,
 			@RequestParam(required = false) EntryType type,
 			@RequestParam(required = false) ApprovalStatus status,
+			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
 			@RequestParam(required = false) String keyword,
 			@PageableDefault(size = 20, sort = { "occurredOn", "id" },
 					direction = Sort.Direction.DESC) Pageable pageable) {
 		PageResponse<EntrySummaryResponse> entries =
-				entryService.getEntries(ledgerId, userId, type, status, keyword, pageable);
+				entryService.getEntries(ledgerId, userId, type, status, from, to, keyword, pageable);
 		String message = entries.content().isEmpty() ? "조회된 데이터가 없습니다." : "내역 목록 조회에 성공했습니다.";
 		return ResponseEntity.ok(ApiResponse.of(entries, message));
 	}

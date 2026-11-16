@@ -3,6 +3,7 @@ package com.billage.dues.dto;
 import java.time.LocalDate;
 import java.util.List;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Size;
 
 /**
@@ -15,12 +16,15 @@ public record DuesUpdateRequest(
 		String title,
 
 		LocalDate startDate,
+
+		@Schema(description = "바꿀 때만 검사한다. 오늘(한국 시간)보다 이전이면 DUES_DUE_DATE_PAST(400).")
 		LocalDate dueDate,
 
 		List<Long> targetMemberIds,
 
 		Long ledgerId,
 
+		@Schema(description = "회비 금액은 생성 후 수정할 수 없다. 값을 보내면 무엇이든 DUES_AMOUNT_IMMUTABLE(400).")
 		Long amount
 ) {
 }
