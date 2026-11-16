@@ -41,8 +41,8 @@ public record OcrProperties(
 		 */
 		CLOVA_RECEIPT,
 		/**
-		 * 범용 모델({@code /general}). 글자와 좌표만 돌려주므로 총액·결제일을 {@link ReceiptTextParser} 가
-		 * 추론하고 품목은 비운다. <b>이 서비스의 확정 수단이다.</b>
+		 * 범용 모델({@code /general}). 글자와 좌표만 돌려주므로 총액·결제일·품목을 {@link ReceiptTextParser} 가
+		 * 추론한다. 품목은 합이 영수증의 합계와 맞을 때만 채운다. <b>이 서비스의 확정 수단이다.</b>
 		 */
 		CLOVA_GENERAL
 	}

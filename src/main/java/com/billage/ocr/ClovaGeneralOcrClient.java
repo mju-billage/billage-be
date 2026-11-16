@@ -20,9 +20,9 @@ import lombok.extern.slf4j.Slf4j;
  * <p>그래서 <b>인식 품질은 이제 클로바가 아니라 {@link ReceiptTextParser} 의 규칙에 달려 있다.</b>
  * 못 읽는 영수증 서식이 나오면 그 규칙을 늘리는 것이 대응이다.
  *
- * <p>품목({@code items})은 <b>항상 비어 있다</b> — 임시 상태가 아니라 확정된 계약이다.
- * 범용 OCR 로 품목 행만 가려내려면 열 위치까지 추론해야 하는데, 잘못 뽑은 품목은 없는 것보다 나쁘다.
- * 화면이 품목을 필요로 하게 되면 그때 다시 판단한다.
+ * <p>품목({@code items})은 {@link ReceiptItemExtractor} 가 뽑되, <b>품목 금액의 합이 영수증에 찍힌 합계와
+ * 맞을 때만</b> 채운다(2026-11-17). 잘못 뽑은 품목은 없는 것보다 나쁘다는 원칙은 그대로라, 합이 어긋나면
+ * 예전처럼 빈 배열이다.
  */
 @Slf4j
 @Component
@@ -36,7 +36,7 @@ public class ClovaGeneralOcrClient implements ReceiptOcrClient {
 
 	public ClovaGeneralOcrClient(OcrProperties properties) {
 		this.httpClient = new ClovaHttpClient(properties);
-		log.info("영수증 인식: CLOVA 범용 OCR 모델. 총액·결제일은 ReceiptTextParser 가 추론하며 품목은 비웁니다.");
+		log.info("영수증 인식: CLOVA 범용 OCR 모델. 총액·결제일·품목은 ReceiptTextParser 가 추론합니다(품목은 합계가 맞을 때만).");
 	}
 
 	@Override
@@ -83,11 +83,11 @@ public class ClovaGeneralOcrClient implements ReceiptOcrClient {
 			// 좌표가 없으면 어느 줄인지 알 수 없다. 아무 줄에나 끼워 넣으면 총액 줄을 망가뜨린다.
 			return null;
 		}
-		List<Vertex> vertices = field.boundingPoly().vertices();
-		double minX = vertices.stream().mapToDouble(Vertex::x).min().orElse(0);
-		double minY = vertices.stream().mapToDouble(Vertex::y).min().orElse(0);
-		double maxY = vertices.stream().mapToDouble(Vertex::y).max().orElse(0);
-		return new ReceiptLineAssembler.Fragment(field.inferText().trim(), minX, (minY + maxY) / 2, maxY - minY);
+		List<ReceiptLineAssembler.Point> vertices = field.boundingPoly().vertices().stream()
+				.filter(vertex -> vertex != null)
+				.map(vertex -> new ReceiptLineAssembler.Point(vertex.x(), vertex.y()))
+				.toList();
+		return ReceiptLineAssembler.fragmentOf(field.inferText().trim(), vertices);
 	}
 
 	private record Vertex(double x, double y) {

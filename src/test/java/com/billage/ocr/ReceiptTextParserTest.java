@@ -111,9 +111,65 @@ class ReceiptTextParserTest {
 				.isEqualTo(ErrorCode.OCR_RESULT_EMPTY);
 	}
 
-	/** 범용 모델로는 품목을 뽑지 않는다 — 잘못 뽑은 품목은 없는 것보다 나쁘다. */
+	/** 품목 합이 합계와 어긋나면 품목을 믿지 않는다 — 잘못 뽑은 품목은 없는 것보다 나쁘다. */
 	@Test
-	void 품목은_비워서_돌려준다() {
+	void 품목_합이_합계와_다르면_품목을_비운다() {
 		assertThat(ReceiptTextParser.parse(List.of("생수 500ml 2 1,000 2,000", "합계 6,500")).items()).isEmpty();
+	}
+
+	// ---- 범용 OCR 의 숫자 오인식. 그대로 읽으면 "15" 만 남아 15원이 장부에 올라간다. ----
+
+	@Test
+	void 쉼표를_점으로_읽어도_금액을_읽는다() {
+		assertThat(ReceiptTextParser.parse(List.of("합계 15.000")).totalAmount()).isEqualTo(15_000L);
+		assertThat(ReceiptTextParser.parse(List.of("합계 1.500.000")).totalAmount()).isEqualTo(1_500_000L);
+	}
+
+	@Test
+	void 쉼표_뒤에_공백이_끼어도_금액을_읽는다() {
+		assertThat(ReceiptTextParser.parse(List.of("합계 15, 000")).totalAmount()).isEqualTo(15_000L);
+	}
+
+	@Test
+	void 숫자_0을_O로_읽어도_금액을_읽는다() {
+		assertThat(ReceiptTextParser.parse(List.of("합계 15,O00원")).totalAmount()).isEqualTo(15_000L);
+	}
+
+	/** 점으로 구분한 날짜를 금액 보정이 망가뜨리지 않는다. */
+	@Test
+	void 금액_보정이_날짜를_건드리지_않는다() {
+		assertThat(ReceiptTextParser.parse(List.of("2026.09.21", "합계 15.000")).purchasedOn())
+				.isEqualTo(LocalDate.of(2026, 9, 21));
+	}
+
+	/** 승인번호·카드번호는 금액 열 오른쪽에 붙어 나오기도 한다. 집으면 금액이 수천 배로 뛴다. */
+	@Test
+	void 승인번호를_총액으로_집지_않는다() {
+		ReceiptOcrResult result = ReceiptTextParser.parse(List.of(
+				"합계 15,000",
+				"결제금액 15,000 승인번호 30012345"));
+
+		assertThat(result.totalAmount()).isEqualTo(15_000L);
+	}
+
+	/** 개수를 세는 줄이 맨 아래 찍히면 "마지막 줄" 규칙에 3원이 총액이 된다. */
+	@Test
+	void 수량_합계_줄을_총액으로_집지_않는다() {
+		ReceiptOcrResult result = ReceiptTextParser.parse(List.of(
+				"합계 15,000",
+				"총 수량 합계 3"));
+
+		assertThat(result.totalAmount()).isEqualTo(15_000L);
+	}
+
+	/** "부가세"가 총액을 꾸미는 말로 쓰이면 총액 줄이다. */
+	@Test
+	void 부가세포함_합계는_총액이다() {
+		ReceiptOcrResult result = ReceiptTextParser.parse(List.of(
+				"과세물품 13,636",
+				"부가세 1,364",
+				"부가세포함 합계 15,000"));
+
+		assertThat(result.totalAmount()).isEqualTo(15_000L);
 	}
 }

@@ -2,6 +2,7 @@ package com.billage.ocr;
 
 import java.time.DateTimeException;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -10,7 +11,7 @@ import com.billage.common.exception.BusinessException;
 import com.billage.common.exception.ErrorCode;
 
 /**
- * 영수증 줄글에서 상호·결제일·총액을 추려낸다. 범용 OCR 전용이다.
+ * 영수증 줄글에서 상호·결제일·총액·품목을 추려낸다. 범용 OCR 전용이다.
  *
  * <p><b>추측이 섞이는 코드다.</b> 영수증 서식이 가게마다 달라 규칙으로 100% 맞출 수 없다.
  * 그래서 확신이 서지 않으면 값을 지어내지 않고 비운다 — 총액만은 비울 수 없어(없으면 화면에 채울 게 없다)
@@ -20,6 +21,8 @@ import com.billage.common.exception.ErrorCode;
  * 총액·결제일 판별이 통째로 여기 규칙에 달리게 됐다. 못 읽는 서식이 보고되면 키워드를 늘려 대응한다 —
  * 늘릴 때는 {@link #TOTAL_EXCLUSIONS} 와 부딪히지 않는지 함께 본다(구성 요소를 총액으로 집으면
  * 틀린 금액이 장부에 올라간다).
+ *
+ * <p>품목은 {@link ReceiptItemExtractor} 가 뽑는다. 품목 합이 영수증에 찍힌 합계와 맞을 때만 채운다.
  */
 final class ReceiptTextParser {
 
@@ -27,17 +30,29 @@ final class ReceiptTextParser {
 	 * 총액 줄을 가리키는 말. 영수증은 보통 맨 아래쪽에 최종 금액을 한 번 더 찍으므로
 	 * <b>마지막으로 걸린 줄</b>을 쓴다("합계" 뒤에 "결제금액"이 또 나오는 서식이 흔하다).
 	 */
-	private static final List<String> TOTAL_KEYWORDS = List.of(
+	static final List<String> TOTAL_KEYWORDS = List.of(
 			"합계", "총액", "총계", "결제금액", "총결제금액", "받을금액", "청구금액", "판매금액", "총구매액");
 
-	/** 총액처럼 보이지만 구성 요소인 줄. 이 말이 있으면 총액 줄로 보지 않는다. */
-	private static final List<String> TOTAL_EXCLUSIONS = List.of("과세", "면세", "부가세", "봉사료", "할인", "포인트");
+	/**
+	 * 총액처럼 보이지만 구성 요소인 줄. 이 말이 있으면 총액 줄로 보지 않는다.
+	 * "총 수량 합계 3"처럼 개수를 세는 줄도 여기 걸린다 — 맨 아래 찍히면 마지막 줄 규칙에 3원이 총액이 된다.
+	 */
+	private static final List<String> TOTAL_EXCLUSIONS = List.of(
+			"과세", "면세", "부가세", "봉사료", "할인", "포인트", "수량", "건수");
+
+	/**
+	 * "부가세포함 합계"처럼 제외어가 <b>총액을 꾸미는</b> 경우. 이 말을 지운 뒤에 제외어를 본다 —
+	 * 그대로 보면 "부가세"에 걸려 진짜 총액 줄을 버린다.
+	 */
+	private static final Pattern TAX_INCLUDED = Pattern.compile("(부가세|부가가치세|세금|VAT|vat)포함");
+
+	/** 합계 앞에 찍히는 중간 합계. 총액 후보는 아니지만 품목 합을 맞춰 볼 대상이다(할인 전 금액). */
+	private static final String SUBTOTAL_KEYWORD = "소계";
 
 	/** 상호로 볼 수 없는 줄. 영수증 머리에는 상호 말고도 이런 줄이 섞인다. */
 	private static final List<String> STORE_EXCLUSIONS = List.of(
 			"사업자", "대표", "전화", "주소", "tel", "fax", "영수증", "주문", "가맹점");
 
-	private static final Pattern NUMBER = Pattern.compile("\\d{1,3}(?:,\\d{3})+|\\d+");
 	/** 연도 4자리를 먼저 찾는다. 두 자리 연도는 사업자번호 같은 숫자와 헷갈리기 쉽다. */
 	private static final Pattern FULL_YEAR_DATE = Pattern.compile("(19|20)(\\d{2})\\s*[-./]\\s*(\\d{1,2})\\s*[-./]\\s*(\\d{1,2})");
 	private static final Pattern SHORT_YEAR_DATE = Pattern.compile("(?<!\\d)(\\d{2})\\s*[-./]\\s*(\\d{1,2})\\s*[-./]\\s*(\\d{1,2})(?!\\d)");
@@ -55,23 +70,22 @@ final class ReceiptTextParser {
 		if (totalAmount == null) {
 			throw new BusinessException(ErrorCode.OCR_RESULT_EMPTY);
 		}
-		// 품목은 뽑지 않는다. 범용 OCR 로 품목 행을 가려내려면 열 위치까지 추론해야 하는데,
-		// 잘못 뽑은 품목은 없는 것보다 나쁘다(사용자가 하나씩 지워야 한다).
-		return new ReceiptOcrResult(findStoreName(lines), findDate(lines), totalAmount, List.of());
+		List<ReceiptOcrItem> items = ReceiptItemExtractor.extract(lines, printedTotals(lines));
+		return new ReceiptOcrResult(findStoreName(lines), findDate(lines), totalAmount, items);
 	}
 
 	/**
-	 * 총액. 키워드가 걸린 줄에서 <b>가장 오른쪽 숫자</b>를 쓴다 — 영수증은 금액을 오른쪽 열에 맞춰 찍고,
-	 * 줄 안의 조각은 가로 위치 순으로 이어 붙여 두었다.
+	 * 총액. 키워드가 걸린 줄에서 <b>가장 오른쪽 금액</b>을 쓴다 — 영수증은 금액을 오른쪽 열에 맞춰 찍고,
+	 * 줄 안의 조각은 가로 위치 순으로 이어 붙여 두었다. 숫자 오인식 보정과 번호(승인번호 등) 거르기는
+	 * {@link ReceiptAmounts} 가 한다.
 	 */
 	private static Long findTotalAmount(List<String> lines) {
 		Long found = null;
 		for (String line : lines) {
-			String normalized = normalize(line);
-			if (!containsAny(normalized, TOTAL_KEYWORDS) || containsAny(normalized, TOTAL_EXCLUSIONS)) {
+			if (!isTotalLine(line)) {
 				continue;
 			}
-			Long amount = lastNumberOf(line);
+			Long amount = ReceiptAmounts.lastAmountOf(line);
 			if (amount != null) {
 				found = amount;
 			}
@@ -79,20 +93,31 @@ final class ReceiptTextParser {
 		return found;
 	}
 
-	private static Long lastNumberOf(String line) {
-		Matcher matcher = NUMBER.matcher(line);
-		Long last = null;
-		while (matcher.find()) {
-			String digits = matcher.group().replace(",", "");
-			if (digits.length() > 18) {
+	private static boolean isTotalLine(String line) {
+		String normalized = normalize(line);
+		if (!containsAny(normalized, TOTAL_KEYWORDS)) {
+			return false;
+		}
+		return !containsAny(TAX_INCLUDED.matcher(normalized).replaceAll(""), TOTAL_EXCLUSIONS);
+	}
+
+	/**
+	 * 영수증에 찍힌 합계들(총액 후보 전부와 소계). 품목 합이 이 중 하나와 맞아야 품목을 믿는다 —
+	 * 할인이 있으면 품목 합은 최종 결제금액이 아니라 할인 전 합계와 맞는다.
+	 */
+	private static List<Long> printedTotals(List<String> lines) {
+		List<Long> totals = new ArrayList<>();
+		for (String line : lines) {
+			boolean subtotal = normalize(line).contains(SUBTOTAL_KEYWORD);
+			if (!isTotalLine(line) && !subtotal) {
 				continue;
 			}
-			long value = Long.parseLong(digits);
-			if (value > 0) {
-				last = value;
+			Long amount = ReceiptAmounts.lastAmountOf(line);
+			if (amount != null) {
+				totals.add(amount);
 			}
 		}
-		return last;
+		return totals;
 	}
 
 	/** 결제일. 위에서부터 처음 만나는 "말이 되는" 날짜를 쓴다. 못 찾으면 비운다(앱이 오늘로 채운다). */
@@ -147,11 +172,11 @@ final class ReceiptTextParser {
 	}
 
 	/** 키워드 비교용. "합 계"처럼 띄어 찍힌 것과 "합계"를 같게 본다. */
-	private static String normalize(String line) {
+	static String normalize(String line) {
 		return WHITESPACE.matcher(line).replaceAll("");
 	}
 
-	private static boolean containsAny(String normalized, List<String> keywords) {
+	static boolean containsAny(String normalized, List<String> keywords) {
 		return keywords.stream().anyMatch(normalized::contains);
 	}
 }
