@@ -76,7 +76,9 @@ class ClovaGeneralOcrClientTest {
 		assertThat(result.purchasedOn()).isEqualTo(LocalDate.of(2026, 9, 21));
 		// 영수증의 "합 계 6,500" — 바로 위의 과세물품가액(5,909)·부가세(591)에 속지 않아야 한다.
 		assertThat(result.totalAmount()).isEqualTo(6_500L);
-		assertThat(result.items()).isEmpty();
+		// 품목 합(2,000 + 1,500 + 3,000)이 합계 6,500 과 맞으므로 품목을 채운다.
+		assertThat(result.items()).extracting(ReceiptOcrItem::name)
+				.containsExactly("생수 500ml", "초코과자", "종이컵 50개");
 	}
 
 	@Test

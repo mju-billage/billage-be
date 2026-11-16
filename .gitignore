@@ -46,4 +46,15 @@ deploy/*.env
 ### Billage 로컬 파일 저장소 (LocalFileStorage · 테스트 산출물) ###
 data/
 
+### 영수증 정확도 평가 데이터 — 카드번호 일부·가게 정보가 있다. 저장소 밖에 두지만 실수로 넣는 것을 막는다 ###
+*.clova.json
+*.fields.tsv
+tools/ocr-eval/**/*.jpg
+tools/ocr-eval/**/*.jpeg
+tools/ocr-eval/**/*.png
+tools/ocr-eval/**/*.heic
+tools/ocr-eval/**/answers.csv
+tools/ocr-eval/**/report.md
+tools/ocr-eval/**/__pycache__/
+
 .DS_Store
