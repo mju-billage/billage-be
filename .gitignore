@@ -55,3 +55,4 @@ tools/ocr-eval/**/*.png
 tools/ocr-eval/**/*.heic
 tools/ocr-eval/**/answers.csv
 tools/ocr-eval/**/report.md
+tools/ocr-eval/**/__pycache__/
