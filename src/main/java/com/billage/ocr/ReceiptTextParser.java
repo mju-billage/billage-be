@@ -49,9 +49,13 @@ final class ReceiptTextParser {
 	 * 총액 줄에 함께 찍히는 개수("총 수량 3", "건수: 2개"). 지운 뒤에 총액 줄인지 보고 금액을 읽는다 —
 	 * "총 수량 합계 3"은 남는 것이 없어 총액 줄이 아니고(그대로 두면 3원이 총액이 된다),
 	 * "총수량 3 합계 15,000"은 "합계 15,000"이 남아 총액 줄이다.
+	 * 이 모양으로 못 지운 개수 표기("합계수량(EA) 3")가 남으면 {@link #QUANTITY_WORDS} 로 줄을 통째로 버린다.
 	 */
 	private static final Pattern QUANTITY_PART = Pattern.compile(
 			"(?:총\\s*)?(?:수\\s*량|건\\s*수)(?:\\s*합\\s*계)?\\s*[:：]?\\s*\\d+\\s*(?:개|건|EA|ea)?");
+
+	/** {@link #QUANTITY_PART} 로 지우고도 남아 있으면 개수를 세는 줄이다. 금액이 아니라 개수를 총액으로 집지 않게 버린다. */
+	private static final List<String> QUANTITY_WORDS = List.of("수량", "건수");
 
 	/**
 	 * "부가세포함 합계"처럼 제외어가 <b>총액을 꾸미는</b> 경우. 이 말을 지운 뒤에 제외어를 본다 —
@@ -123,7 +127,8 @@ final class ReceiptTextParser {
 		if (!containsAny(normalized, TOTAL_KEYWORDS)) {
 			return false;
 		}
-		return !containsAny(TAX_INCLUDED.matcher(normalized).replaceAll(""), TOTAL_EXCLUSIONS);
+		return !containsAny(TAX_INCLUDED.matcher(normalized).replaceAll(""), TOTAL_EXCLUSIONS)
+				&& !containsAny(normalized, QUANTITY_WORDS);
 	}
 
 	private static String withoutQuantity(String line) {

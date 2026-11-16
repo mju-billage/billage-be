@@ -90,6 +90,13 @@ class ReceiptTextParserTest {
 		assertThat(ReceiptTextParser.parse(List.of("총수량 3 합계 15,000")).totalAmount()).isEqualTo(15_000L);
 	}
 
+	/** 개수 표기를 알아보지 못한 서식("합계수량(EA) 3")은 줄을 통째로 버린다. 앞의 합계를 3원으로 덮어쓰지 않는다. */
+	@Test
+	void 알아보지_못한_개수_표기가_있으면_총액_줄이_아니다() {
+		assertThat(ReceiptTextParser.parse(List.of("합계 15,000", "합계수량(EA) 3")).totalAmount()).isEqualTo(15_000L);
+		assertThat(ReceiptTextParser.parse(List.of("결제금액 8,000", "수량 합계(개) 2")).totalAmount()).isEqualTo(8_000L);
+	}
+
 	/** 개수만 세는 합계 줄은 총액이 아니다. */
 	@Test
 	void 수량만_센_합계_줄은_총액이_아니다() {
